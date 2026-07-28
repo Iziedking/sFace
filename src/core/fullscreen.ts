@@ -39,8 +39,27 @@ export async function toggleFullscreen(): Promise<boolean> {
   }
 }
 
+/**
+ * Mirror the state onto <body>, so CSS can drop page furniture in fullscreen.
+ *
+ * Going fullscreen is a request to see the game and nothing else, and the
+ * footer belongs to the page rather than to the level. The :fullscreen selector
+ * would cover a real browser on its own; the class is what gives a wallet's
+ * WebView, which can be edge to edge without ever entering the fullscreen API,
+ * somewhere to hook the same rule.
+ */
+export function syncFullscreenClass(): void {
+  if (typeof document === 'undefined') return;
+  document.body.classList.toggle('is-fullscreen', isFullscreen());
+}
+
 /** Fires whenever the state changes, including when the user presses Esc. */
 export function onFullscreenChange(handler: () => void): void {
   if (typeof document === 'undefined') return;
-  document.addEventListener('fullscreenchange', handler);
+  document.addEventListener('fullscreenchange', () => {
+    // Synced here rather than at the call site so the class can never drift
+    // out of step with the browser, including on an Escape we did not ask for.
+    syncFullscreenClass();
+    handler();
+  });
 }

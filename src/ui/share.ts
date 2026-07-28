@@ -244,49 +244,118 @@ export function xIntent(text: string, url: string): string {
 }
 
 /**
+ * Open the X composer, from inside the click that asked for it.
+ *
+ * ## The bug this exists to prevent
+ *
+ * A browser only lets you open a window while the page still holds "transient
+ * activation", which is granted by a click and revoked after the first await.
+ * Share used to convert the score card to a File first and then call
+ * window.open, so on every desktop browser the popup was blocked and the button
+ * did visibly nothing. No error, no window, no clue.
+ *
+ * So the window is opened synchronously, before anything is awaited, and its
+ * location is set immediately. Nothing between the click and this call is
+ * allowed to await.
+ */
+/**
+ * Is the page still holding a live user gesture?
+ *
+ * The share sheet needs one and will not say so politely: it rejects with
+ * AbortError, the same error a person gets for closing the sheet themselves.
+ * Asking first is the only way to tell those two apart before the fact.
+ */
+function activated(): boolean {
+  const activation = navigator.userActivation;
+  // Older engines do not expose this. Assume the gesture is live rather than
+  // refusing to share on a browser that would have handled it fine.
+  return activation ? activation.isActive : true;
+}
+
+function openIntent(text: string, linkUrl: string): void {
+  const opened = window.open(xIntent(text, linkUrl), '_blank', 'noopener,noreferrer');
+
+  // Popup blockers can still refuse. Falling back to the current tab is better
+  // than a button that does nothing: the game is a mini app, and coming back is
+  // one tap.
+  if (!opened) window.location.href = xIntent(text, linkUrl);
+}
+
+/**
  * Native share sheet if the device has one, X compose intent if it does not.
  *
- * The image is only attached when canShare confirms files are supported.
- * Passing files to a share sheet that cannot take them throws, and losing the
- * share entirely is worse than sharing text alone.
+ * The sheet is tried first because on a phone inside a wallet it is the thing
+ * people actually use. `canShare` is checked synchronously so the desktop path
+ * never awaits before it opens a window. See openIntent.
  */
 export async function shareRun(
   data: CardData,
-  dataUrl: string | null,
+  file: File | null,
   linkUrl: string,
 ): Promise<void> {
   const text = shareText(data);
 
-  const file = dataUrl ? await toFile(dataUrl, `sface-${data.date}.png`) : null;
-
-  if (navigator.share) {
-    const payload: ShareData = { text, url: linkUrl };
-    if (file && navigator.canShare?.({ files: [file] })) {
-      payload.files = [file];
-    }
-    try {
-      await navigator.share(payload);
-      return;
-    } catch (error) {
-      // A user who dismisses the sheet has not asked for a second attempt.
-      if (error instanceof DOMException && error.name === 'AbortError') return;
-    }
+  /*
+   * ## The second half of the same bug
+   *
+   * Opening the composer synchronously fixed the browsers with no share sheet.
+   * The ones that HAVE a sheet stayed broken for a subtler reason, and it took
+   * a second report to find.
+   *
+   * This function used to turn the score card into a File before sharing. That
+   * await spends the click's transient activation, so navigator.share was then
+   * called with no live gesture and rejected. It rejects with AbortError, which
+   * is the same error a person gets for closing the sheet themselves, and the
+   * handler below quite reasonably treats that as "they changed their mind" and
+   * returns without doing anything. Silent, no console error, button dead.
+   *
+   * So the card is now converted to a File when the results screen is built,
+   * long before anybody clicks, and arrives here ready. Nothing between the
+   * click and navigator.share is allowed to await. Do not reintroduce one.
+   */
+  if (!navigator.share || !activated()) {
+    openIntent(text, linkUrl);
+    return;
   }
 
-  window.open(xIntent(text, linkUrl), '_blank', 'noopener,noreferrer');
+  const payload: ShareData = { text, url: linkUrl };
+  if (file && navigator.canShare?.({ files: [file] })) payload.files = [file];
+
+  try {
+    await navigator.share(payload);
+  } catch (error) {
+    // Now that the gesture is guaranteed live, an AbortError really is someone
+    // dismissing the sheet, and they have not asked for a second attempt.
+    if (error instanceof DOMException && error.name === 'AbortError') return;
+    openIntent(text, linkUrl);
+  }
 }
 
-/** Share a link with no card behind it, for a challenge sent before a run. */
+/** Share a link with no card behind it, for a challenge or a clan invite. */
 export async function shareLink(text: string, linkUrl: string): Promise<void> {
-  if (navigator.share) {
-    try {
-      await navigator.share({ text, url: linkUrl });
-      return;
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') return;
-    }
+  if (!navigator.share) {
+    openIntent(text, linkUrl);
+    return;
   }
-  window.open(xIntent(text, linkUrl), '_blank', 'noopener,noreferrer');
+
+  try {
+    await navigator.share({ text, url: linkUrl });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') return;
+    openIntent(text, linkUrl);
+  }
+}
+
+/**
+ * Turn the drawn card into a File, ahead of time.
+ *
+ * Called when the results screen is built rather than when Share is clicked,
+ * because the conversion is async and the click cannot afford to await. See
+ * shareRun.
+ */
+export async function cardFile(dataUrl: string | null, date: string): Promise<File | null> {
+  if (!dataUrl) return null;
+  return toFile(dataUrl, `sface-${date}.png`);
 }
 
 async function toFile(dataUrl: string, name: string): Promise<File | null> {
