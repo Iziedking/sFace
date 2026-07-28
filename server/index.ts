@@ -1,0 +1,397 @@
+/**
+ * The oracle and challenge service.
+ *
+ * Small on purpose. It publishes one mission a day, keeps a leaderboard, and
+ * stores challenge records. It holds no funds, has no keys, and can move
+ * nobody's money, which is why it can run on a single box behind Caddy without
+ * a blast-radius document longer than the service itself.
+ *
+ * Everything crossing the boundary is parsed with zod before it is touched.
+ * Every public endpoint is rate limited, because they are all unauthenticated
+ * by design and an open POST with no cap is an invitation.
+ */
+
+import express, { type NextFunction, type Request, type Response } from 'express';
+import { z } from 'zod';
+
+import * as daily from './daily';
+import { getMission, startRefreshLoop, utcDate } from './daily';
+import * as board from './leaderboard';
+import * as challenges from './challenges';
+import * as ghosts from './ghosts';
+import { attachLive } from './live';
+import { flush, loadSnapshot, scheduleSave } from './store';
+
+const PORT = Number(process.env.PORT ?? 8790);
+/** Comma-separated list. Empty means allow any origin, which is fine for a
+ *  public read-mostly service but should be set in production. */
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+/** Set this when running behind Caddy or any proxy, or rate limits key on it. */
+const TRUST_PROXY = process.env.TRUST_PROXY === 'true';
+
+const app = express();
+
+if (TRUST_PROXY) app.set('trust proxy', 1);
+app.disable('x-powered-by');
+
+// A mission payload is about 4KB. Nothing posted here is larger than a few
+// hundred bytes, so the cap is generous and still refuses anything strange.
+app.use(express.json({ limit: '16kb' }));
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (ALLOWED_ORIGINS.length === 0) {
+    res.setHeader('access-control-allow-origin', '*');
+  } else if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader('access-control-allow-origin', origin);
+    res.setHeader('vary', 'Origin');
+  }
+  res.setHeader('access-control-allow-methods', 'GET,POST,OPTIONS');
+  res.setHeader('access-control-allow-headers', 'content-type');
+
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(204);
+    return;
+  }
+  next();
+});
+
+// Rate limiting ------------------------------------------------------------
+
+interface Bucket {
+  tokens: number;
+  updatedAt: number;
+}
+
+const buckets = new Map<string, Bucket>();
+
+/** Token bucket, in memory. One box, one process, no need for anything more. */
+function limit(perMinute: number, burst: number) {
+  const refillPerMs = perMinute / 60_000;
+
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const key = `${req.path}:${clientIp(req)}`;
+    const now = Date.now();
+    const bucket = buckets.get(key) ?? { tokens: burst, updatedAt: now };
+
+    bucket.tokens = Math.min(burst, bucket.tokens + (now - bucket.updatedAt) * refillPerMs);
+    bucket.updatedAt = now;
+
+    if (bucket.tokens < 1) {
+      buckets.set(key, bucket);
+      res.status(429).json({ error: 'Too many requests. Slow down.' });
+      return;
+    }
+
+    bucket.tokens -= 1;
+    buckets.set(key, bucket);
+    next();
+  };
+}
+
+/**
+ * The client address. Behind a proxy this must come from the trusted hop that
+ * express resolves, never from a raw header, or anyone can spoof their way
+ * past the limiter by setting x-forwarded-for themselves.
+ */
+function clientIp(req: Request): string {
+  return req.ip ?? req.socket.remoteAddress ?? 'unknown';
+}
+
+// Schemas ------------------------------------------------------------------
+
+const deviceId = z.string().regex(/^[0-9a-f]{16,64}$/i, 'Device id must be hex.');
+const pilotName = z.string().min(1).max(32);
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD.');
+const seed = z.string().min(1).max(120);
+/** Nimiq addresses are NQ plus 34 base32 characters, spaces optional. */
+const nimiqAddress = z
+  .string()
+  .transform((value) => value.replace(/\s/g, '').toUpperCase())
+  .refine((value) => /^NQ\d{2}[0-9A-HJ-NP-VXY]{32}$/.test(value), 'Not a Nimiq address.');
+
+const scoreBody = z.object({
+  deviceId,
+  name: pilotName,
+  date: isoDate,
+  seed,
+  score: z.number().int().min(0).max(board.SCORE_CEILING),
+  facesExtracted: z.number().int().min(0).max(5),
+  attackersCleared: z.number().int().min(0).max(200),
+  duration: z.number().min(0).max(board.MAX_DURATION),
+});
+
+const createBody = z.object({
+  deviceId,
+  name: pilotName,
+  address: nimiqAddress.nullable(),
+  date: isoDate,
+  seed,
+  stakeNim: z.number().min(challenges.MIN_STAKE_NIM).max(challenges.MAX_STAKE_NIM),
+  score: z.number().int().min(0).max(board.SCORE_CEILING),
+});
+
+const acceptBody = z.object({
+  deviceId,
+  name: pilotName,
+  address: nimiqAddress.nullable(),
+  score: z.number().int().min(0).max(board.SCORE_CEILING),
+  // Must match the challenge's seed, or the two players ran different levels.
+  seed,
+});
+
+const ghostBody = z.object({
+  deviceId,
+  name: pilotName,
+  seed,
+  score: z.number().int().min(0).max(board.SCORE_CEILING),
+  facesExtracted: z.number().int().min(0).max(5),
+  // Length and alphabet only. The client's decoder is the real validator, and
+  // it returns null rather than throwing on anything malformed.
+  trace: z.string().min(8).max(ghosts.MAX_TRACE_CHARS).regex(/^[A-Za-z0-9+/]+={0,2}$/),
+});
+
+const settleBody = z.object({
+  deviceId,
+  /** A serialized Nimiq transaction, hex. Stored as reported, not verified. */
+  serializedTx: z.string().regex(/^[0-9a-f]+$/i).min(32).max(4096),
+});
+
+// Routes -------------------------------------------------------------------
+
+app.get('/health', (_req, res) => {
+  res.json({ ok: true, date: utcDate() });
+});
+
+app.get('/mission/today', limit(120, 40), async (_req, res) => {
+  const mission = await getMission();
+
+  if (!mission) {
+    // The client has a practice mission for exactly this case. Say so plainly
+    // rather than shipping a fabricated chart.
+    res.status(503).json({ error: 'The market is unreachable. Play the practice mission.' });
+    return;
+  }
+
+  // Cache at the edge for five minutes. The payload only changes once a day,
+  // and this is the endpoint every player hits on open.
+  res.setHeader('cache-control', 'public, max-age=300');
+  res.json({ ...mission.payload, stale: mission.stale });
+});
+
+app.get('/board/:date', limit(120, 40), (req, res) => {
+  const date = isoDate.safeParse(req.params.date);
+  if (!date.success) {
+    res.status(400).json({ error: 'Bad date.' });
+    return;
+  }
+  res.json(board.top(date.data));
+});
+
+app.post('/board', limit(20, 10), (req, res) => {
+  const parsed = scoreBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: firstIssue(parsed.error) });
+    return;
+  }
+
+  const result = board.submit(parsed.data);
+  if (!result.ok) {
+    res.status(422).json({ error: result.reason });
+    return;
+  }
+
+  res.json({ rank: result.rank });
+});
+
+app.get('/ghosts', limit(60, 20), (req, res) => {
+  const parsed = seed.safeParse(req.query.seed);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Bad seed.' });
+    return;
+  }
+
+  const limitRaw = Number(req.query.limit ?? 4);
+  const count = Number.isFinite(limitRaw) ? Math.min(Math.max(1, limitRaw), 8) : 4;
+  const exclude = typeof req.query.exclude === 'string' ? req.query.exclude : undefined;
+
+  res.json(ghosts.top(parsed.data, count, exclude));
+});
+
+// Traces are the largest thing anyone posts, so this gets the tightest bucket.
+app.post('/ghosts', limit(8, 4), (req, res) => {
+  const parsed = ghostBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: firstIssue(parsed.error) });
+    return;
+  }
+
+  const result = ghosts.submit(parsed.data);
+  if (!result.ok) {
+    res.status(result.code).json({ error: result.reason });
+    return;
+  }
+
+  res.json(result.value);
+});
+
+app.post('/challenges', limit(12, 6), (req, res) => {
+  const parsed = createBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: firstIssue(parsed.error) });
+    return;
+  }
+
+  const result = challenges.create(parsed.data);
+  if (!result.ok) {
+    res.status(result.code).json({ error: result.reason });
+    return;
+  }
+
+  res.status(201).json(challenges.toPublic(result.value));
+});
+
+app.get('/challenges/:id', limit(120, 40), (req, res) => {
+  const result = challenges.get(String(req.params.id));
+  if (!result.ok) {
+    res.status(result.code).json({ error: result.reason });
+    return;
+  }
+  res.json(challenges.toPublic(result.value));
+});
+
+app.post('/challenges/:id/accept', limit(20, 10), (req, res) => {
+  const parsed = acceptBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: firstIssue(parsed.error) });
+    return;
+  }
+
+  const result = challenges.accept(String(req.params.id), parsed.data);
+  if (!result.ok) {
+    res.status(result.code).json({ error: result.reason });
+    return;
+  }
+  res.json(challenges.toPublic(result.value));
+});
+
+app.post('/challenges/:id/settled', limit(20, 10), (req, res) => {
+  const parsed = settleBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: firstIssue(parsed.error) });
+    return;
+  }
+
+  const result = challenges.reportSettlement(String(req.params.id), parsed.data);
+  if (!result.ok) {
+    res.status(result.code).json({ error: result.reason });
+    return;
+  }
+  res.json(challenges.toPublic(result.value));
+});
+
+app.use((_req, res) => {
+  res.status(404).json({ error: 'No such endpoint.' });
+});
+
+// An express error handler needs all four parameters to be recognised as one.
+app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  console.error('[sface] unhandled', error);
+  res.status(500).json({ error: 'Something broke on our side.' });
+});
+
+function firstIssue(error: z.ZodError): string {
+  return error.issues[0]?.message ?? 'Bad request.';
+}
+
+// Boot ---------------------------------------------------------------------
+
+function snapshot() {
+  return {
+    version: 1 as const,
+    scores: board.serialise(),
+    challenges: challenges.serialise(),
+    mission: daily.serialise(),
+    ghosts: ghosts.serialise(),
+  };
+}
+
+async function main(): Promise<void> {
+  const restored = await loadSnapshot();
+  if (restored) {
+    board.restore(restored.scores);
+    challenges.restore(restored.challenges);
+    // Before the refresh loop starts, so today's frozen seed wins over a
+    // recomposed one.
+    daily.restore(restored.mission);
+    ghosts.restore((restored as { ghosts?: unknown }).ghosts);
+    console.log('[sface] restored snapshot');
+  }
+
+  board.onChange(() => scheduleSave(snapshot));
+  challenges.onChange(() => scheduleSave(snapshot));
+  daily.onChange(() => scheduleSave(snapshot));
+  ghosts.onChange(() => scheduleSave(snapshot));
+
+  startRefreshLoop();
+
+  // Housekeeping. Old boards and dead challenges are not worth keeping.
+  const housekeeping = setInterval(
+    () => {
+      board.prune(utcDate());
+      challenges.prune();
+      // Traces are the bulkiest thing stored and a seed is only playable on
+      // its own day, so everything but today's room goes.
+      void getMission().then((mission) => {
+        ghosts.prune(mission ? [mission.payload.seed] : []);
+      });
+    },
+    6 * 3_600_000,
+  );
+  housekeeping.unref?.();
+
+  const server = app.listen(PORT, () => {
+    console.log(`[sface] listening on :${PORT}`);
+    console.log('[sface] live co-op relay on /live');
+    if (ALLOWED_ORIGINS.length === 0) {
+      console.warn('[sface] ALLOWED_ORIGINS is unset, so every origin is allowed.');
+    }
+    if (!TRUST_PROXY) {
+      console.warn('[sface] TRUST_PROXY is not true. Set it when running behind Caddy.');
+    }
+  });
+
+  // The relay shares the http server, so one port and one Caddy rule covers
+  // both. It upgrades only on /live and ignores every other path.
+  attachLive(server);
+
+  /*
+   * listen() reports failures by emitting 'error' on the http server, not by
+   * throwing. Without a handler, a port clash on restart is an unhandled event
+   * and twenty lines of stack trace in the service log. The operator needs one
+   * line and a non-zero exit code so the supervisor can act on it.
+   */
+  server.on('error', (error: NodeJS.ErrnoException) => {
+    if (error.code === 'EADDRINUSE') {
+      console.error(`[sface] port ${PORT} is already in use. Is another copy running?`);
+    } else {
+      console.error(`[sface] could not listen on ${PORT}:`, error.message);
+    }
+    process.exit(1);
+  });
+
+  // Flush the snapshot before dying, or the last few scores go with it.
+  const shutdown = (signal: string) => async () => {
+    console.log(`[sface] ${signal}, shutting down`);
+    server.close();
+    await flush();
+    process.exit(0);
+  };
+  process.on('SIGTERM', shutdown('SIGTERM'));
+  process.on('SIGINT', shutdown('SIGINT'));
+}
+
+void main();

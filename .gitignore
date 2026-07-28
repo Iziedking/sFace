@@ -1,0 +1,31 @@
+# Build output and installed packages.
+node_modules/
+dist/
+
+# Real environment values. .env.example is tracked and documents every key.
+.env
+.env.local
+.env.*.local
+
+# The service's leaderboard and challenge snapshot. Everything in it is public
+# by design, but it is runtime state rather than source, so it stays out.
+.data/
+*.tmp
+
+# Planning and internal docs. The public repo gets the README, which is written
+# for someone arriving cold. PLAN.md is the build spec with its locked-decisions
+# table, docs/ holds the submission checklist, the deploy runbook and the
+# marketing plan. All useful, none of it anyone else's business.
+PLAN.md
+docs/
+
+# Editor and OS noise.
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
+
+# package-lock.json is deliberately NOT ignored. Pinned installs are the whole
+# point of committing it, and a mini app that builds differently on the judge's
+# machine than on yours is a mini app you cannot debug.

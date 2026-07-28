@@ -1,0 +1,381 @@
+/*
+ * Design tokens and the DOM screens.
+ *
+ * The canvas draws the run. Everything else, briefing, results, challenge, is
+ * plain DOM, because text in the DOM is crisp, selectable, accessible, and
+ * respects the user's font size, and none of that is true of text painted into
+ * a canvas.
+ *
+ * The palette mirrors src/render/theme.ts. Change one, change both.
+ */
+
+:root {
+  --void: #08090d;
+  --surface: #12141c;
+  --line: rgba(255, 255, 255, 0.09);
+
+  --accent: #ffa22b;
+  --accent-soft: rgba(255, 162, 43, 0.14);
+  --danger: #ff4a3d;
+  --face: #ffe0b2;
+
+  --ink: #f4f5f7;
+  --ink-muted: #8b90a0;
+  --ink-faint: #565b6b;
+
+  --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--void);
+  color: var(--ink);
+  font-family: var(--sans);
+  /* A game is a drag surface. Without this, flying scrolls the WebView. */
+  overscroll-behavior: none;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+#app {
+  position: fixed;
+  inset: 0;
+}
+
+#stage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+/* The screen layer sits over the canvas and only takes input when it has content. */
+#ui {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  pointer-events: none;
+}
+
+#ui:not(:empty) {
+  pointer-events: auto;
+  background: rgba(8, 9, 13, 0.82);
+  backdrop-filter: blur(2px);
+}
+
+.screen {
+  width: 100%;
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: calc(env(safe-area-inset-top) + 28px) 24px
+    calc(env(safe-area-inset-bottom) + 24px);
+  overflow-y: auto;
+}
+
+.screen--center {
+  justify-content: center;
+}
+
+/* Type */
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin: 0;
+}
+
+h1 {
+  font-size: 30px;
+  line-height: 1.15;
+  margin: 0;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+h2 {
+  font-size: 19px;
+  margin: 0;
+  font-weight: 600;
+}
+
+p {
+  margin: 0;
+  color: var(--ink-muted);
+  line-height: 1.55;
+  font-size: 15px;
+}
+
+/* Anything verifiable is mono. Tickers, addresses, scores, hashes. */
+.mono {
+  font-family: var(--mono);
+  letter-spacing: 0.02em;
+}
+
+.address {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-muted);
+  word-break: break-all;
+}
+
+/* The mission card is the first thing anyone sees. It carries the premise. */
+
+.mission {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 18px;
+  background: var(--surface);
+  display: grid;
+  gap: 14px;
+}
+
+.mission__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mission__ticker {
+  font-family: var(--mono);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.mission__change {
+  font-family: var(--mono);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.mission__stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.stat {
+  display: grid;
+  gap: 4px;
+}
+
+.stat__label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.stat__value {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* A practice mission says so. A fake ticker would cost more than an honest label. */
+.notice {
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--accent);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--ink-muted);
+  background: var(--accent-soft);
+}
+
+.notice--error {
+  border-left-color: var(--danger);
+  background: rgba(255, 74, 61, 0.1);
+}
+
+/* Buttons */
+
+.button {
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  padding: 15px 18px;
+  font: inherit;
+  font-weight: 600;
+  font-size: 16px;
+  cursor: pointer;
+  background: var(--accent);
+  color: #17120a;
+  transition: transform 0.12s ease, opacity 0.12s ease;
+}
+
+.button:active {
+  transform: scale(0.985);
+}
+
+.button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.button--ghost {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+.button--quiet {
+  background: transparent;
+  border-color: transparent;
+  color: var(--ink-muted);
+  padding: 10px;
+  font-size: 14px;
+}
+
+.actions {
+  display: grid;
+  gap: 10px;
+}
+
+/* Results */
+
+.score {
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+}
+
+.score__value {
+  font-family: var(--mono);
+  font-size: 52px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--accent);
+}
+
+.breakdown {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.breakdown__row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  color: var(--ink-muted);
+}
+
+.breakdown__row span:last-child {
+  font-family: var(--mono);
+  color: var(--ink);
+}
+
+/* Leaderboard */
+
+.board {
+  display: grid;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.board__row {
+  display: grid;
+  grid-template-columns: 32px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  background: var(--surface);
+  font-size: 14px;
+}
+
+.board__row--you {
+  background: var(--accent-soft);
+}
+
+.board__rank,
+.board__score {
+  font-family: var(--mono);
+}
+
+.board__score {
+  font-weight: 600;
+}
+
+.empty {
+  padding: 22px;
+  text-align: center;
+  color: var(--ink-faint);
+  font-size: 14px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+}
+
+/* Controls hint, shown once before the first run. */
+
+.hints {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.hints li {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 14px;
+  color: var(--ink-muted);
+}
+
+.hints li::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: none;
+}
+
+.card-preview {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  display: block;
+}
+
+.spinner {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--ink-faint);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

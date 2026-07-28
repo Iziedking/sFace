@@ -1,0 +1,117 @@
+/**
+ * Tiny WebAudio blips. No files, no library, nothing to download.
+ *
+ * Every sound here is an oscillator and a gain envelope, which keeps the whole
+ * audio layer under a hundred lines and the bundle free of assets. It will not
+ * win a sound design award and it does not need to.
+ *
+ * Two constraints shape this file. Mobile browsers refuse to start an
+ * AudioContext outside a user gesture, so nothing is created until the first
+ * tap. And the preference is persisted, because a game inside a wallet that
+ * forgets you muted it is a game you mute once and then delete.
+ */
+
+const STORAGE_KEY = 'sface.sound';
+
+type Voice = 'shoot' | 'hit' | 'kill' | 'rescue' | 'extract' | 'down' | 'ui';
+
+interface Recipe {
+  type: OscillatorType;
+  from: number;
+  to: number;
+  duration: number;
+  gain: number;
+}
+
+const RECIPES: Record<Voice, Recipe> = {
+  shoot: { type: 'square', from: 620, to: 300, duration: 0.06, gain: 0.05 },
+  hit: { type: 'square', from: 220, to: 120, duration: 0.08, gain: 0.07 },
+  kill: { type: 'sawtooth', from: 340, to: 60, duration: 0.22, gain: 0.09 },
+  rescue: { type: 'triangle', from: 520, to: 880, duration: 0.18, gain: 0.09 },
+  extract: { type: 'triangle', from: 660, to: 1320, duration: 0.35, gain: 0.1 },
+  down: { type: 'sawtooth', from: 280, to: 50, duration: 0.6, gain: 0.12 },
+  ui: { type: 'sine', from: 440, to: 660, duration: 0.09, gain: 0.06 },
+};
+
+class Audio {
+  private ctx: AudioContext | null = null;
+  private master: GainNode | null = null;
+  private enabled = readPreference();
+  /** Cheap rate limit, so a held fire button is not a hundred oscillators. */
+  private lastPlayed = new Map<Voice, number>();
+
+  get on(): boolean {
+    return this.enabled;
+  }
+
+  toggle(): boolean {
+    this.enabled = !this.enabled;
+    try {
+      localStorage.setItem(STORAGE_KEY, this.enabled ? 'on' : 'off');
+    } catch {
+      // Private mode. The preference simply does not survive the session.
+    }
+    if (this.master) this.master.gain.value = this.enabled ? 1 : 0;
+    return this.enabled;
+  }
+
+  /** Call from a real tap. Safe to call repeatedly. */
+  unlock(): void {
+    if (this.ctx) {
+      if (this.ctx.state === 'suspended') void this.ctx.resume();
+      return;
+    }
+
+    try {
+      const Ctor =
+        window.AudioContext ??
+        (window as unknown as { webkitAudioContext?: typeof AudioContext })
+          .webkitAudioContext;
+      if (!Ctor) return;
+
+      this.ctx = new Ctor();
+      this.master = this.ctx.createGain();
+      this.master.gain.value = this.enabled ? 1 : 0;
+      this.master.connect(this.ctx.destination);
+    } catch {
+      // No audio in this WebView. The game is fully playable without it.
+      this.ctx = null;
+    }
+  }
+
+  play(voice: Voice): void {
+    if (!this.enabled || !this.ctx || !this.master) return;
+
+    const now = this.ctx.currentTime;
+    const previous = this.lastPlayed.get(voice) ?? -1;
+    if (now - previous < 0.04) return;
+    this.lastPlayed.set(voice, now);
+
+    const recipe = RECIPES[voice];
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = recipe.type;
+    osc.frequency.setValueAtTime(recipe.from, now);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(20, recipe.to), now + recipe.duration);
+
+    gain.gain.setValueAtTime(recipe.gain, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + recipe.duration);
+
+    osc.connect(gain);
+    gain.connect(this.master);
+    osc.start(now);
+    osc.stop(now + recipe.duration + 0.02);
+  }
+}
+
+function readPreference(): boolean {
+  try {
+    return localStorage.getItem(STORAGE_KEY) !== 'off';
+  } catch {
+    return true;
+  }
+}
+
+export const audio = new Audio();
+export type { Voice };

@@ -1,0 +1,37 @@
+{
+  "name": "sface",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.server.json && tsc --noEmit -p tsconfig.test.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run typecheck && npm run test",
+    "build": "npm run check && vite build",
+    "preview": "vite preview",
+    "server": "tsx --env-file-if-exists=.env server/index.ts",
+    "server:dev": "tsx watch --env-file-if-exists=.env server/index.ts",
+    "icons": "node scripts/make-icons.mjs"
+  },
+  "//": "express, zod and tsx are runtime dependencies of the service, not build tools. They were in devDependencies, which meant an npm ci --omit=dev on the VPS produced a server that could not start. The SDK is pinned rather than tracking latest, because its published surface is what src/nimiq is written against.",
+  "dependencies": {
+    "@nimiq/mini-app-sdk": "^0.1.0",
+    "express": "^4.22.2",
+    "tsx": "^4.16.0",
+    "ws": "^8.21.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^26.1.2",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.5.0",
+    "vite": "^7.3.6",
+    "vitest": "^4.1.10"
+  }
+}
