@@ -18,8 +18,9 @@ import { fileURLToPath } from 'node:url';
 
 const OUT_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
-const VOID = [0x08, 0x09, 0x0d];
-const AMBER = [0xff, 0xa2, 0x2b];
+const PLATE = [0x14, 0x11, 0x0e];
+const ACCENT = [0xff, 0x5a, 0x1f];
+const PAPER = [0xf4, 0xed, 0xe0];
 
 /** The chart line, in a 512 space. Same path as public/icon.svg. */
 const CHART = [
@@ -97,15 +98,20 @@ function render(size) {
       const plate = coverage(sdRoundedBox(px - 256, py - 256, 256, CORNER), pixel);
       if (plate <= 0) continue;
 
-      const colour = [...VOID];
+      const colour = [...PAPER];
 
-      blend(colour, AMBER, coverage(sdPolyline(px, py, CHART, STROKE), pixel));
-      blend(colour, AMBER, coverage(sdCircle(px, py, HEAD.x, HEAD.y, HEAD.r), pixel));
+      // Ink first at a wider stroke, then the accent inside it. On a cream
+      // plate an unoutlined orange line goes soft at favicon size; the ink
+      // keel is what keeps the mark legible at 32 pixels.
+      blend(colour, PLATE, coverage(sdPolyline(px, py, CHART, STROKE + 14), pixel));
+      blend(colour, PLATE, coverage(sdCircle(px, py, HEAD.x, HEAD.y, HEAD.r + 7), pixel));
+      blend(colour, ACCENT, coverage(sdPolyline(px, py, CHART, STROKE), pixel));
+      blend(colour, ACCENT, coverage(sdCircle(px, py, HEAD.x, HEAD.y, HEAD.r), pixel));
 
       // Two eyes and a mouth, punched back out in the plate colour.
-      blend(colour, VOID, coverage(sdCircle(px, py, 352, 334, 9), pixel));
-      blend(colour, VOID, coverage(sdCircle(px, py, 384, 334, 9), pixel));
-      blend(colour, VOID, coverage(sdBox(px, py, 368, 362.5, 18, 4.5, 4.5), pixel));
+      blend(colour, PLATE, coverage(sdCircle(px, py, 352, 334, 9), pixel));
+      blend(colour, PLATE, coverage(sdCircle(px, py, 384, 334, 9), pixel));
+      blend(colour, PLATE, coverage(sdBox(px, py, 368, 362.5, 18, 4.5, 4.5), pixel));
 
       const offset = (y * size + x) * 4;
       rgba[offset] = colour[0];
@@ -188,3 +194,5 @@ for (const [size, name] of TARGETS) {
   writeFileSync(join(OUT_DIR, name), png);
   console.log(`${name.padEnd(16)} ${size}x${size}  ${(png.length / 1024).toFixed(1)} kB`);
 }
+
+

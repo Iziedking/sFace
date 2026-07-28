@@ -36,6 +36,8 @@ export interface Squadmate {
   source: SquadSource;
   /** Their final score, when we know it. Ghosts do, live players do not yet. */
   score: number | null;
+  /** Set when they connected an X account and shared a picture. */
+  avatarUrl: string | null;
   /** Where to draw them right now, or null when they have nothing to show. */
   pose: GhostFrame | null;
 }
@@ -64,7 +66,13 @@ export class Squad {
   }
 
   /** Add a recorded run. Returns false when the squad is already full. */
-  addGhost(id: string, name: string, score: number, frames: readonly GhostFrame[]): boolean {
+  addGhost(
+    id: string,
+    name: string,
+    score: number,
+    frames: readonly GhostFrame[],
+    avatarUrl: string | null = null,
+  ): boolean {
     if (this.entries.size >= MAX_SQUAD || this.entries.has(id)) return false;
 
     this.entries.set(id, {
@@ -72,6 +80,7 @@ export class Squad {
       name,
       source: 'ghost',
       score,
+      avatarUrl,
       pose: null,
       track: new GhostTrack(frames),
       target: null,
@@ -85,7 +94,7 @@ export class Squad {
    * full we evict a ghost to make room rather than turning them away. Somebody
    * actually playing right now is worth more than a replay.
    */
-  addLive(id: string, name: string): boolean {
+  addLive(id: string, name: string, avatarUrl: string | null = null): boolean {
     if (this.entries.has(id)) return true;
 
     if (this.entries.size >= MAX_SQUAD && !this.evictGhost()) return false;
@@ -95,6 +104,7 @@ export class Squad {
       name,
       source: 'live',
       score: null,
+      avatarUrl,
       pose: null,
       track: null,
       target: null,

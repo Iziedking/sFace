@@ -58,22 +58,38 @@ export class Effects {
           break;
         case 'kill':
           if (!quiet) {
-            this.burst(event.x, event.y, 16, theme.danger, 220);
+            this.burst(event.x, event.y, 16, theme.ink, 220);
             camera.shake(7);
           }
           break;
         case 'freed':
-          if (!quiet) this.burst(event.x, event.y, 14, theme.accent, 180);
+          if (!quiet) this.burst(event.x, event.y, 14, theme.rescue, 180);
           break;
         case 'extracted':
-          this.say(event.x, event.y, event.text ?? 'Out', theme.accent);
-          if (!quiet) this.burst(event.x, event.y, 20, theme.accent, 240);
+          this.say(event.x, event.y, event.text ?? 'Out', theme.rescue);
+          if (!quiet) this.burst(event.x, event.y, 20, theme.rescue, 240);
           break;
         case 'lost':
           this.say(event.x, event.y, event.text ?? 'Lost', theme.danger);
           break;
         case 'pickupLine':
-          if (event.text) this.say(event.x, event.y, event.text, theme.face);
+          if (event.text) this.say(event.x, event.y, event.text, theme.ink);
+          break;
+        case 'refill':
+          if (event.text) this.say(event.x, event.y, event.text, '#b07a12');
+          if (!quiet) this.burst(event.x, event.y, 12, '#e9b13c', 190);
+          break;
+        case 'cache':
+          if (event.text) this.say(event.x, event.y, event.text, theme.accentDeep);
+          if (!quiet) this.burst(event.x, event.y, 14, theme.accent, 200);
+          break;
+        case 'relic':
+          if (event.text) this.say(event.x, event.y, event.text, theme.accentDeep);
+          if (!quiet) {
+            // The one moment in a run that earns a proper flourish.
+            this.burst(event.x, event.y, 34, theme.accent, 320);
+            camera.shake(11);
+          }
           break;
       }
     }
@@ -124,14 +140,20 @@ export class Effects {
 
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    ctx.font = `600 13px ${MONO}`;
     for (const text of this.texts) {
-      const alpha = Math.min(1, (text.life / text.maxLife) * 1.6);
-      ctx.globalAlpha = alpha;
-      ctx.font = `600 14px ${MONO}`;
-      ctx.fillStyle = 'rgba(8, 9, 13, 0.75)';
-      ctx.fillText(text.text, text.x + 1, text.y + 1);
+      ctx.globalAlpha = Math.min(1, (text.life / text.maxLife) * 1.6);
+
+      // A solid plate behind the line. Type over a moving chart on a bright
+      // canvas is unreadable, and a drop shadow on paper looks like a mistake.
+      const width = ctx.measureText(text.text).width + 12;
       ctx.fillStyle = text.color;
-      ctx.fillText(text.text, text.x, text.y);
+      ctx.beginPath();
+      ctx.roundRect(text.x - width / 2, text.y - 9, width, 18, 4);
+      ctx.fill();
+
+      ctx.fillStyle = theme.canvas;
+      ctx.fillText(text.text, text.x, text.y + 1);
     }
     ctx.globalAlpha = 1;
   }

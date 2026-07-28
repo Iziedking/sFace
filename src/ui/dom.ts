@@ -41,18 +41,24 @@ export function mount(root: HTMLElement, ...nodes: Node[]): void {
   root.replaceChildren(...nodes);
 }
 
+export type ButtonVariant = 'primary' | 'ghost' | 'quiet' | 'x';
+
+const BUTTON_CLASS: Record<ButtonVariant, string> = {
+  primary: 'button',
+  ghost: 'button button--ghost',
+  quiet: 'button button--quiet',
+  // Ink on cream, so connecting an account reads as X's own colour without
+  // borrowing their mark.
+  x: 'button button--x',
+};
+
 export function button(
   label: string,
   onClick: () => void,
-  variant: 'primary' | 'ghost' | 'quiet' = 'primary',
+  variant: ButtonVariant = 'primary',
 ): HTMLButtonElement {
   const node = el('button', {
-    class:
-      variant === 'primary'
-        ? 'button'
-        : variant === 'ghost'
-          ? 'button button--ghost'
-          : 'button button--quiet',
+    class: BUTTON_CLASS[variant],
     type: 'button',
     text: label,
   });

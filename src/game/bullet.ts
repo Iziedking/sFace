@@ -13,9 +13,22 @@ import type { Bullet, RunState } from './state';
 import { hitsGround } from './collision';
 import { WORLD_HEIGHT, WORLD_WIDTH, CEILING } from './terrain';
 
-export const PLAYER_BULLET_SPEED = 760;
-export const PLAYER_BULLET_DAMAGE = 12;
-export const ENEMY_BULLET_SPEED = 330;
+/*
+ * The player's own speed and damage used to live here as two constants. They
+ * moved to data/weapons.ts when the rack became a choice, because a second
+ * copy of a number the gun already carries is a number that will be edited in
+ * one place and read from the other.
+ */
+
+/**
+ * Deliberately well under the player's own rounds.
+ *
+ * Reaction time is the difference between a shot you dodged and a shot that
+ * simply happened to you. Slowing incoming fire buys that time without making
+ * the level emptier, which is the trade worth taking: fewer surprises, same
+ * number of decisions.
+ */
+export const ENEMY_BULLET_SPEED = 258;
 export const ENEMY_BULLET_DAMAGE = 11;
 export const BULLET_RADIUS = 4;
 

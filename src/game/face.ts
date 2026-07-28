@@ -17,7 +17,7 @@ import { circlesOverlap, clamp } from './collision';
 import { threatNear } from './enemy';
 import type { Face, RunState } from './state';
 import { RESCUE_FRACTION } from './state';
-import { CEILING, EXTRACTION_X } from './terrain';
+import { CEILING } from './terrain';
 
 export const FACE_RADIUS = 15;
 
@@ -164,5 +164,5 @@ export function loseFollowers(state: RunState): void {
 }
 
 export function atExtraction(state: RunState): boolean {
-  return state.player.x >= EXTRACTION_X;
+  return state.player.x >= state.extractionX;
 }

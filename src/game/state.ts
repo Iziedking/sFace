@@ -20,11 +20,24 @@
  */
 
 import { Rng } from '../core/rng';
-import { FACES, pickFace, type FaceQuirk } from '../data/faces';
-import type { DailyMission } from './mission';
+import type { FaceQuirk } from '../data/faces';
+import { DEFAULT_WEAPON, weaponById, type Weapon, type WeaponId } from '../data/weapons';
+import { stageAt, type Stage } from '../data/campaign';
+import { layOutCaches, type Cache } from './cache';
+import { layOutRefills, type Refill } from './refill';
+import { fallbackRoster, type DailyMission, type RosterEntry } from './mission';
 import { Terrain, EXTRACTION_X, WORLD_HEIGHT, CEILING } from './terrain';
 
-export const RUN_SECONDS = 90;
+/**
+ * Length of a run.
+ *
+ * Raised from ninety. The level is over eleven thousand units long, and at
+ * ninety seconds a player who stopped to fight, took a cache and got someone
+ * out simply ran out of clock before extraction. Reaching the end is the part
+ * of a run worth having, so the budget now allows for a detour rather than
+ * punishing one.
+ */
+export const RUN_SECONDS = 110;
 export const PLAYER_MAX_HEALTH = 100;
 
 /** Score awarded the moment a face is freed, before it is safely out. */
@@ -32,7 +45,7 @@ export const RESCUE_FRACTION = 0.25;
 export const ATTACKER_SCORE = 50;
 export const TIME_BONUS_PER_SECOND = 20;
 
-export type EnemyKind = 'drifter' | 'diver' | 'turret';
+export type EnemyKind = 'drifter' | 'diver' | 'turret' | 'runner';
 export type FaceState = 'trapped' | 'following' | 'extracted' | 'lost';
 export type RunPhase = 'flying' | 'extracted' | 'died' | 'timeout';
 
@@ -75,6 +88,10 @@ export interface Face {
   defIndex: number;
   quirk: FaceQuirk;
   name: string;
+  /** X handle without the @, or the archetype id on a fallback roster. */
+  handle: string;
+  /** Only ever set when a real picture was explicitly configured. */
+  avatarUrl: string | null;
   line: string;
   bounty: number;
   x: number;
@@ -101,10 +118,35 @@ export interface Bullet {
   life: number;
   damage: number;
   friendly: boolean;
+  /**
+   * Enemies this round may pass through before it stops. Absent means none,
+   * which is every enemy round and most of the player's, so it stays optional
+   * rather than forcing a zero into every spawn site that will never use it.
+   */
+  pierce?: number;
+  /**
+   * Enemy ids this round has already damaged. Only ever allocated for a round
+   * that can pierce, which is a couple a second at most.
+   *
+   * Without it a piercing round hits whatever it is overlapping again on the
+   * next step, because a step is a snapshot and the round has not cleared the
+   * hit box yet. That reads as a single shot doing double damage, which turned
+   * the lance into a straight upgrade rather than a trade.
+   */
+  pierced?: number[];
 }
 
 export interface RunEvent {
-  kind: 'freed' | 'extracted' | 'lost' | 'hit' | 'kill' | 'pickupLine';
+  kind:
+    | 'freed'
+    | 'extracted'
+    | 'lost'
+    | 'hit'
+    | 'kill'
+    | 'pickupLine'
+    | 'cache'
+    | 'relic'
+    | 'refill';
   text?: string;
   x: number;
   y: number;
@@ -115,9 +157,33 @@ export class RunState {
   readonly terrain: Terrain;
   readonly runRng: Rng;
 
+  /**
+   * The gun this run is being flown with.
+   *
+   * Deliberately not part of the level. Nothing laid out below reads it, so
+   * two pilots on the same seed still get identical terrain, identical enemies
+   * in identical places and identical caches no matter what either of them
+   * brought. See data/weapons.ts for why that line has to hold.
+   */
+  readonly weapon: Weapon;
+
+  /**
+   * The stage being flown, and the two numbers it decides that everything else
+   * reads: how long the clock is, and where the pad is.
+   *
+   * Both used to be module constants. They are per-run now because that is
+   * what makes seven stages seven stages rather than one level with a label on
+   * it, and because a constant cannot be part of a seed.
+   */
+  readonly stage: Stage;
+  readonly seconds: number;
+  readonly extractionX: number;
+
   readonly player: Player;
   readonly enemies: Enemy[];
   readonly faces: Face[];
+  readonly caches: Cache[];
+  readonly refills: Refill[];
   readonly bullets: Bullet[] = [];
 
   /** Drained by the renderer each frame to spawn effects and floating text. */
@@ -135,16 +201,74 @@ export class RunState {
   rescueScore = 0;
   extractionScore = 0;
 
+  /**
+   * Face recovered from caches.
+   *
+   * Banked on pickup and never lost, unlike the extraction half of a rescue.
+   * A cache is already out of the ground once you touch it, and taking it back
+   * for dying would make the risk of a deep dive read as a punishment rather
+   * than a gamble.
+   */
+  cacheScore = 0;
+  cachesTaken = 0;
+  refillsTaken = 0;
+  /** Whether the day's single relic was recovered. Tracked for the profile. */
+  relicTaken = false;
+
   private nextId = 1;
 
-  constructor(mission: DailyMission) {
+  constructor(mission: DailyMission, weapon: WeaponId = DEFAULT_WEAPON, stageNumber = 1) {
     this.mission = mission;
     this.terrain = new Terrain(mission.terrain);
-    this.runRng = new Rng(`${mission.seed}:run`);
+    this.weapon = weaponById(weapon);
 
-    const levelRng = new Rng(mission.seed);
-    this.enemies = layOutEnemies(levelRng, this.terrain, mission.difficulty, () => this.nextId++);
-    this.faces = layOutFaces(levelRng, this.terrain, () => this.nextId++);
+    const stage = stageAt(stageNumber);
+    this.stage = stage;
+    this.seconds = stage.seconds;
+    // Never shorter than a level worth flying, whatever a stage asks for.
+    this.extractionX = Math.max(3_000, Math.round(EXTRACTION_X * stage.span));
+
+    /*
+     * The stage is part of the seed.
+     *
+     * Two players comparing Stage 3 scores have to have flown the same Stage 3,
+     * and the same day's Stage 1 and Stage 3 must not be the same level with a
+     * different clock. Folding the number into both streams is what guarantees
+     * both, and it costs one string concatenation.
+     */
+    const seed = `${mission.seed}:s${stage.n}`;
+    this.runRng = new Rng(`${seed}:run`);
+
+    const levelRng = new Rng(seed);
+    // Fear and Greed still sets the day's difficulty; the stage raises the
+    // floor so a calm market cannot make the last stage a walk.
+    const difficulty = Math.max(mission.difficulty, stage.minDifficulty);
+
+    this.enemies = layOutEnemies(
+      levelRng,
+      this.terrain,
+      difficulty,
+      () => this.nextId++,
+      this.extractionX,
+      stage.density,
+      stage.runners,
+    );
+    this.faces = layOutFaces(
+      levelRng,
+      this.terrain,
+      mission.roster,
+      () => this.nextId++,
+      this.extractionX,
+    );
+    this.caches = layOutCaches(
+      levelRng,
+      this.terrain,
+      difficulty,
+      () => this.nextId++,
+      this.extractionX,
+      stage.caches,
+    );
+    this.refills = layOutRefills(levelRng, this.terrain, () => this.nextId++, this.extractionX);
 
     this.player = {
       x: 120,
@@ -162,7 +286,7 @@ export class RunState {
   }
 
   get timeLeft(): number {
-    return Math.max(0, RUN_SECONDS - this.time);
+    return Math.max(0, this.seconds - this.time);
   }
 
   get carrying(): number {
@@ -184,9 +308,10 @@ export class RunState {
     const raw =
       this.rescueScore +
       this.extractionScore +
+      this.cacheScore +
       this.attackersCleared * ATTACKER_SCORE +
       timeBonus;
-    return Math.floor(raw * this.mission.bountyMultiplier);
+    return Math.floor(raw * this.mission.bountyMultiplier * this.stage.bounty);
   }
 
   emit(event: RunEvent): void {
@@ -208,23 +333,30 @@ function layOutEnemies(
   terrain: Terrain,
   difficulty: number,
   nextId: () => number,
+  extractionX: number,
+  /** The stage's own multiplier on top of the day's difficulty. */
+  density: number,
+  /** Share of attackers that come at you along the ground. Zero early on. */
+  runners: number,
 ): Enemy[] {
   const enemies: Enemy[] = [];
   // Difficulty 1 is a quiet day, 5 is extreme fear and a crowded sky.
-  const densityScale = 0.45 + difficulty * 0.22;
+  const densityScale = (0.45 + difficulty * 0.22) * density;
   const step = 210;
 
-  for (let x = 640; x < EXTRACTION_X - 200; x += step) {
+  for (let x = 640; x < extractionX - 200; x += step) {
     const local = terrain.volatilityAt(x);
     // Even a calm stretch gets something, or the level has dead air in it.
     const chance = Math.min(0.95, (0.25 + local * 0.75) * densityScale);
     if (!rng.chance(chance)) continue;
 
-    const kind = pickKind(rng, local, difficulty);
+    const kind = pickKind(rng, local, difficulty, runners);
     const y =
       kind === 'turret'
         ? terrain.groundAt(x) - 26
-        : clamp(terrain.clearAbove(x, rng.range(120, 340)), CEILING + 30, WORLD_HEIGHT - 90);
+        : kind === 'runner'
+          ? terrain.groundAt(x) - 22
+          : clamp(terrain.clearAbove(x, rng.range(120, 340)), CEILING + 30, WORLD_HEIGHT - 90);
 
     enemies.push({
       id: nextId(),
@@ -233,7 +365,7 @@ function layOutEnemies(
       y,
       vx: 0,
       vy: 0,
-      health: kind === 'turret' ? 40 : kind === 'diver' ? 18 : 28,
+      health: kind === 'turret' ? 40 : kind === 'diver' ? 18 : kind === 'runner' ? 26 : 28,
       fireCooldown: rng.range(0.4, 2.2),
       alive: true,
       active: false,
@@ -245,8 +377,22 @@ function layOutEnemies(
   return enemies;
 }
 
-/** Volatile stretches favour divers, calm ones favour turrets on the ground. */
-function pickKind(rng: Rng, volatility: number, difficulty: number): EnemyKind {
+/**
+ * Volatile stretches favour divers, calm ones favour turrets on the ground.
+ *
+ * Runners are drawn first and from a share the stage sets, so the early
+ * campaign has none at all and the late campaign has the floor covered. Drawing
+ * them first rather than last keeps the other three in their existing
+ * proportions to each other.
+ */
+function pickKind(
+  rng: Rng,
+  volatility: number,
+  difficulty: number,
+  runners: number,
+): EnemyKind {
+  if (runners > 0 && rng.chance(runners)) return 'runner';
+
   const roll = rng.next();
   const diverBias = volatility * 0.45 + difficulty * 0.04;
   if (roll < diverBias) return 'diver';
@@ -260,14 +406,25 @@ function pickKind(rng: Rng, volatility: number, difficulty: number): EnemyKind {
  * because rescuing five different quirks is more interesting than rescuing the
  * same one five times.
  */
-function layOutFaces(rng: Rng, terrain: Terrain, nextId: () => number): Face[] {
+function layOutFaces(
+  rng: Rng,
+  terrain: Terrain,
+  roster: readonly RosterEntry[],
+  nextId: () => number,
+  extractionX: number,
+): Face[] {
   const faces: Face[] = [];
-  const count = FACES.length;
-  const usable = EXTRACTION_X - 900;
+  // The roster is whoever crypto X was actually talking about today, topped up
+  // from the archetypes so the headcount never changes. That matters: two
+  // players on the same seed must get the same number of people in the same
+  // places, or the challenge stops being a fair bet.
+  const cast = roster.length > 0 ? roster : fallbackRoster();
+  const count = cast.length;
+  const usable = Math.max(1_200, extractionX - 900);
   const band = usable / count;
 
-  // Shuffle which archetype lands in which band, deterministically.
-  const order = FACES.map((_, i) => i);
+  // Shuffle who lands in which band, deterministically.
+  const order = cast.map((_, i) => i);
   for (let i = order.length - 1; i > 0; i--) {
     const j = rng.int(0, i);
     const a = order[i] ?? i;
@@ -278,8 +435,7 @@ function layOutFaces(rng: Rng, terrain: Terrain, nextId: () => number): Face[] {
 
   for (let i = 0; i < count; i++) {
     const defIndex = order[i] ?? i;
-    // pickFace keeps the weighting honest if this ever becomes a random draw.
-    const def = FACES[defIndex] ?? pickFace(rng.next());
+    const def = cast[defIndex] ?? cast[0]!;
     const x = 700 + band * i + rng.range(band * 0.2, band * 0.7);
     const y = terrain.groundAt(x) - rng.range(40, 130);
 
@@ -287,7 +443,9 @@ function layOutFaces(rng: Rng, terrain: Terrain, nextId: () => number): Face[] {
       id: nextId(),
       defIndex,
       quirk: def.quirk,
-      name: def.name,
+      name: def.displayName,
+      handle: def.handle,
+      avatarUrl: def.avatarUrl,
       line: def.line,
       bounty: def.bounty,
       x,
@@ -296,7 +454,7 @@ function layOutFaces(rng: Rng, terrain: Terrain, nextId: () => number): Face[] {
       slot: -1,
       pausedUntil: 0,
       nextTalkAt: 0,
-      selfExtractX: x + (EXTRACTION_X - x) * rng.range(0.4, 0.65),
+      selfExtractX: x + (extractionX - x) * rng.range(0.4, 0.65),
       freedAt: 0,
     });
   }

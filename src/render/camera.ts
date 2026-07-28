@@ -15,6 +15,7 @@
 
 import { clamp } from '../game/collision';
 import type { Player } from '../game/state';
+import { MAX_SPEED } from '../game/player';
 import { WORLD_HEIGHT, WORLD_WIDTH } from '../game/terrain';
 
 const MIN_VIEW_W = 560;
@@ -87,7 +88,7 @@ export class Camera {
   }
 
   private target(player: Player, groundY: number): { x: number; y: number } {
-    const lead = clamp(player.vx / 400, -1, 1) * LOOKAHEAD;
+    const lead = clamp(player.vx / MAX_SPEED, -1, 1) * LOOKAHEAD;
 
     const halfW = this.viewW / 2;
     const halfH = this.viewH / 2;

@@ -15,6 +15,15 @@
  * hard, which is exactly why this runs once a day and caches, not per request.
  */
 
+import { readCryptoX, xsenseConfigured, type XRosterEntry } from './xsense';
+
+export interface MissionStory {
+  headline: string;
+  sentiment: number;
+  topics: string[];
+  live: boolean;
+}
+
 export interface MissionPayload {
   /** YYYY-MM-DD in UTC. Also the cache key. */
   date: string;
@@ -33,6 +42,10 @@ export interface MissionPayload {
   difficulty: number;
   /** Bounty multiplier. Fear pays better because fear is harder. */
   bountyMultiplier: number;
+  /** Who is in the wreck today, read off crypto X. Empty when unavailable. */
+  roster: XRosterEntry[];
+  /** What crypto X is saying, or null when we could not read it. */
+  story: MissionStory | null;
 }
 
 const TERRAIN_POINTS = 240;
@@ -48,11 +61,44 @@ export async function composeMission(): Promise<MissionPayload> {
   const terrain = await fetchTerrain(worst.id);
   const difficulty = difficultyFromFear(fng.value);
 
+  /*
+   * Read crypto X for today's story and roster.
+   *
+   * Deliberately awaited rather than raced with the rest: this runs once a day
+   * on a cron-like tick, not on a request, so a slow read costs nothing a
+   * player can feel. It returns null on absence, failure or budget, and the
+   * client tops the roster up from the committed archetypes, so a missing key
+   * or a Grok outage produces a mission with less flavour rather than no
+   * mission.
+   */
+  const brief = await readCryptoX({
+    date,
+    ticker: worst.symbol.toUpperCase(),
+    changePct: worst.changePct,
+    fearGreed: fng.value,
+  });
+
+  if (!brief && xsenseConfigured()) {
+    console.warn('[sface] mission composed without an X read, falling back to archetypes');
+  }
+
   return {
     date,
-    // The seed encodes the day and the market, so it is reproducible and
-    // auditable. Anyone can check that today's level came from today's data.
-    seed: `${date}:${worst.symbol}:${worst.changePct.toFixed(2)}:fng${fng.value}`,
+    /*
+     * The seed encodes the day, the market and the cast, so it is reproducible
+     * and auditable: anyone can check that today's level came from today's
+     * data.
+     *
+     * The roster fingerprint is not decoration. Who is in the wreck decides
+     * which rescue quirk lands where, and a quirk is gameplay. Two players on
+     * the same seed but different rosters would be playing measurably
+     * different levels while the app insisted the bet was fair. Folding the
+     * cast into the seed makes any change to it visible as a different seed,
+     * which the challenge guard already refuses to cross.
+     */
+    seed:
+      `${date}:${worst.symbol}:${worst.changePct.toFixed(2)}:fng${fng.value}` +
+      `:x${rosterFingerprint(brief?.roster ?? [])}`,
     ticker: worst.symbol.toUpperCase(),
     coinName: worst.name,
     changePct: worst.changePct,
@@ -62,7 +108,34 @@ export async function composeMission(): Promise<MissionPayload> {
     difficulty,
     // Extreme fear means a harder run, so it pays more. The market sets the purse.
     bountyMultiplier: 1 + (5 - difficulty === 0 ? 0.5 : (difficulty - 1) * 0.15),
+    roster: brief?.roster ?? [],
+    story: brief
+      ? {
+          headline: brief.headline,
+          sentiment: brief.sentiment,
+          topics: brief.topics,
+          live: true,
+        }
+      : null,
   };
+}
+
+/**
+ * A short, stable fingerprint of the cast. Order matters, because order is
+ * what the seeded shuffle consumes. Not a hash for security, just a cheap way
+ * to make a changed roster produce a changed seed.
+ */
+function rosterFingerprint(roster: readonly XRosterEntry[]): string {
+  if (roster.length === 0) return 'none';
+
+  const material = roster.map((r) => `${r.handle}:${r.quirk}:${r.bounty}`).join('|');
+
+  let h = 2166136261;
+  for (let i = 0; i < material.length; i++) {
+    h ^= material.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(36);
 }
 
 interface Performer {

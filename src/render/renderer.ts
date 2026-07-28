@@ -1,32 +1,50 @@
 /**
  * Draws the world.
  *
- * The identity of this game is that you are flying inside a trading terminal,
- * so the chart is the hero. It gets the grid behind it, the glow on it, and the
- * accent colour. Everything else is drawn plainly so the chart stays the thing
- * you look at.
+ * The premise is that you are flying inside a printed chart, so the chart is
+ * the hero: it gets the accent colour, the heaviest line on screen, and a
+ * solid ground mass under it. Everything else is ink on paper.
  *
- * Performance notes, because this targets a WebView on a mid phone:
- * shadowBlur is expensive per draw call, so it is used exactly twice, on the
- * chart line and the extraction beacon, both of which are single strokes.
- * Entities fake their glow with a second larger, dimmer shape, which costs a
- * fill instead of a blur pass. Everything off screen is culled on x before any
- * path is built.
+ * The whole cast is drawn by one function in characters.ts. Attackers, the
+ * people being rescued, squadmates and the player share a silhouette, which is
+ * what makes the screen read as a crowd rather than as a set of shapes. What
+ * separates them is jacket colour and posture, and those are the two things a
+ * player can actually parse at speed on a phone.
+ *
+ * Performance notes, because this targets a WebView on a mid phone: no blur
+ * filters anywhere, no gradients per entity, and everything off screen is
+ * culled on x before a single path is built. A figure costs about fifteen path
+ * operations and there are rarely more than twenty on screen.
  */
 
-import { theme, MONO } from './theme';
+import { theme, MONO, DISPLAY } from './theme';
+import { AvatarCache, drawHuman, type Role } from './characters';
 import type { Camera } from './camera';
 import type { Effects } from './effects';
 import type { Enemy, Face, RunState } from '../game/state';
 import type { Squad } from '../game/squad';
-import { POINT_SPACING, WORLD_HEIGHT, EXTRACTION_X, CEILING } from '../game/terrain';
-import { PLAYER_RADIUS } from '../game/player';
-import { radiusOf } from '../game/enemy';
-import { FACE_RADIUS } from '../game/face';
+import { POINT_SPACING, WORLD_HEIGHT, CEILING } from '../game/terrain';
 import { BULLET_RADIUS } from '../game/bullet';
+import { MAX_SPEED } from '../game/player';
+
+/**
+ * NIM's gold. The one colour outside the palette, used for exactly one thing.
+ *
+ * The palette is deliberately tiny and every colour in it already carries a
+ * meaning, so a refill borrowing one would inherit the wrong sentence. Gold
+ * says currency, which is what a refill is dressed as.
+ */
+const REFILL_GOLD = '#e9b13c';
+
+/** Set on the player's character when they have connected an account. */
+export interface PlayerIdentity {
+  handle: string | null;
+  avatarUrl: string | null;
+}
 
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
+  private avatars = new AvatarCache();
   /** CSS pixels, not device pixels. Everything below works in these. */
   width = 0;
   height = 0;
@@ -54,16 +72,22 @@ export class Renderer {
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
-  draw(state: RunState, camera: Camera, effects: Effects, squad?: Squad): void {
+  draw(
+    state: RunState,
+    camera: Camera,
+    effects: Effects,
+    squad?: Squad,
+    me?: PlayerIdentity,
+  ): void {
     const ctx = this.ctx;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
 
     ctx.save();
-    // setTransform in resize already carries the DPR, so reapply it rather
-    // than assuming the identity here.
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    ctx.fillStyle = theme.void;
+    // The sky belongs to the stage. Seven stages on the same chart would
+    // otherwise be seven identical pictures with a different number on them.
+    ctx.fillStyle = state.stage.look.sky;
     ctx.fillRect(0, 0, this.width, this.height);
 
     ctx.save();
@@ -72,13 +96,13 @@ export class Renderer {
     this.drawGrid(camera);
     this.drawTerrain(state, camera);
     this.drawExtraction(state, camera);
+    this.drawRefills(state, camera);
+    this.drawCaches(state, camera);
     this.drawFaces(state, camera);
     this.drawEnemies(state, camera);
     this.drawBullets(state, camera);
-    // Squadmates go under the player, so your own ship is never hidden behind
-    // somebody else's at the moment you need to see it.
-    if (squad) this.drawSquad(squad, camera);
-    this.drawPlayer(state);
+    if (squad) this.drawSquad(squad, camera, state.time);
+    this.drawPlayer(state, me);
     effects.drawWorld(ctx);
 
     ctx.restore();
@@ -91,20 +115,22 @@ export class Renderer {
     return this.ctx;
   }
 
-  /** The terminal behind the chart. Parallaxed so it reads as depth, not wallpaper. */
+  /** Warm up an avatar so it is decoded before it is first drawn. */
+  preload(url: string | null | undefined): void {
+    this.avatars.get(url);
+  }
+
+  /** Faint rules, the way a chart pane is ruled. Not a decorative grid. */
   private drawGrid(camera: Camera): void {
     const ctx = this.ctx;
     const spacing = 120;
-    const parallax = 0.55;
-
-    // Offset the grid by a fraction of the camera so it slides slower than the
-    // world. Drawn in world space, so the offset has to be added back.
-    const drift = camera.left * (1 - parallax);
-    const startX = Math.floor((camera.left - drift) / spacing) * spacing + drift;
 
     ctx.lineWidth = 1;
-    ctx.strokeStyle = theme.grid;
+    ctx.strokeStyle = theme.hairline;
+    ctx.globalAlpha = 0.5;
     ctx.beginPath();
+
+    const startX = Math.floor(camera.left / spacing) * spacing;
     for (let x = startX; x < camera.left + camera.viewW; x += spacing) {
       ctx.moveTo(x, CEILING);
       ctx.lineTo(x, WORLD_HEIGHT);
@@ -114,16 +140,21 @@ export class Renderer {
       ctx.lineTo(camera.left + camera.viewW, y);
     }
     ctx.stroke();
+    ctx.globalAlpha = 1;
 
-    // The ceiling reads as the top of the chart pane, so it gets a real line.
-    ctx.strokeStyle = theme.gridStrong;
+    // The ceiling is the top of the pane, so it gets a real ink rule.
+    ctx.strokeStyle = theme.ink;
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(camera.left, CEILING);
     ctx.lineTo(camera.left + camera.viewW, CEILING);
     ctx.stroke();
   }
 
-  /** The chart, as ground. This is the whole premise, so it gets the glow. */
+  /**
+   * The chart, as ground. Solid mass below the line rather than a tint, so it
+   * reads as something you cannot fly through, which is exactly what it is.
+   */
   private drawTerrain(state: RunState, camera: Camera): void {
     const ctx = this.ctx;
     const terrain = state.terrain;
@@ -134,66 +165,221 @@ export class Renderer {
       Math.ceil((camera.left + camera.viewW + POINT_SPACING) / POINT_SPACING),
     );
 
-    const path = new Path2D();
-    path.moveTo(from * POINT_SPACING, terrain.heights[from] ?? WORLD_HEIGHT);
+    const line = new Path2D();
+    line.moveTo(from * POINT_SPACING, terrain.heights[from] ?? WORLD_HEIGHT);
     for (let i = from + 1; i <= to; i++) {
-      path.lineTo(i * POINT_SPACING, terrain.heights[i] ?? WORLD_HEIGHT);
+      line.lineTo(i * POINT_SPACING, terrain.heights[i] ?? WORLD_HEIGHT);
     }
 
-    const fill = new Path2D(path);
-    fill.lineTo(to * POINT_SPACING, WORLD_HEIGHT);
-    fill.lineTo(from * POINT_SPACING, WORLD_HEIGHT);
-    fill.closePath();
+    /*
+     * The ground runs well past the bottom of the world, not to it.
+     *
+     * A tall portrait viewport shows more height than the world has: the view
+     * can be a thousand units tall against a nine-hundred-and-sixty unit
+     * world, so the camera centres and there is spare canvas below. Ending the
+     * mass exactly at WORLD_HEIGHT leaves a bare cream band under the ground
+     * with the hatching stopping dead along a straight line, which reads as
+     * the terrain having been cut off. Running it past the edge costs one
+     * number and the band can never appear.
+     */
+    const floor = WORLD_HEIGHT + 900;
 
-    const gradient = ctx.createLinearGradient(0, camera.top, 0, WORLD_HEIGHT);
-    gradient.addColorStop(0, theme.accentSoft);
-    gradient.addColorStop(1, 'rgba(255, 162, 43, 0.02)');
-    ctx.fillStyle = gradient;
-    ctx.fill(fill);
+    const mass = new Path2D(line);
+    mass.lineTo(to * POINT_SPACING, floor);
+    mass.lineTo(from * POINT_SPACING, floor);
+    mass.closePath();
 
-    // Solid mass under the line, so the ground reads as ground rather than as
-    // a tinted region you might be able to fly through.
-    ctx.fillStyle = 'rgba(8, 9, 13, 0.55)';
-    ctx.fill(fill);
+    ctx.fillStyle = state.stage.look.ground;
+    ctx.fill(mass);
 
+    // Hatch the ground. A flat tan field below the chart is a large dead area
+    // that makes the whole screen feel unfinished; ruled hatching reads as a
+    // printed solid and gives the eye something to measure speed against.
     ctx.save();
-    ctx.shadowColor = theme.accentDim;
-    ctx.shadowBlur = 14;
-    ctx.strokeStyle = theme.accent;
-    ctx.lineWidth = 2.5;
-    ctx.lineJoin = 'round';
-    ctx.stroke(path);
-    ctx.restore();
-  }
-
-  private drawExtraction(state: RunState, camera: Camera): void {
-    if (!camera.visibleX(EXTRACTION_X, 200)) return;
-
-    const ctx = this.ctx;
-    const groundY = state.terrain.groundAt(EXTRACTION_X);
-
-    const beam = ctx.createLinearGradient(0, CEILING, 0, groundY);
-    beam.addColorStop(0, 'rgba(255, 162, 43, 0)');
-    beam.addColorStop(1, 'rgba(255, 162, 43, 0.22)');
-    ctx.fillStyle = beam;
-    ctx.fillRect(EXTRACTION_X - 26, CEILING, 52, groundY - CEILING);
-
-    ctx.save();
-    ctx.shadowColor = theme.accent;
-    ctx.shadowBlur = 18;
-    ctx.strokeStyle = theme.accent;
-    ctx.lineWidth = 3;
+    ctx.clip(mass);
+    ctx.strokeStyle = theme.ink;
+    ctx.globalAlpha = 0.09;
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(EXTRACTION_X, groundY);
-    ctx.lineTo(EXTRACTION_X, CEILING + 40);
+    // Tighter hatching later in the campaign, so the ground reads as denser
+    // and colder the further in you get without adding a single colour.
+    const step = state.stage.look.hatch;
+    const first = Math.floor((camera.left - WORLD_HEIGHT) / step) * step;
+    for (let x = first; x < camera.left + camera.viewW + WORLD_HEIGHT; x += step) {
+      ctx.moveTo(x, WORLD_HEIGHT);
+      ctx.lineTo(x + WORLD_HEIGHT, 0);
+    }
     ctx.stroke();
     ctx.restore();
 
-    ctx.fillStyle = theme.accent;
+    // A hard ink rule on top of the accent line, which is what keeps a bright
+    // orange from vanishing into a bright canvas at a glance.
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = theme.ink;
+    ctx.lineWidth = 6;
+    ctx.stroke(line);
+    ctx.strokeStyle = theme.accent;
+    ctx.lineWidth = 3.2;
+    ctx.stroke(line);
+  }
+
+private drawExtraction(state: RunState, camera: Camera): void {
+    // The pad moves with the stage. Drawing it at the world's far end would
+    // put the finish line a kilometre past where the run actually ends.
+    const padX = state.extractionX;
+    if (!camera.visibleX(padX, 220)) return;
+
+    const ctx = this.ctx;
+    const groundY = state.terrain.groundAt(padX);
+
+    // A solid band, not a gradient. It is a landing zone painted on the floor.
+    ctx.fillStyle = theme.accentPale;
+    ctx.fillRect(padX - 34, CEILING, 68, groundY - CEILING);
+
+    ctx.strokeStyle = theme.ink;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(padX - 34, CEILING);
+    ctx.lineTo(padX - 34, groundY);
+    ctx.moveTo(padX + 34, CEILING);
+    ctx.lineTo(padX + 34, groundY);
+    ctx.stroke();
+
+    ctx.fillStyle = theme.ink;
+    ctx.fillRect(padX - 46, groundY - 12, 92, 12);
+
+    ctx.fillStyle = theme.canvas;
     ctx.font = `700 13px ${MONO}`;
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText('EXTRACTION', EXTRACTION_X, CEILING + 32);
+    ctx.textBaseline = 'middle';
+    ctx.fillText('EXTRACT', padX, groundY - 6);
+  }
+
+  /**
+   * Hull refills, drawn as a hexagonal token in NIM's gold.
+   *
+   * A hexagon and a colour nothing else on screen uses, so it can never be
+   * mistaken for a cache or a person at speed. Gold sits outside the palette
+   * on purpose: orange means the chart and the action, red means it will hurt
+   * you, green means someone to get out. A fourth meaning needs a fourth
+   * colour or it inherits one it does not mean.
+   */
+  private drawRefills(state: RunState, camera: Camera): void {
+    const ctx = this.ctx;
+
+    for (const refill of state.refills) {
+      if (refill.taken) continue;
+      if (!camera.visibleX(refill.x, 80)) continue;
+
+      const bob = Math.sin(state.time * 2.6 + refill.phase) * 4;
+      const y = refill.y + bob;
+      const r = 15;
+
+      ctx.save();
+      ctx.translate(refill.x, y);
+
+      const hex = new Path2D();
+      for (let i = 0; i < 6; i++) {
+        // Flat-top hexagon, which is the shape NIM's own mark reads as.
+        const angle = (Math.PI / 3) * i;
+        const px = Math.cos(angle) * r;
+        const py = Math.sin(angle) * r;
+        if (i === 0) hex.moveTo(px, py);
+        else hex.lineTo(px, py);
+      }
+      hex.closePath();
+
+      ctx.fillStyle = REFILL_GOLD;
+      ctx.fill(hex);
+      ctx.strokeStyle = theme.ink;
+      ctx.lineWidth = 2.4;
+      ctx.stroke(hex);
+
+      // A cross, because it restores hull rather than paying anything.
+      ctx.fillStyle = theme.ink;
+      ctx.fillRect(-6.5, -2, 13, 4);
+      ctx.fillRect(-2, -6.5, 4, 13);
+
+      ctx.restore();
+    }
+  }
+
+  /**
+   * Caches. A sealed crate, a heavier vault, and the relic.
+   *
+   * The relic gets a beacon that reaches the ceiling, because it sits at the
+   * lowest point of the day's chart and would otherwise be invisible until you
+   * were already committed to the dive. Seeing it from a long way off and
+   * having to decide whether the detour is worth the clock is the decision the
+   * whole mechanic exists to create, so it has to be visible early.
+   */
+  private drawCaches(state: RunState, camera: Camera): void {
+    const ctx = this.ctx;
+
+    for (const cache of state.caches) {
+      if (cache.taken) continue;
+      if (!camera.visibleX(cache.x, 120)) continue;
+
+      const bob = Math.sin(state.time * 2.2 + cache.phase) * 3;
+      const y = cache.y + bob;
+
+      if (cache.tier === 'relic') {
+        // A column of light from the bottom of the crash to the top of the pane.
+        ctx.fillStyle = theme.accentPale;
+        ctx.globalAlpha = 0.55;
+        ctx.fillRect(cache.x - 13, CEILING, 26, y - CEILING);
+        ctx.globalAlpha = 1;
+
+        // Clear of the HUD strip, which sits over the top of the world and
+        // would otherwise swallow the label exactly when it matters most.
+        const labelY = CEILING + 78;
+        ctx.fillStyle = theme.ink;
+        ctx.beginPath();
+        ctx.roundRect(cache.x - 30, labelY - 10, 60, 20, 4);
+        ctx.fill();
+
+        ctx.fillStyle = theme.accent;
+        ctx.font = `700 11px ${MONO}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('RELIC', cache.x, labelY + 1);
+      }
+
+      const size = cache.tier === 'sealed' ? 15 : cache.tier === 'vault' ? 19 : 22;
+      const fill =
+        cache.tier === 'sealed'
+          ? theme.paper
+          : cache.tier === 'vault'
+            ? theme.accentPale
+            : theme.accent;
+
+      // A ring on the two rarer tiers, so they read as worth the detour from
+      // across the level rather than at the last second.
+      if (cache.tier !== 'sealed') {
+        const pulse = 0.5 + Math.sin(state.time * 3 + cache.phase) * 0.5;
+        ctx.strokeStyle = theme.accent;
+        ctx.globalAlpha = 0.25 + pulse * 0.45;
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.arc(cache.x, y, size + 10 + pulse * 7, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+
+      ctx.lineWidth = 2.4;
+      ctx.strokeStyle = theme.ink;
+      ctx.fillStyle = fill;
+      ctx.beginPath();
+      ctx.roundRect(cache.x - size / 2, y - size / 2, size, size, 3);
+      ctx.fill();
+      ctx.stroke();
+
+      // A latch across the front. Reads as a container at any size.
+      ctx.fillStyle = theme.ink;
+      ctx.fillRect(cache.x - size / 2, y - 2, size, 3.2);
+      ctx.fillRect(cache.x - 3, y - size / 2 - 1, 6, size + 2);
+    }
   }
 
   private drawFaces(state: RunState, camera: Camera): void {
@@ -202,97 +388,73 @@ export class Renderer {
 
     for (const face of state.faces) {
       if (face.state === 'extracted' || face.state === 'lost') continue;
-      if (!camera.visibleX(face.x)) continue;
+      if (!camera.visibleX(face.x, 80)) continue;
 
       if (face.state === 'trapped') {
-        // A ring that breathes, so a trapped face is findable at a glance
-        // without a minimap or an arrow cluttering the HUD.
-        ctx.strokeStyle = `rgba(255, 162, 43, ${0.25 + pulse * 0.45})`;
-        ctx.lineWidth = 2;
+        // A ring that breathes, so somebody waiting to be pulled out is
+        // findable at a glance without an arrow cluttering the HUD.
+        ctx.strokeStyle = theme.accent;
+        ctx.lineWidth = 2.4;
+        ctx.globalAlpha = 0.35 + pulse * 0.5;
         ctx.beginPath();
-        ctx.arc(face.x, face.y, FACE_RADIUS + 10 + pulse * 7, 0, Math.PI * 2);
+        ctx.arc(face.x, face.y - 4, 26 + pulse * 8, 0, Math.PI * 2);
         ctx.stroke();
+        ctx.globalAlpha = 1;
       }
 
-      this.drawFaceBody(face);
+      this.drawFaceHuman(state, face);
     }
   }
 
-  private drawFaceBody(face: Face): void {
-    const ctx = this.ctx;
-    const r = FACE_RADIUS;
+  private drawFaceHuman(state: RunState, face: Face): void {
+    const following = face.state === 'following';
 
-    ctx.fillStyle = theme.face;
-    ctx.beginPath();
-    ctx.roundRect(face.x - r, face.y - r, r * 2, r * 2, 5);
-    ctx.fill();
-
-    // Two eyes and a flat mouth. At this size anything more is mud.
-    ctx.fillStyle = theme.void;
-    ctx.fillRect(face.x - 6, face.y - 5, 3, 4);
-    ctx.fillRect(face.x + 3, face.y - 5, 3, 4);
-    ctx.fillRect(face.x - 5, face.y + 4, 10, 2);
+    drawHuman(this.ctx, {
+      x: face.x,
+      y: face.y,
+      // Rescued people look where you are going. Trapped ones look at you.
+      aim: 0,
+      facing: state.player.x >= face.x ? 1 : -1,
+      tilt: following ? 0.12 : 0,
+      time: state.time + face.id,
+      thrust: following ? 0.6 : 0,
+      role: 'rescue',
+      seed: face.handle,
+      avatar: this.avatars.get(face.avatarUrl),
+      alpha: 1,
+      firing: false,
+      label: face.state === 'trapped' ? handleTag(face) : null,
+    });
   }
 
   private drawEnemies(state: RunState, camera: Camera): void {
     for (const enemy of state.enemies) {
       if (!enemy.alive || !enemy.active) continue;
-      if (!camera.visibleX(enemy.x)) continue;
-      this.drawEnemy(enemy);
+      if (!camera.visibleX(enemy.x, 80)) continue;
+      this.drawEnemy(state, enemy);
     }
   }
 
-  private drawEnemy(enemy: Enemy): void {
-    const ctx = this.ctx;
-    const r = radiusOf(enemy);
+  private drawEnemy(state: RunState, enemy: Enemy): void {
+    const toPlayer = Math.atan2(state.player.y - enemy.y, state.player.x - enemy.x);
+    const role: Role = enemy.kind;
 
-    // Fake glow: one oversized translucent shape instead of a blur pass. Kept
-    // tight, because a wide halo on a near-black background stops reading as
-    // light and starts reading as a dark disc the enemy is sitting inside.
-    ctx.fillStyle = theme.dangerSoft;
-    ctx.beginPath();
-    ctx.arc(enemy.x, enemy.y, r + 3.5, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = theme.danger;
-
-    switch (enemy.kind) {
-      case 'drifter': {
-        ctx.beginPath();
-        ctx.arc(enemy.x, enemy.y, r, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = theme.void;
-        ctx.beginPath();
-        ctx.arc(enemy.x, enemy.y, r * 0.42, 0, Math.PI * 2);
-        ctx.fill();
-        break;
-      }
-      case 'diver': {
-        // Points where it is going, so its intent is readable at speed.
-        const angle = Math.atan2(enemy.vy, enemy.vx);
-        ctx.save();
-        ctx.translate(enemy.x, enemy.y);
-        ctx.rotate(angle);
-        ctx.beginPath();
-        ctx.moveTo(r * 1.4, 0);
-        ctx.lineTo(-r * 0.8, -r * 0.85);
-        ctx.lineTo(-r * 0.8, r * 0.85);
-        ctx.closePath();
-        ctx.fill();
-        ctx.restore();
-        break;
-      }
-      case 'turret': {
-        ctx.beginPath();
-        ctx.moveTo(enemy.x - r, enemy.y + r * 0.9);
-        ctx.lineTo(enemy.x - r * 0.55, enemy.y - r * 0.7);
-        ctx.lineTo(enemy.x + r * 0.55, enemy.y - r * 0.7);
-        ctx.lineTo(enemy.x + r, enemy.y + r * 0.9);
-        ctx.closePath();
-        ctx.fill();
-        break;
-      }
-    }
+    drawHuman(this.ctx, {
+      x: enemy.x,
+      y: enemy.y,
+      aim: toPlayer,
+      facing: state.player.x >= enemy.x ? 1 : -1,
+      // Divers throw themselves at you, so they lean into it hard.
+      tilt: enemy.kind === 'diver' ? clampTilt(Math.atan2(enemy.vy, enemy.vx) * 0.35) : 0,
+      time: state.time + enemy.phase,
+      thrust: enemy.kind === 'diver' ? 1 : enemy.kind === 'drifter' ? 0.35 : 0,
+      role,
+      seed: `attacker-${enemy.id}`,
+      avatar: null,
+      alpha: 1,
+      firing: enemy.fireCooldown > 1.6,
+      label: null,
+    });
   }
 
   private drawBullets(state: RunState, camera: Camera): void {
@@ -302,18 +464,27 @@ export class Renderer {
       if (bullet.life <= 0) continue;
       if (!camera.visibleX(bullet.x, 40)) continue;
 
-      const colour = bullet.friendly ? theme.accent : theme.danger;
-      const soft = bullet.friendly ? theme.accentSoft : theme.dangerSoft;
+      // A long thin streak along the direction of travel. Short and fat reads
+      // as a floating pill sitting in the air; long and thin reads as
+      // something moving fast, which is what it is.
+      const speed = Math.hypot(bullet.vx, bullet.vy) || 1;
+      const tailX = bullet.x - (bullet.vx / speed) * 18;
+      const tailY = bullet.y - (bullet.vy / speed) * 18;
 
-      ctx.fillStyle = soft;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = theme.ink;
+      ctx.lineWidth = BULLET_RADIUS * 1.7;
       ctx.beginPath();
-      ctx.arc(bullet.x, bullet.y, BULLET_RADIUS + 4, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.moveTo(tailX, tailY);
+      ctx.lineTo(bullet.x, bullet.y);
+      ctx.stroke();
 
-      ctx.fillStyle = colour;
+      ctx.strokeStyle = bullet.friendly ? theme.accent : theme.danger;
+      ctx.lineWidth = BULLET_RADIUS * 0.8;
       ctx.beginPath();
-      ctx.arc(bullet.x, bullet.y, BULLET_RADIUS, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.moveTo(tailX, tailY);
+      ctx.lineTo(bullet.x, bullet.y);
+      ctx.stroke();
     }
   }
 
@@ -322,109 +493,93 @@ export class Renderer {
    * same struct through the same code, because by the time it reaches here
    * there is no difference worth encoding.
    *
-   * They are translucent and unlit, which is the honest signal: a squadmate
-   * cannot shoot you, cannot be shot, and cannot take a face you were going
-   * for. Drawing them as solid as your own ship would promise otherwise.
+   * They are drawn pale and translucent, which is the honest signal: a
+   * squadmate cannot shoot you, cannot be shot, and cannot take a face you
+   * were going for. Drawing them as solid as your own character would promise
+   * otherwise.
    */
-  private drawSquad(squad: Squad, camera: Camera): void {
-    const ctx = this.ctx;
-
+  private drawSquad(squad: Squad, camera: Camera, time: number): void {
     for (const mate of squad.members) {
       const pose = mate.pose;
-      if (!pose || !camera.visibleX(pose.x, 60)) continue;
+      if (!pose || !camera.visibleX(pose.x, 80)) continue;
 
-      ctx.save();
-      ctx.globalAlpha = pose.down ? 0.16 : 0.4;
-      ctx.translate(pose.x, pose.y);
-      ctx.rotate(pose.angle);
+      drawHuman(this.ctx, {
+        x: pose.x,
+        y: pose.y,
+        aim: pose.angle,
+        facing: Math.cos(pose.angle) >= 0 ? 1 : -1,
+        tilt: 0,
+        time: time + mate.id.charCodeAt(0),
+        thrust: pose.down ? 0 : 0.5,
+        role: 'squad',
+        seed: mate.id,
+        avatar: this.avatars.get(mate.avatarUrl),
+        alpha: pose.down ? 0.22 : 0.55,
+        firing: pose.firing,
+        label: mate.name,
+      });
 
-      ctx.fillStyle = mate.source === 'live' ? theme.accent : theme.ink;
-      ctx.beginPath();
-      ctx.moveTo(PLAYER_RADIUS * 1.25, 0);
-      ctx.lineTo(-PLAYER_RADIUS * 0.75, -PLAYER_RADIUS * 0.8);
-      ctx.lineTo(-PLAYER_RADIUS * 0.4, 0);
-      ctx.lineTo(-PLAYER_RADIUS * 0.75, PLAYER_RADIUS * 0.8);
-      ctx.closePath();
-      ctx.fill();
-
-      if (pose.firing) {
-        ctx.fillStyle = theme.accent;
-        ctx.beginPath();
-        ctx.arc(PLAYER_RADIUS * 1.5, 0, 3, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      ctx.restore();
-
-      // A pip per face they are towing, so you can see who is doing well.
-      if (pose.carrying > 0) {
-        ctx.globalAlpha = 0.45;
-        ctx.fillStyle = theme.face;
-        for (let i = 0; i < pose.carrying; i++) {
-          ctx.fillRect(pose.x - 10 + i * 7, pose.y - PLAYER_RADIUS - 22, 5, 5);
-        }
-      }
-
-      ctx.globalAlpha = 0.55;
-      ctx.fillStyle = mate.source === 'live' ? theme.accent : theme.inkMuted;
-      ctx.font = `500 11px ${MONO}`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'bottom';
-      ctx.fillText(mate.name, pose.x, pose.y - PLAYER_RADIUS - 8);
-      ctx.globalAlpha = 1;
+      if (pose.carrying > 0) this.drawCarryPips(pose.x, pose.y, pose.carrying, 0.55);
     }
   }
 
-  private drawPlayer(state: RunState): void {
-    const ctx = this.ctx;
+  private drawPlayer(state: RunState, me?: PlayerIdentity): void {
     const player = state.player;
 
     // Blink through invulnerability so the player can see they are in it.
     const blinking = state.time < player.invulnerableUntil;
     if (blinking && Math.floor(state.time * 14) % 2 === 0) return;
 
-    const angle = Math.atan2(player.aimY, player.aimX);
-    const thrust = Math.hypot(player.vx, player.vy) / 400;
+    const speed = Math.hypot(player.vx, player.vy);
 
+    drawHuman(this.ctx, {
+      x: player.x,
+      y: player.y,
+      aim: Math.atan2(player.aimY, player.aimX),
+      facing: player.facing,
+      tilt: clampTilt(player.vx / 1400),
+      time: state.time,
+      thrust: Math.min(1, speed / MAX_SPEED),
+      role: 'player',
+      seed: me?.handle ?? 'you',
+      avatar: this.avatars.get(me?.avatarUrl),
+      alpha: 1,
+      firing: player.fireCooldown > 0.06,
+      label: null,
+    });
+
+    if (state.carrying > 0) this.drawCarryPips(player.x, player.y, state.carrying, 1);
+  }
+
+  /** One tick per person aboard, above the head. */
+  private drawCarryPips(x: number, y: number, count: number, alpha: number): void {
+    const ctx = this.ctx;
     ctx.save();
-    ctx.translate(player.x, player.y);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = theme.rescue;
+    ctx.strokeStyle = theme.ink;
+    ctx.lineWidth = 1.4;
 
-    // Jetpack plume, drawn opposite the ship's travel rather than its aim, so
-    // it points where the thrust is actually going.
-    if (thrust > 0.08) {
-      const travel = Math.atan2(player.vy, player.vx);
-      ctx.save();
-      ctx.rotate(travel);
-      const length = 12 + thrust * 26;
-      const plume = ctx.createLinearGradient(-PLAYER_RADIUS, 0, -PLAYER_RADIUS - length, 0);
-      plume.addColorStop(0, 'rgba(255, 162, 43, 0.85)');
-      plume.addColorStop(1, 'rgba(255, 162, 43, 0)');
-      ctx.fillStyle = plume;
+    const width = count * 8;
+    for (let i = 0; i < count; i++) {
       ctx.beginPath();
-      ctx.moveTo(-PLAYER_RADIUS, -5);
-      ctx.lineTo(-PLAYER_RADIUS - length, 0);
-      ctx.lineTo(-PLAYER_RADIUS, 5);
-      ctx.closePath();
+      ctx.arc(x - width / 2 + 4 + i * 8, y - 34, 3, 0, Math.PI * 2);
       ctx.fill();
-      ctx.restore();
+      ctx.stroke();
     }
-
-    ctx.rotate(angle);
-
-    ctx.fillStyle = theme.ink;
-    ctx.beginPath();
-    ctx.moveTo(PLAYER_RADIUS * 1.25, 0);
-    ctx.lineTo(-PLAYER_RADIUS * 0.75, -PLAYER_RADIUS * 0.8);
-    ctx.lineTo(-PLAYER_RADIUS * 0.4, 0);
-    ctx.lineTo(-PLAYER_RADIUS * 0.75, PLAYER_RADIUS * 0.8);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.fillStyle = theme.accent;
-    ctx.beginPath();
-    ctx.arc(PLAYER_RADIUS * 0.3, 0, 4, 0, Math.PI * 2);
-    ctx.fill();
-
     ctx.restore();
   }
 }
+
+/** A handle reads as a handle. An archetype id does not, so it is spelled out. */
+function handleTag(face: Face): string {
+  return /^[a-z0-9_]{1,15}$/.test(face.handle) && face.handle !== face.name.toLowerCase()
+    ? `@${face.handle}`
+    : face.name;
+}
+
+function clampTilt(value: number): number {
+  return Math.max(-0.35, Math.min(0.35, value));
+}
+
+export { DISPLAY };

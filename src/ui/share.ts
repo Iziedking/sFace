@@ -30,6 +30,12 @@ export interface CardData {
   attackersCleared: number;
   survived: boolean;
   rank: number | null;
+  /** Handles of the people who made it out. Named, because that is the story. */
+  saved: string[];
+  /** Today's crypto X headline, when we read one. */
+  headline: string | null;
+  /** The player's own X handle, when they connected an account. */
+  handle: string | null;
 }
 
 export function cardDataFrom(state: RunState, rank: number | null): CardData {
@@ -44,6 +50,14 @@ export function cardDataFrom(state: RunState, rank: number | null): CardData {
     attackersCleared: state.attackersCleared,
     survived: state.phase === 'extracted',
     rank,
+    // Who was actually pulled out. Naming them is what makes a shared card a
+    // story rather than a number.
+    saved: state.faces
+      .filter((f) => f.state === 'extracted')
+      .map((f) => f.handle)
+      .slice(0, 5),
+    headline: state.mission.story?.headline ?? null,
+    handle: null,
   };
 }
 
@@ -56,101 +70,161 @@ export function drawScoreCard(data: CardData): string | null {
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
 
-  ctx.fillStyle = theme.void;
+  const PAD = 64;
+
+  ctx.fillStyle = theme.canvas;
   ctx.fillRect(0, 0, CARD_WIDTH, CARD_HEIGHT);
 
-  // Faint terminal grid, the same idea as the game background.
-  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  for (let x = 0; x < CARD_WIDTH; x += 60) {
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, CARD_HEIGHT);
-  }
-  for (let y = 0; y < CARD_HEIGHT; y += 60) {
-    ctx.moveTo(0, y);
-    ctx.lineTo(CARD_WIDTH, y);
-  }
-  ctx.stroke();
+  // A thick ink border. The card is a printed poster, so it has an edge.
+  ctx.strokeStyle = theme.ink;
+  ctx.lineWidth = 16;
+  ctx.strokeRect(8, 8, CARD_WIDTH - 16, CARD_HEIGHT - 16);
 
   ctx.textBaseline = 'top';
   ctx.textAlign = 'left';
 
-  // Wordmark. The amber dot is the one distinctive element and it survives
+  // Wordmark. The orange dot is the one distinctive element and it survives
   // being shrunk to a favicon.
   ctx.fillStyle = theme.ink;
-  ctx.font = `700 44px ${MONO}`;
-  ctx.fillText('sFace', 72, 64);
+  ctx.font = `700 40px ${MONO}`;
+  ctx.fillText('sFace', PAD, 52);
   const wordWidth = ctx.measureText('sFace').width;
   ctx.fillStyle = theme.accent;
   ctx.beginPath();
-  ctx.arc(72 + wordWidth + 14, 64 + 34, 7, 0, Math.PI * 2);
+  ctx.arc(PAD + wordWidth + 13, 52 + 31, 7, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = theme.inkFaint;
-  ctx.font = `500 20px ${MONO}`;
+  ctx.fillStyle = theme.inkMuted;
+  ctx.font = `600 19px ${MONO}`;
   ctx.textAlign = 'right';
-  ctx.fillText(data.date, CARD_WIDTH - 72, 78);
+  ctx.fillText(data.date, CARD_WIDTH - PAD, 62);
 
-  // The mission, in mono, because it is checkable.
+  // The mission. A solid ink plate with the ticker knocked out of it, so the
+  // one checkable fact on the card is the loudest thing on it.
   ctx.textAlign = 'left';
+  ctx.font = `700 84px ${MONO}`;
+  const tickerWidth = ctx.measureText(data.ticker).width;
+
+  ctx.fillStyle = theme.ink;
+  ctx.fillRect(PAD, 132, tickerWidth + 40, 104);
   ctx.fillStyle = theme.accent;
-  ctx.font = `700 96px ${MONO}`;
-  ctx.fillText(data.ticker, 72, 178);
+  ctx.fillText(data.ticker, PAD + 20, 148);
 
   if (data.live) {
-    const tickerWidth = ctx.measureText(data.ticker).width;
     ctx.fillStyle = theme.danger;
-    ctx.font = `700 48px ${MONO}`;
-    ctx.fillText(`${data.changePct.toFixed(1)}%`, 72 + tickerWidth + 28, 222);
+    ctx.fillRect(PAD + tickerWidth + 56, 132, 190, 104);
+    ctx.fillStyle = theme.canvas;
+    ctx.font = `700 46px ${MONO}`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`${data.changePct.toFixed(1)}%`, PAD + tickerWidth + 151, 166);
+    ctx.textAlign = 'left';
   }
 
-  ctx.fillStyle = theme.inkMuted;
-  ctx.font = `500 24px ${MONO}`;
+  ctx.fillStyle = theme.ink;
+  ctx.font = `600 22px ${MONO}`;
   ctx.fillText(
-    data.live ? "Today's worst performer became the level" : 'Practice mission',
-    72,
-    300,
+    data.live ? "TODAY'S WORST PERFORMER BECAME THE LEVEL" : 'PRACTICE MISSION',
+    PAD,
+    258,
   );
 
-  // The number.
-  ctx.fillStyle = theme.ink;
-  ctx.font = `700 150px ${MONO}`;
-  ctx.fillText(data.score.toLocaleString(), 72, 356);
+  // Today's story, when we read one. This is the line that makes the card
+  // legible to somebody who has never heard of the game.
+  if (data.headline) {
+    ctx.fillStyle = theme.accentPale;
+    ctx.fillRect(PAD, 292, CARD_WIDTH - PAD * 2, 52);
+    ctx.strokeStyle = theme.ink;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(PAD, 292, CARD_WIDTH - PAD * 2, 52);
 
-  ctx.fillStyle = theme.inkFaint;
-  ctx.font = `500 22px ${MONO}`;
-  ctx.fillText('SCORE', 76, 530);
+    ctx.fillStyle = theme.ink;
+    ctx.font = `600 22px ${MONO}`;
+    ctx.fillText(truncate(ctx, data.headline, CARD_WIDTH - PAD * 2 - 32), PAD + 16, 306);
+  }
+
+  // The number.
+  const numberTop = data.headline ? 366 : 330;
+  ctx.fillStyle = theme.ink;
+  ctx.font = `700 140px ${MONO}`;
+  ctx.fillText(data.score.toLocaleString(), PAD, numberTop);
+
+  ctx.fillStyle = theme.inkMuted;
+  ctx.font = `700 20px ${MONO}`;
+  ctx.fillText('SCORE', PAD + 4, numberTop + 148);
 
   // Right-hand stats.
   const stats: Array<[string, string]> = [
-    ['FACES OUT', `${data.facesExtracted}/${data.facesTotal}`],
+    ['OUT', `${data.facesExtracted}/${data.facesTotal}`],
     ['CLEARED', String(data.attackersCleared)],
   ];
-  if (data.rank !== null) stats.push(['RANK TODAY', `#${data.rank}`]);
+  if (data.rank !== null) stats.push(['RANK', `#${data.rank}`]);
 
   ctx.textAlign = 'right';
   stats.forEach(([label, value], index) => {
-    const y = 360 + index * 78;
-    ctx.fillStyle = theme.inkFaint;
-    ctx.font = `500 18px ${MONO}`;
-    ctx.fillText(label, CARD_WIDTH - 72, y);
+    const y = 372 + index * 74;
+    ctx.fillStyle = theme.inkMuted;
+    ctx.font = `700 17px ${MONO}`;
+    ctx.fillText(label, CARD_WIDTH - PAD, y);
     ctx.fillStyle = theme.ink;
-    ctx.font = `700 42px ${MONO}`;
-    ctx.fillText(value, CARD_WIDTH - 72, y + 24);
+    ctx.font = `700 40px ${MONO}`;
+    ctx.fillText(value, CARD_WIDTH - PAD, y + 20);
   });
 
+  // Who was actually pulled out. Names beat a count every time.
   ctx.textAlign = 'left';
-  ctx.fillStyle = data.survived ? theme.accent : theme.danger;
+  if (data.saved.length > 0) {
+    ctx.font = `700 18px ${MONO}`;
+    let x = PAD;
+    for (const handle of data.saved) {
+      const tag = `@${handle}`;
+      const width = ctx.measureText(tag).width + 20;
+      if (x + width > CARD_WIDTH - PAD - 220) break;
+
+      ctx.fillStyle = theme.rescue;
+      ctx.fillRect(x, CARD_HEIGHT - 128, width, 34);
+      ctx.fillStyle = theme.canvas;
+      ctx.fillText(tag, x + 10, CARD_HEIGHT - 119);
+      x += width + 8;
+    }
+  }
+
+  // Outcome, as a solid plate.
+  const outcome = data.survived ? 'EXTRACTED' : 'WENT DOWN';
   ctx.font = `700 22px ${MONO}`;
-  ctx.fillText(data.survived ? 'EXTRACTED' : 'WENT DOWN', 72, 588);
+  const outcomeWidth = ctx.measureText(outcome).width + 28;
+  ctx.fillStyle = data.survived ? theme.rescue : theme.danger;
+  ctx.fillRect(PAD, CARD_HEIGHT - 82, outcomeWidth, 40);
+  ctx.fillStyle = theme.canvas;
+  ctx.fillText(outcome, PAD + 14, CARD_HEIGHT - 71);
 
   ctx.textAlign = 'right';
-  ctx.fillStyle = theme.inkFaint;
-  ctx.font = `500 20px ${MONO}`;
-  ctx.fillText('A Nimiq Pay mini app', CARD_WIDTH - 72, 588);
+  ctx.fillStyle = theme.ink;
+  ctx.font = `600 19px ${MONO}`;
+  ctx.fillText(
+    data.handle ? `@${data.handle} · a Nimiq Pay mini app` : 'A Nimiq Pay mini app',
+    CARD_WIDTH - PAD,
+    CARD_HEIGHT - 66,
+  );
 
-  return canvas.toDataURL('image/png');
+  // toDataURL throws on a tainted canvas. Nothing cross-origin is drawn here
+  // for exactly that reason, but guard anyway: losing the share is worse than
+  // losing the picture.
+  try {
+    return canvas.toDataURL('image/png');
+  } catch {
+    return null;
+  }
+}
+
+/** Trim to fit a pixel width, with an ellipsis rather than a hard cut. */
+function truncate(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
+  if (ctx.measureText(text).width <= maxWidth) return text;
+
+  let cut = text;
+  while (cut.length > 1 && ctx.measureText(`${cut}...`).width > maxWidth) {
+    cut = cut.slice(0, -1);
+  }
+  return `${cut.trimEnd()}...`;
 }
 
 /** Copy that leads with the mechanic. The tech is the second sentence. */

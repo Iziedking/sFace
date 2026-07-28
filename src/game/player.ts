@@ -14,7 +14,8 @@
  */
 
 import { clamp, direction, groundPenetration } from './collision';
-import { spawnBullet, PLAYER_BULLET_DAMAGE, PLAYER_BULLET_SPEED, BULLET_RADIUS } from './bullet';
+import { spawnBullet, BULLET_RADIUS } from './bullet';
+import type { Weapon } from '../data/weapons';
 import type { RunState } from './state';
 import { PLAYER_MAX_HEALTH } from './state';
 import { CEILING, WORLD_WIDTH } from './terrain';
@@ -22,11 +23,10 @@ import { CEILING, WORLD_WIDTH } from './terrain';
 export const PLAYER_RADIUS = 17;
 
 const THRUST = 1750;
-const GRAVITY = 780;
+const GRAVITY = 640;
 /** Fraction of velocity kept per second. Low number, snappy ship. */
 const DRAG_PER_SECOND = 0.02;
-const MAX_SPEED = 400;
-const FIRE_INTERVAL = 0.125;
+export const MAX_SPEED = 335;
 const MUZZLE_OFFSET = 20;
 
 /** Below this impact speed, touching the ground is free. */
@@ -113,37 +113,111 @@ function constrain(state: RunState): void {
   }
 }
 
+/** Below this stick deflection the player has not implied a direction. */
+const AIM_INTENT = 0.15;
+
+/**
+ * Point the gun.
+ *
+ * An explicit aim always wins. With none, the gun follows the direction of
+ * flight rather than holding still, and that fallback is the fix for the worst
+ * bug this game had: a player flying on the keyboard with an untouched mouse
+ * gave no aim input at all, so the gun stayed at its initial heading and fired
+ * due right for a whole run. Anything above or behind you was unkillable and
+ * it read as the gun being broken, which it effectively was.
+ *
+ * This lives in the simulation rather than in the input layer on purpose. It
+ * is a rule about how the ship behaves, so it should hold for every source of
+ * a command, including a replay, not only for the one path that happens to
+ * build commands from a live pointer.
+ */
 function aim(state: RunState, command: PlayerCommand): void {
   const player = state.player;
-  if (command.aimX === null || command.aimY === null) return;
 
-  const unit = direction(player.x, player.y, command.aimX, command.aimY);
-  player.aimX = unit.x;
-  player.aimY = unit.y;
+  if (command.aimX !== null && command.aimY !== null) {
+    const unit = direction(player.x, player.y, command.aimX, command.aimY);
+    player.aimX = unit.x;
+    player.aimY = unit.y;
+    return;
+  }
+
+  /*
+   * Follow the thrust, not the velocity.
+   *
+   * Velocity was tried first and it is wrong: hovering means falling and
+   * catching yourself over and over, so the gun swings at the floor every time
+   * gravity gets a moment, and a stationary player watches their aim flap up
+   * and down. Thrust is what the player actually asked for, so a hand off the
+   * stick holds the last heading instead of drifting.
+   */
+  const intent = Math.hypot(command.moveX, command.moveY);
+  if (intent < AIM_INTENT) return;
+
+  player.aimX = command.moveX / intent;
+  player.aimY = command.moveY / intent;
 }
 
+/**
+ * Pull the trigger, in whatever shape the gun in hand has.
+ *
+ * Every number here comes off the weapon rather than out of this file, so a
+ * scattergun and a lance are the same twenty lines with different constants.
+ * That is deliberate: a second firing path would be a second place for the
+ * recoil to be forgotten, and the recoil is half of what makes the lance a
+ * trade rather than an upgrade.
+ */
 function fire(state: RunState, dt: number, command: PlayerCommand): void {
   const player = state.player;
+  const weapon = state.weapon;
   player.fireCooldown -= dt;
 
   if (!command.firing || player.fireCooldown > 0) return;
 
-  player.fireCooldown = FIRE_INTERVAL;
+  player.fireCooldown = weapon.interval;
   player.lastFiredAt = state.time;
 
-  spawnBullet(state, {
-    x: player.x + player.aimX * MUZZLE_OFFSET,
-    y: player.y + player.aimY * MUZZLE_OFFSET,
-    vx: player.aimX * PLAYER_BULLET_SPEED + player.vx * 0.3,
-    vy: player.aimY * PLAYER_BULLET_SPEED + player.vy * 0.3,
-    life: 1.1,
-    damage: PLAYER_BULLET_DAMAGE,
-    friendly: true,
-  });
+  for (let index = 0; index < weapon.pellets; index++) {
+    const angle = pelletAngle(weapon, index);
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    // Rotate the aim direction rather than adding to an atan2 of it. Same
+    // result, no trigonometry on a vector that is already a unit vector.
+    const dx = player.aimX * cos - player.aimY * sin;
+    const dy = player.aimX * sin + player.aimY * cos;
 
-  // A little kick backwards. It sells the gun and it costs nothing.
-  player.vx -= player.aimX * 26;
-  player.vy -= player.aimY * 26;
+    spawnBullet(state, {
+      x: player.x + dx * MUZZLE_OFFSET,
+      y: player.y + dy * MUZZLE_OFFSET,
+      vx: dx * weapon.speed + player.vx * 0.3,
+      vy: dy * weapon.speed + player.vy * 0.3,
+      life: weapon.life,
+      damage: weapon.damage,
+      friendly: true,
+      pierce: weapon.pierce,
+      // Only a round that can pierce needs somewhere to remember what it has
+      // already been through, so nothing else pays for the array.
+      pierced: weapon.pierce > 0 ? [] : undefined,
+    });
+  }
+
+  // A kick backwards. It sells the gun, and on the heavier ones it is a real
+  // cost: a lance fired while hovering will move you.
+  player.vx -= player.aimX * weapon.recoil;
+  player.vy -= player.aimY * weapon.recoil;
+}
+
+/**
+ * Where one pellet of a pull goes, as an offset from the aim direction.
+ *
+ * The fan is fixed rather than random. A random spread means the same shot at
+ * the same range sometimes kills and sometimes does not, and the player has no
+ * way to tell which of those two things they just did. A fixed fan can be
+ * learned, so closing the distance is a decision instead of a dice roll.
+ */
+function pelletAngle(weapon: Weapon, index: number): number {
+  if (weapon.pellets < 2 || weapon.spread === 0) return 0;
+  const across = index / (weapon.pellets - 1);
+  return (across - 0.5) * 2 * weapon.spread;
 }
 
 /**

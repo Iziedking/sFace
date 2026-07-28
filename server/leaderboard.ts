@@ -16,13 +16,19 @@
  */
 
 /**
- * Every face out, every attacker a busy level can hold, a full time bonus, and
- * the largest bounty multiplier. Comfortably above a perfect human run and far
- * below what a fabricated score looks like.
+ * Above any possible run, and far below what a fabricated score looks like.
+ *
+ * Worked out rather than guessed, because the old value was wrong. Every
+ * person out, every cache including the relic, every attacker a busy level
+ * holds, a full time bonus, and the largest bounty multiplier comes to about
+ * 36,000. The ceiling was 30,000, which meant a genuinely excellent run was
+ * refused with a 422 and never reached the board at all. It was introduced
+ * the moment caches started paying Face and nobody had scored highly enough
+ * to trip it yet.
  */
-export const SCORE_CEILING = 30_000;
-/** A run is 90 seconds. Allow a little slack for frame timing. */
-export const MAX_DURATION = 95;
+export const SCORE_CEILING = 60_000;
+/** A run is 110 seconds. Allow a little slack for frame timing. */
+export const MAX_DURATION = 118;
 const BOARD_LIMIT = 100;
 
 export interface Entry {

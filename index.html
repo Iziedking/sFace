@@ -12,8 +12,8 @@
       name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
     />
-    <meta name="theme-color" content="#08090d" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#f4ede0" />
+    <meta name="color-scheme" content="light" />
     <title>sFace</title>
     <meta
       name="description"
@@ -36,10 +36,18 @@
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
+    <!--
+      Three layers. The canvas is the world and is always drawing. #ui is the
+      screen on top of it. #chrome is the app bar, kept out of #ui because
+      every screen mounts by replacing #ui wholesale, and a bar that is torn
+      down and rebuilt on every repaint is a bar that flickers.
+    -->
     <div id="app">
       <canvas id="stage"></canvas>
       <div id="ui"></div>
+      <header id="chrome" hidden></header>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
+

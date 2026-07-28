@@ -13,7 +13,17 @@
 
 const STORAGE_KEY = 'sface.sound';
 
-type Voice = 'shoot' | 'hit' | 'kill' | 'rescue' | 'extract' | 'down' | 'ui';
+type Voice =
+  | 'shoot'
+  | 'hit'
+  | 'kill'
+  | 'rescue'
+  | 'extract'
+  | 'down'
+  | 'ui'
+  | 'cache'
+  | 'relic'
+  | 'refill';
 
 interface Recipe {
   type: OscillatorType;
@@ -31,7 +41,37 @@ const RECIPES: Record<Voice, Recipe> = {
   extract: { type: 'triangle', from: 660, to: 1320, duration: 0.35, gain: 0.1 },
   down: { type: 'sawtooth', from: 280, to: 50, duration: 0.6, gain: 0.12 },
   ui: { type: 'sine', from: 440, to: 660, duration: 0.09, gain: 0.06 },
+  // Picking something up rises; being hurt falls. That is the only rule the
+  // whole set follows and it is enough to tell them apart without looking.
+  cache: { type: 'triangle', from: 700, to: 1040, duration: 0.14, gain: 0.08 },
+  relic: { type: 'triangle', from: 560, to: 1560, duration: 0.42, gain: 0.11 },
+  refill: { type: 'sine', from: 480, to: 760, duration: 0.12, gain: 0.06 },
 };
+
+/**
+ * What a run event sounds like.
+ *
+ * Driving audio off the event stream rather than off scattered call sites is
+ * what fixed the two that were missing: a kill and a rescue both already
+ * emitted an event and neither made a sound, because nothing was listening.
+ * Anything the simulation reports now has one place to be heard.
+ */
+const EVENT_VOICE: Record<string, Voice | null> = {
+  kill: 'kill',
+  freed: 'rescue',
+  extracted: 'rescue',
+  cache: 'cache',
+  relic: 'relic',
+  refill: 'refill',
+  // Already played from the damage watcher, which knows whether it was us.
+  hit: null,
+  lost: null,
+  pickupLine: null,
+};
+
+export function voiceForEvent(kind: string): Voice | null {
+  return EVENT_VOICE[kind] ?? null;
+}
 
 class Audio {
   private ctx: AudioContext | null = null;

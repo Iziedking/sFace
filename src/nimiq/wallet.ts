@@ -55,13 +55,29 @@ export interface WalletSession {
   deviceId: string | null;
   /** ISO 639-1 code from Nimiq Pay, falling back to the browser. */
   language: string;
+  /**
+   * Whatever network the host wallet is on, verbatim.
+   *
+   * A mini app cannot choose this. Nimiq Pay decides, and we report it. That
+   * matters because a stake shown as "5 NIM" when the wallet is on testnet is
+   * a number that means something different from what the player reads, and
+   * the fix is to say which network it is rather than to hide it.
+   */
+  network: string | null;
 }
 
 const OFFLINE: Omit<WalletSession, 'language'> = {
   available: false,
   address: null,
   deviceId: null,
+  network: null,
 };
+
+/** True when the host wallet is on anything other than the main network. */
+export function isTestnet(network: string | null): boolean {
+  if (!network) return false;
+  return /test|dev|albatross-test/i.test(network);
+}
 
 /** Held so the rest of the app never calls init() twice. */
 let provider: NimiqProvider | null = null;
@@ -104,11 +120,19 @@ export async function connect(): Promise<WalletSession> {
   const nimiq = await getProvider();
   if (!nimiq) return { ...OFFLINE, language };
 
+  // Read once at connect. It cannot change without the host restarting.
+  let network: string | null = null;
+  try {
+    network = nimiq.getNetwork();
+  } catch {
+    network = null;
+  }
+
   try {
     const accounts = await nimiq.listAccounts();
     if (isProviderError(accounts)) {
       // The provider is there, the user just declined. Solo play still works.
-      return { ...OFFLINE, available: true, language };
+      return { ...OFFLINE, available: true, language, network };
     }
 
     return {
@@ -116,9 +140,10 @@ export async function connect(): Promise<WalletSession> {
       address: accounts[0] ?? null,
       deviceId: null,
       language,
+      network,
     };
   } catch {
-    return { ...OFFLINE, available: true, language };
+    return { ...OFFLINE, available: true, language, network };
   }
 }
 

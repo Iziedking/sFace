@@ -59,6 +59,50 @@ pinned by a test in `tests/determinism.test.ts`.
 
 Never use `Math.random` for anything that affects the level.
 
+## The market builds the level. Crypto X casts it.
+
+Two live reads, once a day, and between them the mission is a story rather
+than a chart.
+
+**The market** picks the ticker, the terrain and the difficulty. The worst
+performer in the top 100 becomes the level, its 24-hour chart becomes the
+ground, the Fear and Greed index sets the spawn rate, and the chart's own
+volatility decides where the attackers are.
+
+**Crypto X picks the cast.** Once a day the service asks Grok to search X and
+report what crypto is actually arguing about, how the timeline actually feels,
+and which five accounts were genuinely at the centre of it. Those five become
+the people trapped in the wreck, each with one dry line about what actually
+happened to them today and a rescue quirk that suits them. Ansem has a day, so
+you are flying out to get Ansem.
+
+Both reads are optional and both degrade honestly. No `XAI_API_KEY` and the
+roster falls back to five fictional archetypes, with no headline shown at all
+rather than a headline with nothing behind it. No service at all and the whole
+mission falls back to a practice run generated from the date, labelled as
+practice everywhere it appears.
+
+**On real people.** The roster carries real handles and real public context,
+because that is a fact about the day. It does not carry photographs: KOL
+characters are drawn as generated figures derived deterministically from the
+handle, so the same person looks the same on every device without anyone's
+likeness being used. The one place a real profile picture appears is on your
+own character, from your own connected account. That distinction is deliberate
+and the code says so in `server/xsense.ts`.
+
+## Connect X
+
+Optional, and worth it: your own profile picture rides on your character's
+head, your handle replaces the generated pilot name on the leaderboard and on
+your score card, and squadmates see it too.
+
+OAuth 2.0 with PKCE. The token exchange happens on the service because a
+client secret in a browser bundle is not a secret. **Nothing is stored**: no
+user table, no session, no refresh token. The access token is used once, in the
+request that exchanges the code, and dropped. What comes back to the browser is
+a handle, a display name and a picture URL, all public. If the service were
+fully compromised there would be no X account it could act on behalf of.
+
 ## Flying with other people, without netcode
 
 Everyone on a given day flies the same seeded level. That one fact is what the
@@ -86,9 +130,9 @@ the NIM is riding on. They are drawn translucent so the screen says so.
 
 Traces record positions rather than inputs. Inputs would be smaller and would
 let the server verify a score, but any drift at all, a quantised aim angle or a
-float rounding differently on another device, compounds over ninety seconds
-into a ghost flying through a hill. Ghosts are cosmetic, so a correct picture
-beats a compact file.
+float rounding differently on another device, compounds over a hundred and ten
+seconds into a ghost flying through a hill. Ghosts are cosmetic, so a correct
+picture beats a compact file.
 
 ## The wallet
 
@@ -111,6 +155,76 @@ key anywhere in this repo.
 The honest consequence: **a loser can decline to pay.** There is nothing here
 that can force a settlement, and the challenge screen says so rather than
 implying an enforcement that does not exist.
+
+## The campaign
+
+Seven stages, each one restoring a piece of what 2026 cost: market panic,
+project shutdowns, exploits, regulatory limbo, institutional doubt, broken
+narratives, and finally the lot. A stage sets its own clock, enemy density,
+cache count, incoming volley, and how much of the day's chart you fly, and it
+carries an objective that has to be met before it counts as cleared. Clearing
+one opens exactly the next one.
+
+**A stage is the same engine with different numbers and a different thing to
+achieve.** That is stated plainly at the top of `src/data/campaign.ts` rather
+than dressed up: the escalation is in parameters and objectives, not in seven
+separate games. The stage number is folded into the seed, so Stage 1 and Stage
+3 on the same day are genuinely different levels and two players comparing
+Stage 3 scores flew the same Stage 3. Every stage has its own sky, ground and
+hatching, so seven stages read as seven places.
+
+**Not built, and named here rather than half-built:** PvP arenas, boss
+entities, escort AI, and maps that reshape mid-run from live X. Those need new
+systems rather than new numbers.
+
+## Progression that cannot become pay-to-win
+
+Every run adds to a lifetime Face total, and that total is the only currency in
+the game. It moves you up an eight-tier ladder and it opens the rack: four
+weapons, at 0, 5,000, 20,000 and 50,000 Face.
+
+**None of them is for sale.** NIM does exactly one thing in sFace, which is
+back your own run against somebody else's. A gun you could buy would make that
+bet unfair, so the guns cost the one thing you can only get by playing.
+
+**None of them is stronger, either**, and that is the harder half. Two players
+on the same seed have to be playing the same game, so a full rack is more ways
+to fly rather than more damage:
+
+| | Damage/s | Reach | What it gives up |
+|---|---|---|---|
+| Sidearm | 96 | 836 | Best at nothing in particular |
+| Scattergun | 104 | 260 | A third of the reach |
+| Lance | 81 | 1500 | Slow, and it shoves you backwards |
+| Stream | 91 | 480 | Five damage a round, so you must stay on target |
+
+The rule is written at the top of `src/data/weapons.ts` and pinned by two tests
+in `tests/weapons.test.ts`: every weapon must lay out an identical level, and
+nothing may out-damage the sidearm while also out-ranging it. If either fails,
+the correct response is to fix the weapon.
+
+Rank itself unlocks nothing else. A tier eight pilot flies the identical
+mission to a tier one, so somebody who plays twenty runs a day has earned a
+bigger number and no advantage at all.
+
+## Clans
+
+A clan is a four character tag and a pooled total. There is no clan record, no
+owner, no roster table, no invite list and no approval step: the tag is written
+on a profile, and everything a board shows about a clan is folded out of the
+profiles carrying that tag. A clan therefore cannot go out of sync with its own
+members, because there is nothing separate to go out of sync.
+
+Invites are a link. Tapping it opens the app with the tag already in the field,
+so an invited player joins in one tap, and the link goes out through the same X
+compose intent the score cards use.
+
+**Anyone can join any tag, and that is not an oversight.** Authentication here
+is a device identifier anybody can regenerate by clearing their site data, so an
+ownership model would be ceremony around a lock with no key in it. It also has
+nothing to protect: joining a clan adds your Face to its total and can never
+remove anyone else's, so a squatter donates. The clan screen says this on the
+screen rather than implying a security model that is not there.
 
 ## What this build does not verify
 
@@ -149,7 +263,7 @@ the wallet, against an address shown on the payer's own screen.
 - `src/ui/` the screens either side of a run, plus the score card
 - `server/` the daily oracle, leaderboard, challenges, ghost traces, the live
   relay, and a JSON snapshot that survives a restart
-- `tests/` 96 tests, weighted toward the seed invariant, the payment path, and
+- `tests/` 201 tests, weighted toward the seed invariant, the payment path, and
   the trace decoder, which is the one place network data reaches the renderer
 
 ## Stack
@@ -157,7 +271,7 @@ the wallet, against an address shown on the payer's own screen.
 Vite and TypeScript, Canvas 2D, no game engine. A side-scroller this size is a
 few hundred lines of loop and collision, and a dependency you have to learn is
 a dependency that eats hours. The client ships one runtime dependency,
-`@nimiq/mini-app-sdk`, and the whole bundle is around 18 kB gzipped.
+`@nimiq/mini-app-sdk`, and the whole bundle is around 41 kB gzipped.
 
 The service is Express with zod at every boundary and per-endpoint rate limits,
 since every endpoint is unauthenticated by design. Live co-op shares the same

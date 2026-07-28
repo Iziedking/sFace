@@ -1,20 +1,25 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="sFace">
   <!--
-    The mark is the premise: a chart falling, and one amber light still on at
-    the end of it. It has to survive being shrunk to a favicon, so it is two
-    shapes and no text.
+    The mark is the premise: a chart falling, and one face still there at the
+    end of it. Ink keel under the accent, because an unoutlined orange line on
+    a cream plate goes soft at favicon size.
   -->
-  <rect width="512" height="512" rx="112" fill="#08090d"/>
-  <path
-    d="M72 168 L136 232 L192 176 L248 288 L312 240 L368 344"
-    fill="none"
-    stroke="#ffa22b"
-    stroke-width="26"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  />
-  <circle cx="368" cy="344" r="46" fill="#ffa22b"/>
-  <circle cx="352" cy="334" r="9" fill="#08090d"/>
-  <circle cx="384" cy="334" r="9" fill="#08090d"/>
-  <rect x="350" y="358" width="36" height="9" rx="4.5" fill="#08090d"/>
+  <rect width="512" height="512" rx="112" fill="#f4ede0"/>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path
+      d="M72 168 L136 232 L192 176 L248 288 L312 240 L368 344"
+      stroke="#14110e"
+      stroke-width="40"
+    />
+    <path
+      d="M72 168 L136 232 L192 176 L248 288 L312 240 L368 344"
+      stroke="#ff5a1f"
+      stroke-width="26"
+    />
+  </g>
+  <circle cx="368" cy="344" r="53" fill="#14110e"/>
+  <circle cx="368" cy="344" r="46" fill="#ff5a1f"/>
+  <circle cx="352" cy="334" r="9" fill="#14110e"/>
+  <circle cx="384" cy="334" r="9" fill="#14110e"/>
+  <rect x="350" y="358" width="36" height="9" rx="4.5" fill="#14110e"/>
 </svg>

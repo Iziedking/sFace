@@ -65,7 +65,7 @@ export function renderChallenge(root: HTMLElement, options: ChallengeOptions): v
     root,
     el(
       'div',
-      { class: 'screen screen--center' },
+      { class: 'screen screen--narrow' },
       el('p', { class: 'eyebrow', text: t('challengeTitle') }),
       el('h1', { text: body.title }),
       header,

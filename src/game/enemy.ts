@@ -1,13 +1,16 @@
 /**
- * The attackers. Three kinds, and each one asks a different question.
+ * The attackers. Four kinds, and each one asks a different question.
  *
  *   drifter  Hovers and shoots aimed single rounds. Punishes standing still.
  *   diver    Ignores its gun and flies at you. Punishes hovering in the open.
  *   turret   Bolted to the chart, throws a spread upward. Punishes flying low.
+ *   runner   Drives the chart at you and fires flat along it. Punishes
+ *            travelling at ground level, which nothing else did.
  *
  * Between them you cannot solve the level with one habit, which is the whole
- * design goal. A fourth type would be less valuable than making these three
- * read clearly at a glance on a phone screen.
+ * design goal. The runner earned its place by asking for a response none of the
+ * other three do: climb. Anything that wants the same answer as an existing
+ * attacker is a reskin and does not belong here.
  *
  * Placement is decided once at level construction from the seed. This file only
  * wakes them and runs their behaviour, and it draws from runRng, never from the
@@ -18,6 +21,7 @@ import { direction, withinRange } from './collision';
 import { spawnBullet, ENEMY_BULLET_DAMAGE, ENEMY_BULLET_SPEED } from './bullet';
 import type { Enemy, RunState } from './state';
 import { ATTACKER_SCORE } from './state';
+import type { RunState as Run } from './state';
 import { CEILING, WORLD_HEIGHT } from './terrain';
 
 export const ENEMY_RADIUS = 16;
@@ -29,11 +33,58 @@ const ACTIVATION_RANGE = 780;
 /** Past this far behind, stop spending cycles on it. */
 const ABANDON_RANGE = 900;
 
+/**
+ * How many shots a turret puts out at once, over the length of a run.
+ *
+ * It opens at one, the same as the player, and climbs to three by the end. A
+ * three-shot fan from the first second is what made the early game read as
+ * chaos: you have not learned the ship yet and there is already more in the
+ * air than you can parse.
+ *
+ * Driven by the **run clock, not the score**, and that distinction matters.
+ * Scaling on score would mean two players on the same seed face different
+ * levels, and the whole challenge system rests on them facing the same one.
+ * It would also punish playing well, which is a strange thing for a game to
+ * do. Time rises with score anyway, so it delivers the same escalation
+ * without breaking the bet.
+ */
+function volleyAt(state: Run): number {
+  const seconds = state.time;
+  const [opening, closing] = state.stage.volley;
+  // A stage that opens and closes on the same number never ramps, which is how
+  // Stage 1 stays a soft entry and Stage 7 is three from the first second.
+  if (opening === closing) return opening;
+  if (seconds < state.seconds / 3) return opening;
+  if (seconds < (state.seconds * 2) / 3) return Math.min(closing, opening + 1);
+  return closing;
+}
+
+/** Spread between shots in a fan, radians. */
+const FAN_SPREAD = 0.2;
+
 const DRIFTER_SPEED = 46;
 const DRIFTER_BOB = 34;
-const DIVER_ACCEL = 620;
-const DIVER_MAX_SPEED = 300;
+const DIVER_ACCEL = 500;
+const DIVER_MAX_SPEED = 240;
 const DIVER_TRIGGER_RANGE = 460;
+
+/*
+ * Runners: the ones that come at you along the ground.
+ *
+ * Every other attacker owns the air, which meant the safest place on the level
+ * was down among the caches, and the caches are supposed to be the dangerous
+ * part. A runner makes the floor cost something.
+ *
+ * It is fast and it fires flat, so the shot arrives along the terrain rather
+ * than down at you, and the answer is to climb rather than to strafe. That is
+ * the one thing nothing else in the game asks for, which is the whole reason it
+ * earns a place: a new enemy that wants the same response as an old one is a
+ * reskin.
+ */
+const RUNNER_SPEED = 148;
+const RUNNER_RANGE = 640;
+/** Ride height above the chart, so it reads as driving rather than sliding. */
+const RUNNER_CLEARANCE = 22;
 
 export function radiusOf(enemy: Enemy): number {
   return enemy.kind === 'turret' ? TURRET_RADIUS : ENEMY_RADIUS;
@@ -66,6 +117,9 @@ export function updateEnemies(state: RunState, dt: number): void {
       case 'turret':
         updateTurret(state, enemy, dt, aggression);
         break;
+      case 'runner':
+        updateRunner(state, enemy, dt, aggression);
+        break;
     }
   }
 }
@@ -84,7 +138,16 @@ function updateDrifter(state: RunState, enemy: Enemy, dt: number, aggression: nu
   enemy.fireCooldown -= dt * aggression;
   if (enemy.fireCooldown > 0) return;
 
-  enemy.fireCooldown = state.runRng.range(1.4, 2.6);
+  /*
+   * Opened up from 1.4 to 2.6 seconds.
+   *
+   * With thirty-odd attackers on a level and a third of them awake at once,
+   * the old rate put more in the air than anyone could read, and the screen
+   * stopped being a place you could plan a route through. Drifters always fire
+   * a single aimed shot: the escalating fan belongs to turrets, which are
+   * stationary and therefore avoidable.
+   */
+  enemy.fireCooldown = state.runRng.range(2.2, 3.4);
 
   const unit = direction(enemy.x, enemy.y, player.x, player.y);
   spawnBullet(state, {
@@ -132,6 +195,46 @@ function updateDiver(state: RunState, enemy: Enemy, dt: number, aggression: numb
   enemy.y = clampToWorld(enemy.y);
 }
 
+/**
+ * A runner drives the chart toward you and shoots along it.
+ *
+ * It only fires when you are roughly level with it, which is what makes
+ * climbing the answer. Sitting above a runner is safe and sitting in its lane
+ * is not, so it converts altitude from a preference into a decision.
+ */
+function updateRunner(state: RunState, enemy: Enemy, dt: number, aggression: number): void {
+  const player = state.player;
+
+  const toward = Math.sign(player.x - enemy.x) || 1;
+  enemy.x += toward * RUNNER_SPEED * aggression * dt;
+  enemy.vx = toward * RUNNER_SPEED;
+
+  // Rides the terrain exactly, so it climbs and drops with the day's chart.
+  enemy.y = state.terrain.groundAt(enemy.x) - RUNNER_CLEARANCE;
+
+  enemy.fireCooldown -= dt * aggression;
+  if (enemy.fireCooldown > 0) return;
+  if (!withinRange(enemy.x, enemy.y, player.x, player.y, RUNNER_RANGE)) return;
+
+  // Nothing to shoot at if you are well above it. This is the dodge.
+  if (enemy.y - player.y > 150) return;
+
+  enemy.fireCooldown = state.runRng.range(1.6, 2.6);
+
+  const unit = direction(enemy.x, enemy.y, player.x, player.y);
+  spawnBullet(state, {
+    x: enemy.x + unit.x * 20,
+    y: enemy.y + unit.y * 20 - 6,
+    // Faster and flatter than anything else fired at you, because it has to
+    // cross open ground before you can simply climb out of its lane.
+    vx: unit.x * ENEMY_BULLET_SPEED * 1.25,
+    vy: unit.y * ENEMY_BULLET_SPEED * 1.25,
+    life: 2.2,
+    damage: ENEMY_BULLET_DAMAGE,
+    friendly: false,
+  });
+}
+
 function updateTurret(state: RunState, enemy: Enemy, dt: number, aggression: number): void {
   const player = state.player;
 
@@ -142,14 +245,17 @@ function updateTurret(state: RunState, enemy: Enemy, dt: number, aggression: num
   if (enemy.fireCooldown > 0) return;
   if (!withinRange(enemy.x, enemy.y, player.x, player.y, 700)) return;
 
-  enemy.fireCooldown = state.runRng.range(2.0, 3.2);
+  enemy.fireCooldown = state.runRng.range(2.4, 3.6);
 
   const unit = direction(enemy.x, enemy.y, player.x, player.y);
   const base = Math.atan2(unit.y, unit.x);
 
-  // A three-shot fan. Wide enough to punish a straight line, narrow enough to
-  // be flyable if you are moving.
-  for (const offset of [-0.22, 0, 0.22]) {
+  // One shot early, a fan later. See volleyAt.
+  const shots = volleyAt(state);
+  const offsets =
+    shots === 1 ? [0] : shots === 2 ? [-FAN_SPREAD / 2, FAN_SPREAD / 2] : [-FAN_SPREAD, 0, FAN_SPREAD];
+
+  for (const offset of offsets) {
     const angle = base + offset;
     spawnBullet(state, {
       x: enemy.x + Math.cos(angle) * 22,

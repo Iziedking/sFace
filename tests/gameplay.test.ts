@@ -16,7 +16,7 @@ import { describe, expect, it } from 'vitest';
 import { practiceMission } from '../src/game/mission';
 import { RunState, RUN_SECONDS, PLAYER_MAX_HEALTH } from '../src/game/state';
 import { step } from '../src/game/update';
-import { EXTRACTION_X, WORLD_WIDTH, CEILING } from '../src/game/terrain';
+import { WORLD_WIDTH, CEILING } from '../src/game/terrain';
 import { PLAYER_RADIUS } from '../src/game/player';
 import type { PlayerCommand } from '../src/game/player';
 
@@ -63,7 +63,8 @@ describe('a full run', () => {
     play(run, (r) => autopilot(r));
 
     expect(run.phase).toBe('extracted');
-    expect(run.player.x).toBeGreaterThanOrEqual(EXTRACTION_X);
+    // The pad moves with the stage, so the run is the authority on where it is.
+    expect(run.player.x).toBeGreaterThanOrEqual(run.extractionX);
     expect(run.timeLeft).toBeGreaterThan(0);
     expect(run.score).toBeGreaterThan(0);
   });
@@ -87,6 +88,109 @@ describe('a full run', () => {
     step(run, DT, IDLE);
 
     expect(run.phase).toBe('died');
+  });
+});
+
+/**
+ * The gun has to be able to point anywhere.
+ *
+ * This was genuinely broken: a player flying on the keyboard never gives an
+ * aim, so the gun held its initial heading and fired due right for an entire
+ * run, and anything above or behind them was unkillable. These lock in the
+ * fallback that fixed it.
+ */
+describe('aiming', () => {
+  const heading = (run: RunState) =>
+    Math.round((Math.atan2(run.player.aimY, run.player.aimX) * 180) / Math.PI);
+
+  it('follows the direction of flight when no aim is given', () => {
+    const seen = new Set<number>();
+
+    for (const [moveX, moveY] of [
+      [1, 0],
+      [0, -1],
+      [-1, 0],
+      [0, 1],
+    ] as const) {
+      const run = new RunState(mission());
+      run.player.invulnerableUntil = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < 40; i++) {
+        step(run, DT, { ...IDLE, moveX, moveY });
+      }
+      seen.add(heading(run));
+    }
+
+    // Four directions of travel must produce four distinct gun headings. One
+    // shared value would mean the gun is stuck, which is the original bug.
+    expect(seen.size).toBe(4);
+  });
+
+  it('lets an explicit aim override the direction of flight', () => {
+    const run = new RunState(mission());
+    run.player.invulnerableUntil = Number.POSITIVE_INFINITY;
+
+    // Flying hard right while aiming behind and above.
+    for (let i = 0; i < 30; i++) {
+      step(run, DT, {
+        moveX: 1,
+        moveY: 0,
+        aimX: run.player.x - 400,
+        aimY: run.player.y - 400,
+        firing: false,
+      });
+    }
+
+    expect(run.player.aimX).toBeLessThan(0);
+    expect(run.player.aimY).toBeLessThan(0);
+  });
+
+  /**
+   * Hovering means falling and catching yourself over and over. If the gun
+   * followed velocity it would swing at the floor every time gravity got a
+   * moment, so a stationary player would watch their aim flap. It follows
+   * thrust instead, and a hand off the stick holds the last heading.
+   */
+  it('holds the last heading when the stick is released', () => {
+    const run = new RunState(mission());
+    run.player.invulnerableUntil = Number.POSITIVE_INFINITY;
+
+    for (let i = 0; i < 40; i++) step(run, DT, { ...IDLE, moveY: -1 });
+    const flying = heading(run);
+    expect(flying).toBe(-90);
+
+    // Let gravity work on it with no input at all.
+    for (let i = 0; i < 40; i++) step(run, DT, IDLE);
+
+    expect(heading(run)).toBe(flying);
+  });
+
+  it('can fire in every direction', () => {
+    const run = new RunState(mission());
+    run.player.invulnerableUntil = Number.POSITIVE_INFINITY;
+
+    const angles: number[] = [];
+    for (const [dx, dy] of [
+      [1, 0],
+      [0, -1],
+      [-1, 0],
+      [0, 1],
+    ] as const) {
+      run.bullets.length = 0;
+      run.player.fireCooldown = 0;
+      step(run, DT, {
+        moveX: 0,
+        moveY: 0,
+        aimX: run.player.x + dx * 400,
+        aimY: run.player.y + dy * 400,
+        firing: true,
+      });
+
+      const shot = run.bullets[0];
+      expect(shot).toBeDefined();
+      angles.push(Math.round((Math.atan2(shot!.vy, shot!.vx) * 180) / Math.PI));
+    }
+
+    expect(new Set(angles).size).toBe(4);
   });
 });
 

@@ -13,9 +13,49 @@
  */
 
 import { Rng } from '../core/rng';
+import { FACES, type FaceQuirk } from '../data/faces';
 
 /** Must match TERRAIN_POINTS in server/oracle.ts or level geometry shifts. */
 export const TERRAIN_POINTS = 240;
+
+/**
+ * One person worth pulling out of today's wreck.
+ *
+ * The roster is real: handles that were actually being talked about on crypto
+ * X today, with a one-line reason drawn from what was actually said. That is
+ * the ground truth the whole mission is built on, and it is why the brief can
+ * name a person and a reason rather than a generic archetype.
+ *
+ * `avatarUrl` is normally null and the character is drawn with a generated
+ * face derived from the handle. Real profile pictures are only rendered for
+ * the player's own connected account, where consent is explicit. See the note
+ * in server/xsense.ts.
+ */
+export interface RosterEntry {
+  /** Without the @. Lowercased. */
+  handle: string;
+  displayName: string;
+  /** One dry line about why they are in the wreck today. */
+  line: string;
+  /** Which rescue quirk they get. Same five behaviours as before. */
+  quirk: FaceQuirk;
+  /** Louder the day, bigger the bounty. */
+  bounty: number;
+  /** Null unless a real picture is explicitly configured. */
+  avatarUrl: string | null;
+}
+
+/** Today's crypto X story, when we could read it. */
+export interface MissionStory {
+  /** One line, present tense, no hype. Shown on the brief. */
+  headline: string;
+  /** -100 fear to 100 euphoria, as read from the timeline. */
+  sentiment: number;
+  /** What people are actually arguing about. Two to four short phrases. */
+  topics: string[];
+  /** True when this came from a live read, false when it is the fallback. */
+  live: boolean;
+}
 
 export interface DailyMission {
   /** YYYY-MM-DD in UTC. */
@@ -36,6 +76,10 @@ export interface DailyMission {
   bountyMultiplier: number;
   /** False when this came from the fallback, not the market. Never hide this. */
   live: boolean;
+  /** Who is in the wreck today. Never empty: falls back to the archetypes. */
+  roster: RosterEntry[];
+  /** What crypto X is saying, or null when we could not read it. */
+  story: MissionStory | null;
 }
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -116,7 +160,111 @@ export function parseMission(raw: unknown): DailyMission | null {
     difficulty: clamp(Math.round(difficulty), 1, 5),
     bountyMultiplier: clamp(num(value.bountyMultiplier) ?? 1, 1, 3),
     live: true,
+    roster: parseRoster(value.roster),
+    story: parseStory(value.story),
   };
+}
+
+/**
+ * The roster off the wire. Falls back to the archetypes rather than returning
+ * empty, because a level with nobody to rescue is not a level. The count is
+ * fixed so the seeded layout places the same number of people every day.
+ */
+export function parseRoster(raw: unknown): RosterEntry[] {
+  if (!Array.isArray(raw)) return fallbackRoster();
+
+  const entries: RosterEntry[] = [];
+  for (const item of raw) {
+    if (typeof item !== 'object' || item === null) continue;
+    const value = item as Record<string, unknown>;
+
+    const handle = str(value.handle)?.replace(/^@/, '').toLowerCase();
+    if (!handle || !/^[a-z0-9_]{1,15}$/.test(handle)) continue;
+
+    entries.push({
+      handle,
+      displayName: str(value.displayName) ?? `@${handle}`,
+      line: str(value.line) ?? 'Still here.',
+      quirk: asQuirk(value.quirk),
+      bounty: clamp(num(value.bounty) ?? 300, 100, 900),
+      // Only ever populated when the service was explicitly configured to.
+      avatarUrl: httpsUrl(value.avatarUrl),
+    });
+
+    if (entries.length === FACES.length) break;
+  }
+
+  // Top up from the archetypes so the level always holds the same headcount.
+  const fallback = fallbackRoster();
+  while (entries.length < FACES.length) {
+    const filler = fallback[entries.length];
+    if (!filler) break;
+    entries.push(filler);
+  }
+
+  return entries;
+}
+
+function parseStory(raw: unknown): MissionStory | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const value = raw as Record<string, unknown>;
+
+  const headline = str(value.headline);
+  if (!headline) return null;
+
+  const topics = Array.isArray(value.topics)
+    ? value.topics.filter((t): t is string => typeof t === 'string' && t.length > 0).slice(0, 4)
+    : [];
+
+  return {
+    headline: headline.slice(0, 140),
+    sentiment: clamp(num(value.sentiment) ?? 0, -100, 100),
+    topics,
+    live: value.live === true,
+  };
+}
+
+/** The original fictional archetypes. Safe, funny, and always available. */
+export function fallbackRoster(): RosterEntry[] {
+  return FACES.map((face) => ({
+    handle: face.id,
+    displayName: face.name,
+    line: face.line,
+    quirk: face.quirk,
+    bounty: face.bounty,
+    avatarUrl: null,
+  }));
+}
+
+const QUIRKS: readonly FaceQuirk[] = [
+  'heavy',
+  'talker',
+  'paranoid',
+  'skittish',
+  'mercenary',
+];
+
+function asQuirk(value: unknown): FaceQuirk {
+  return typeof value === 'string' && (QUIRKS as readonly string[]).includes(value)
+    ? (value as FaceQuirk)
+    : 'talker';
+}
+
+/**
+ * Only https, and only a host we expect to serve pictures. A URL off the wire
+ * that ends up in an <img> src is a request the player's device makes, so it
+ * does not get to be an arbitrary endpoint.
+ */
+function httpsUrl(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:') return null;
+    const allowed = ['pbs.twimg.com', 'abs.twimg.com'];
+    return allowed.includes(url.hostname) ? url.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -151,6 +299,8 @@ export function practiceMission(date = utcDate()): DailyMission {
     difficulty: 3,
     bountyMultiplier: 1,
     live: false,
+    roster: fallbackRoster(),
+    story: null,
   };
 }
 

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Boot, screen routing, and the one loop that drives everything.
  *
  * Design decisions worth knowing before you edit this file:
@@ -17,10 +17,11 @@
 
 import { GameLoop } from './core/loop';
 import { Input } from './core/input';
-import { audio } from './core/audio';
+import { audio, voiceForEvent } from './core/audio';
+import { music } from './core/music';
 import { setLanguage, t } from './data/copy';
 import { loadMission, utcDate, type DailyMission } from './game/mission';
-import { RunState } from './game/state';
+import { RunState, PLAYER_MAX_HEALTH } from './game/state';
 import { step } from './game/update';
 import type { PlayerCommand } from './game/player';
 import { GhostRecorder, decodeTrace, type GhostFrame } from './game/ghost';
@@ -30,34 +31,93 @@ import { Camera } from './render/camera';
 import { Renderer } from './render/renderer';
 import { Hud } from './render/hud';
 import { Effects } from './render/effects';
-import { renderBoard, renderBrief, renderLoading, renderResults } from './ui/screens';
+import { renderBoard, renderBrief, renderResults, type BoardTab } from './ui/screens';
+import { initialSteps, renderLoading, type LoadStep } from './ui/loading';
 import { renderChallenge } from './ui/challenge';
+import { renderIntro, introSeen } from './ui/intro';
+import { renderControls } from './ui/controls';
+import { renderPause, renderRunOverlay } from './ui/pause';
+import { renderLoadout } from './ui/loadout';
+import { renderClan } from './ui/clan';
+import { renderCampaign } from './ui/campaign';
+import { hideChrome, renderChrome } from './ui/chrome';
+import { chooseWeapon, resolveWeapon } from './core/loadout';
+import { narrator } from './core/voice';
+import {
+  fullscreenAvailable,
+  isFullscreen,
+  onFullscreenChange,
+  toggleFullscreen,
+} from './core/fullscreen';
 import { cardDataFrom, drawScoreCard, shareLink, shareRun } from './ui/share';
 import {
   acceptChallenge,
   apiConfigured,
   createChallenge,
+  fetchAllTime,
   fetchBoard,
   fetchChallenge,
+  decideClanRequest,
+  fetchClan,
+  fetchClans,
   fetchGhosts,
+  joinClan,
   postGhost,
   postScore,
   reportSettlement,
   type BoardEntry,
   type Challenge,
+  type ClanDetail,
+  type ClanRow,
 } from './net/api';
 import { pilotId, pilotName, upgradeTo } from './net/identity';
-import { connect, askDeviceId, type WalletSession } from './nimiq/wallet';
+import {
+  cacheProfile,
+  fetchProfile,
+  localProfile,
+  parse as parseProfile,
+  type Profile,
+} from './net/profile';
+import { rankFor } from './data/story';
+import { unlockedWeapons } from './data/weapons';
+import {
+  STAGES,
+  progressOf as stageProgressOf,
+  stageAt,
+  stageUnlocked,
+} from './data/campaign';
+import {
+  connectX,
+  connectedX,
+  disconnectX,
+  xConnectAvailable,
+  type XProfile,
+} from './net/xconnect';
+import { el, button } from './ui/dom';
+import { connect, askDeviceId, isTestnet, type WalletSession } from './nimiq/wallet';
 import { settle } from './nimiq/payments';
-import { challengeDeeplink, readChallengeId } from './nimiq/deeplink';
+import { challengeDeeplink, clanDeeplink, readChallengeId, readClanTag } from './nimiq/deeplink';
 
-type Screen = 'loading' | 'brief' | 'run' | 'results' | 'board' | 'challenge';
+type Screen =
+  | 'loading'
+  | 'intro'
+  | 'controls'
+  | 'loadout'
+  | 'clan'
+  | 'campaign'
+  | 'brief'
+  | 'run'
+  | 'results'
+  | 'board'
+  | 'challenge';
 
 /** Default stake when a player creates a challenge without picking one. */
 const DEFAULT_STAKE_NIM = 5;
 
 class App {
   private readonly ui: HTMLElement;
+  /** The app bar. Lives outside #ui so a screen repaint cannot flicker it. */
+  private readonly chrome: HTMLElement;
   private readonly renderer: Renderer;
   private readonly camera = new Camera();
   private readonly hud = new Hud();
@@ -72,7 +132,7 @@ class App {
   /** Traces fetched for today's seed, held so a replay does not refetch. */
   private ghostPool: Array<{ id: string; name: string; score: number; frames: GhostFrame[] }> = [];
 
-  private screen: Screen = 'loading';
+  private screenValue: Screen = 'loading';
   private mission: DailyMission | null = null;
   private notice: string | null = null;
   private run: RunState | null = null;
@@ -86,6 +146,44 @@ class App {
   private pilot: string = pilotId();
   /** True once the stronger Nimiq identifier has been asked for. */
   private askedForDeviceId = false;
+
+  /** The connected X account, whose picture rides on the character's head. */
+  private me: XProfile | null = connectedX();
+  /** False until the service confirms X connect is configured here. */
+  private xAvailable = false;
+
+  /** The pilot's record. Rendered from the local mirror before the fetch lands. */
+  private profile: Profile | null = localProfile();
+  /** Set when the run just finished crossed a tier. Cleared on the next run. */
+  private rankedUp: string | null = null;
+  /** Set when the run just finished opened a new gun. Cleared on the next run. */
+  private unlockedWeapon: string | null = null;
+  /** Which board tab was last open. Remembered across visits. */
+  private boardTab: BoardTab = 'daily';
+
+  /** Clan state. All of it is cached so reopening the screen is instant. */
+  private clanTable: ClanRow[] = [];
+  private myClan: ClanDetail | null = null;
+  private clanLoading = false;
+  private clanBusy = false;
+  private clanNotice: string | null = null;
+  /** A tag off an invite link, so an invited player only has to tap join. */
+  private invitedTag: string | null = null;
+  /** A tag we have asked to join and are waiting on the owner for. */
+  private awaitingTag: string | null = null;
+
+  /**
+   * The stage about to be flown. Defaults to the next one not yet cleared, so
+   * a returning player presses start and gets the thing they are up to.
+   */
+  private stage = 1;
+  /** Set when the run just finished cleared its stage. Cleared on the next run. */
+  private stageCleared = false;
+
+  /** Boot progress. Each entry flips when the work behind it actually lands. */
+  private steps: LoadStep[] = initialSteps();
+  /** True while the run is held. The loop still draws; it just does not step. */
+  private paused = false;
 
   private firstRun = true;
   private lastHealth = 0;
@@ -103,9 +201,13 @@ class App {
   constructor() {
     const canvas = document.querySelector<HTMLCanvasElement>('#stage');
     const ui = document.querySelector<HTMLElement>('#ui');
-    if (!canvas || !ui) throw new Error('The page is missing #stage or #ui.');
+    const chrome = document.querySelector<HTMLElement>('#chrome');
+    if (!canvas || !ui || !chrome) {
+      throw new Error('The page is missing #stage, #ui or #chrome.');
+    }
 
     this.ui = ui;
+    this.chrome = chrome;
     this.renderer = new Renderer(canvas);
     this.input = new Input(canvas);
     this.loop = new GameLoop({
@@ -115,20 +217,70 @@ class App {
 
     window.addEventListener('resize', this.onResize);
     window.addEventListener('orientationchange', this.onResize);
+
+    // Escape toggles the hold. Bound here rather than in Input, because pausing
+    // is a thing the app does, not a way of steering the ship. Shift was tried
+    // and is wrong: it is a modifier people hold while doing something else.
+    window.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape' || event.repeat) return;
+      if (this.screen !== 'run') return;
+      event.preventDefault();
+      this.setPaused(!this.paused);
+    });
+
+    /*
+     * Switching away pauses, but coming back does not resume.
+     *
+     * A run whose clock keeps going while the tab is hidden is a run somebody
+     * loses to a notification, and resuming automatically drops them straight
+     * back into a fight they are not looking at yet.
+     */
+    // Relabel the toggle when the browser changes it from under us, which it
+    // does every time somebody leaves fullscreen with Escape.
+    onFullscreenChange(() => {
+      this.onResize();
+      if (this.screen === 'brief') this.showBrief();
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this.setPaused(true);
+    });
+
     this.onResize();
   }
 
   async boot(): Promise<void> {
     setLanguage(navigator.language);
-    renderLoading(this.ui, t('loadingMission'));
+    renderLoading(this.ui, this.steps);
 
     // The wallet probe runs alongside the mission fetch rather than before it.
     // Whichever finishes first, the player is not waiting on the other.
     void this.probeWallet();
 
     this.pendingChallengeId = readChallengeId();
+    this.invitedTag = readClanTag();
 
-    const { mission, notice } = await loadMission();
+    /*
+     * The mission and the record are fetched together; the squad is not.
+     *
+     * Ghost traces are keyed on the mission's seed, so they cannot even be
+     * asked for until the mission has landed. Waiting for them would put a
+     * second round trip in front of a player who has not seen the game yet,
+     * to populate something that is a bonus. They load in the background once
+     * the brief is up, and are ready long before anyone presses start.
+     *
+     * The record is small and usually beats the mission home, so pairing it
+     * costs nothing and means the rank strip is correct on its first paint.
+     * Neither call rejects: both resolve to null on failure.
+     */
+    const [{ mission, notice }] = await Promise.all([
+      loadMission().then((result) => {
+        this.markStep('market');
+        return result;
+      }),
+      this.refreshProfile().then(() => this.markStep('record')),
+    ]);
+
     this.mission = mission;
     this.notice = notice;
     setLanguage(this.session?.language ?? navigator.language);
@@ -136,12 +288,52 @@ class App {
     this.prepareRun();
     this.loop.start();
 
+    /*
+     * The intro plays before the brief, once ever.
+     *
+     * It sits after the loop has started so the chart is already alive behind
+     * it, and after the mission has loaded so nothing about it is a guess. A
+     * returning player never sees it again and goes straight to the brief.
+     */
+    if (!introSeen() && !this.pendingChallengeId) {
+      this.ui.className = '';
+      this.screen = 'intro';
+      renderIntro(this.ui, {
+        voice: music.on,
+        onBegin: () => this.unlockSound(),
+        onDone: () => {
+          music.play('menu');
+          this.landing();
+        },
+      });
+    }
+
     // Fetched in the background. Squadmates are a bonus, never a gate on
     // starting a run, so nothing below waits on this.
     void this.loadGhosts();
+    void this.probeXConnect();
+    void this.refreshProfile();
+    this.renderer.preload(this.me?.avatarUrl);
+    for (const entry of mission.roster) this.renderer.preload(entry.avatarUrl);
 
     if (this.pendingChallengeId) await this.openChallenge(this.pendingChallengeId);
-    else this.showBrief();
+    else if (this.screen !== 'intro') this.landing();
+  }
+
+  /**
+   * The first screen after boot.
+   *
+   * Normally the brief. An unattached pilot who arrived on a clan invite gets
+   * the clan screen instead, with the tag already in the field, because landing
+   * them on the brief would mean the link they tapped did nothing visible and
+   * they would have to go looking for what it was for.
+   */
+  private landing(): void {
+    if (this.invitedTag && !this.profile?.clanTag) {
+      this.openClan();
+      return;
+    }
+    this.showBrief();
   }
 
   /**
@@ -167,6 +359,111 @@ class App {
     });
   }
 
+  /**
+   * What other players see. A connected handle beats a generated pilot name
+   * every time: "@vitalikbuterin beat you" is a story, "Pilot 4F2A beat you"
+   * is a row in a table.
+   */
+  private displayName(): string {
+    return this.me ? `@${this.me.handle}` : pilotName(this.pilot);
+  }
+
+  /**
+   * Replace the local mirror with the server's copy.
+   *
+   * The mirror has already painted a rank by the time this lands, so a
+   * disagreement resolves quietly rather than flashing a wrong number. Only
+   * re-renders when the brief is up, since anywhere else the strip is not
+   * on screen to correct.
+   */
+  private async refreshProfile(): Promise<void> {
+    const profile = await fetchProfile(this.pilot);
+    if (!profile) return;
+
+    this.profile = profile;
+    if (this.screen === 'brief') this.showBrief();
+    // The rack is drawn from lifetime Face, so a record that lands while it is
+    // open would otherwise show yesterday's unlocks until the player backed out.
+    else if (this.screen === 'loadout') this.showLoadout();
+    // Same for the clan tag, which the record is also authoritative for.
+    else if (this.screen === 'clan') this.paintClan();
+    // And the campaign, whose unlocks are the record.
+    else if (this.screen === 'campaign') this.showCampaign();
+  }
+
+  /**
+   * Open the audio taps. Must be called from inside a real user gesture.
+   *
+   * Both unlocks are idempotent, so every plausible entry point calls this:
+   * the intro's opening tap, and Start the run for anyone who skipped the
+   * intro or came in through a challenge link.
+   */
+  private unlockSound(): void {
+    audio.unlock();
+    music.unlock();
+  }
+
+  /** Tick a boot step and repaint, but only while the loader is still up. */
+  private markStep(key: string): void {
+    const step = this.steps.find((s) => s.key === key);
+    if (!step || step.done) return;
+
+    step.done = true;
+    if (this.screen === 'loading') renderLoading(this.ui, this.steps);
+  }
+
+  /**
+   * Pause. Shift on a keyboard, a button on glass.
+   *
+   * The loop keeps running and the world keeps drawing; only the simulation
+   * step is skipped. That means the chart stays on screen behind the overlay
+   * rather than freezing into a screenshot, and resuming has nothing to
+   * restart.
+   *
+   * Input is cleared on the way in. Otherwise a thumb still on the glass, or a
+   * key held when the tab lost focus, is remembered across the pause and the
+   * ship lurches the moment play resumes.
+   */
+  private setPaused(paused: boolean): void {
+    if (this.screen !== 'run' || this.paused === paused) return;
+
+    this.paused = paused;
+    this.input.reset();
+
+    if (paused) {
+      music.duck();
+      renderPause(this.ui, {
+        onResume: () => this.setPaused(false),
+        onQuit: () => {
+          this.paused = false;
+          this.ui.className = '';
+          this.showBrief();
+        },
+      });
+    } else {
+      music.play('run');
+      this.showRunOverlay();
+    }
+  }
+
+  /**
+   * The in-run overlay: a pause control and nothing else.
+   *
+   * It lives in the same layer as every other screen, so the run has to opt
+   * that layer out of being a solid sheet. `is-hud` makes it transparent and
+   * click-through, and only the button itself takes input.
+   */
+  private showRunOverlay(): void {
+    this.ui.className = 'is-hud';
+    renderRunOverlay(this.ui, { onPause: () => this.setPaused(true) });
+  }
+
+  /** Only offer Connect X where the service is actually configured for it. */
+  private async probeXConnect(): Promise<void> {
+    this.xAvailable = await xConnectAvailable();
+    if (this.xAvailable && this.screen === 'brief') this.showBrief();
+  }
+
   private async probeWallet(): Promise<void> {
     this.session = await connect();
     setLanguage(this.session.language);
@@ -176,39 +473,420 @@ class App {
 
   // Screens ---------------------------------------------------------------
 
+  /**
+   * The current screen, behind an accessor so the bar cannot fall out of step.
+   *
+   * There are a dozen places that move between screens, and a bar repainted by
+   * hand at each of them is a bar that is eventually wrong at one of them. The
+   * setter is the single hook: change the screen, the bar follows.
+   */
+  private get screen(): Screen {
+    return this.screenValue;
+  }
+
+  private set screen(next: Screen) {
+    this.screenValue = next;
+    this.paintChrome();
+  }
+
+  /**
+   * Screens that get the bar.
+   *
+   * The three that do not are each a single focal point: the loading screen is
+   * one bar filling, the intro is one line at a time, and a run is the game.
+   * Furniture across the top of any of them is in the way.
+   */
+  private paintChrome(): void {
+    const screen = this.screenValue;
+    if (screen === 'loading' || screen === 'intro' || screen === 'run') {
+      hideChrome(this.chrome);
+      return;
+    }
+
+    renderChrome(this.chrome, {
+      mission: this.mission,
+      profile: this.profile,
+      clanTag: this.profile?.clanTag ?? null,
+      onHome: () => this.playIntro(),
+    });
+  }
+
+  /**
+   * The opening, on demand.
+   *
+   * One entry point for the wordmark and for the replay button, because two
+   * copies of this is two places for the audio unlock to be forgotten. It ends
+   * on the brief rather than on `landing()`: somebody who deliberately went
+   * back to the front door does not want to be redirected to a clan invite on
+   * the way out.
+   */
+  private playIntro(): void {
+    this.ui.className = '';
+    this.screen = 'intro';
+    renderIntro(this.ui, {
+      voice: music.on,
+      onBegin: () => this.unlockSound(),
+      onDone: () => {
+        music.play('menu');
+        this.showBrief();
+      },
+    });
+  }
+
   private showBrief(): void {
     const mission = this.mission;
     if (!mission) return;
+
+    this.ui.className = '';
 
     this.screen = 'brief';
     renderBrief(this.ui, {
       mission,
       notice: this.notice,
       showHints: this.firstRun,
+      me: this.meChip(),
+      profile: this.profile,
+      testnet: isTestnet(this.session?.network ?? null),
+      soundOn: music.on,
+      onToggleSound: () => {
+        // One switch for everything audible: the bed, the sting, the blips
+        // and the narrator. Two separate toggles would be a settings screen.
+        const on = music.toggle();
+        if (audio.on !== on) audio.toggle();
+        narrator.setMuted(!on);
+        this.showBrief();
+      },
+      weaponName: this.weapon().name,
+      onLoadout: () => this.showLoadout(),
+      clanTag: this.profile?.clanTag ?? null,
+      onClan: () => this.openClan(),
+      stage: stageAt(this.activeStage()),
+      stagesCleared: this.cleared(),
+      onCampaign: () => this.showCampaign(),
+      fullscreen: isFullscreen(),
+      onFullscreen: fullscreenAvailable()
+        ? () => void toggleFullscreen()
+        : null,
+      onControls: () => {
+        this.ui.className = '';
+        this.screen = 'controls';
+        renderControls(this.ui, { onBack: () => this.showBrief() });
+      },
+      onReplayIntro: () => this.playIntro(),
       onStart: () => this.startRun(),
       onBoard: () => void this.showBoard(),
+      onConnectX: this.xAvailable ? () => void this.doConnectX() : null,
     });
   }
 
+  /**
+   * The gun this pilot may actually fly with right now.
+   *
+   * Resolved against the record rather than against what is in storage, so a
+   * choice made on a device that has since been reset falls back to the
+   * sidearm instead of granting something unearned. Cheap enough to call on
+   * every render.
+   */
+  private weapon() {
+    return resolveWeapon(this.profile?.lifetimeFace ?? 0);
+  }
+
+  private showLoadout(): void {
+    this.ui.className = '';
+    this.screen = 'loadout';
+
+    renderLoadout(this.ui, {
+      lifetimeFace: this.profile?.lifetimeFace ?? 0,
+      selected: this.weapon().id,
+      onSelect: (id) => {
+        chooseWeapon(id);
+        audio.play('ui');
+        this.showLoadout();
+      },
+      onBack: () => this.showBrief(),
+    });
+  }
+
+  // The campaign ----------------------------------------------------------
+
+  /** Highest stage cleared, from the record. Zero for a new pilot. */
+  private cleared(): number {
+    return Math.max(0, Math.min(STAGES.length, this.profile?.stagesCleared ?? 0));
+  }
+
+  /**
+   * The stage a run will actually use.
+   *
+   * Clamped against the record on the way out rather than trusted from state,
+   * for the same reason the weapon is: a selection made before a reset would
+   * otherwise hand somebody Stage 7 on their first night and skip the six
+   * things it is a resolution to.
+   */
+  private activeStage(): number {
+    const cleared = this.cleared();
+    return stageUnlocked(this.stage, cleared) ? this.stage : Math.min(STAGES.length, cleared + 1);
+  }
+
+  private showCampaign(): void {
+    this.ui.className = '';
+    this.screen = 'campaign';
+
+    renderCampaign(this.ui, {
+      cleared: this.cleared(),
+      selected: this.activeStage(),
+      onSelect: (n) => {
+        this.stage = n;
+        audio.play('ui');
+        this.showCampaign();
+      },
+      onBack: () => this.showBrief(),
+    });
+  }
+
+  // Clans -----------------------------------------------------------------
+
+  /**
+   * Open the screen and go and get the standings.
+   *
+   * Split from the paint deliberately. Painting used to kick off the fetch
+   * itself, and since the fetch repaints when it lands, opening the screen
+   * started an infinite loop of requests that only stopped when the service
+   * began refusing them. Fetching is an entry-point decision, so it lives at
+   * the entry point.
+   */
+  private openClan(): void {
+    this.paintClan();
+    void this.loadClans();
+  }
+
+  private paintClan(): void {
+    this.ui.className = '';
+    this.screen = 'clan';
+
+    renderClan(this.ui, {
+      meId: this.pilot,
+      myTag: this.profile?.clanTag ?? null,
+      awaiting: this.awaitingTag,
+      mine: this.myClan,
+      table: this.clanTable,
+      loading: this.clanLoading,
+      offline: !apiConfigured(),
+      suggested: this.invitedTag,
+      notice: this.clanNotice,
+      busy: this.clanBusy,
+      onJoin: (tag) => void this.setClan(tag),
+      onLeave: () => void this.setClan(null),
+      onCancelRequest: () => void this.setClan(null),
+      onDecide: (memberId, approve) => void this.decideRequest(memberId, approve),
+      onInvite: () => void this.inviteToClan(),
+      onBack: () => this.showBrief(),
+    });
+  }
+
+  private async loadClans(): Promise<void> {
+    if (!apiConfigured()) return;
+
+    // Only show a spinner when there is nothing cached to show instead. With a
+    // table already on screen this fills in underneath, which is the whole
+    // reason the last one was kept.
+    if (this.clanTable.length === 0) {
+      this.clanLoading = true;
+      if (this.screen === 'clan') this.paintClan();
+    }
+
+    const tag = this.profile?.clanTag ?? null;
+
+    // Both at once. The standings and your own clan are independent reads and
+    // waiting for one to start the other would double the time on screen.
+    const [table, mine] = await Promise.all([
+      fetchClans(),
+      tag ? fetchClan(tag) : Promise.resolve(null),
+    ]);
+
+    if (table.ok) this.clanTable = table.value;
+    if (mine?.ok) this.myClan = mine.value;
+    this.clanLoading = false;
+
+    if (this.screen === 'clan') this.paintClan();
+  }
+
+  /**
+   * Found a clan, ask to join one, or leave.
+   *
+   * One call, because from the service's side it is one write. What comes back
+   * says which of the three actually happened, and the difference matters: a
+   * free tag is founded on the spot, a taken one only sends a request.
+   */
+  private async setClan(tag: string | null): Promise<void> {
+    if (this.clanBusy) return;
+
+    if (tag !== null && !/^[A-Z0-9]{2,4}$/.test(tag)) {
+      this.clanNotice = 'A clan tag is two to four letters or digits.';
+      this.paintClan();
+      return;
+    }
+
+    if (!apiConfigured()) {
+      this.clanNotice = 'Clans need the service. Everything else still works.';
+      this.paintClan();
+      return;
+    }
+
+    this.clanBusy = true;
+    this.clanNotice = null;
+    this.paintClan();
+
+    const result = await joinClan({ deviceId: this.pilot, name: this.displayName(), tag });
+    this.clanBusy = false;
+
+    if (!result.ok) {
+      this.clanNotice = result.error;
+      this.paintClan();
+      return;
+    }
+
+    const updated = parseProfile(result.value.profile);
+    if (updated) {
+      this.profile = updated;
+      cacheProfile(updated);
+    }
+
+    // Waiting on somebody is a real state and the screen has to be able to say
+    // so, or a request reads as a join that silently did nothing.
+    this.awaitingTag = result.value.pending[0] ?? null;
+
+    const outcome = result.value.outcome;
+    this.clanNotice =
+      outcome.status === 'requested'
+        ? `Asked to join ${outcome.tag}.${outcome.ownerName ? ` ${outcome.ownerName} decides.` : ''}`
+        : null;
+
+    // The invite has been acted on, so it should stop pre-filling the field.
+    this.invitedTag = null;
+    // The cached detail belongs to whichever clan they were in a second ago.
+    // The table does not, so it stays up while the fresh one is fetched.
+    this.myClan = null;
+    this.paintClan();
+    await this.loadClans();
+  }
+
+  /** The owner's answer. The service checks that we are the owner, not this. */
+  private async decideRequest(memberId: string, approve: boolean): Promise<void> {
+    const tag = this.profile?.clanTag;
+    if (!tag || this.clanBusy) return;
+
+    this.clanBusy = true;
+    this.clanNotice = null;
+    this.paintClan();
+
+    const result = await decideClanRequest(tag, {
+      deviceId: this.pilot,
+      memberId,
+      approve,
+    });
+    this.clanBusy = false;
+
+    if (result.ok) this.myClan = result.value;
+    else this.clanNotice = result.error;
+
+    this.paintClan();
+    // Approving changes the pooled total, so the standings are now stale.
+    if (result.ok && approve) await this.loadClans();
+  }
+
+  private async inviteToClan(): Promise<void> {
+    const tag = this.profile?.clanTag;
+    if (!tag) return;
+
+    const face = this.myClan?.face ?? 0;
+    await shareLink(
+      face > 0
+        ? `Clan ${tag} has pulled ${face.toLocaleString()} Face out of the Collapse. Come and fly with us.`
+        : `Starting clan ${tag} in sFace. Come and fly with us.`,
+      clanDeeplink(tag),
+    );
+  }
+
+  /** The connected-account row on the brief, or null when not connected. */
+  private meChip(): HTMLElement | null {
+    const me = this.me;
+    if (!me) return null;
+
+    return el(
+      'div',
+      { class: 'me' },
+      me.avatarUrl
+        ? el('img', {
+            class: 'me__avatar',
+            src: me.avatarUrl,
+            alt: '',
+            referrerpolicy: 'no-referrer',
+          })
+        : el('div', { class: 'me__avatar' }),
+      el(
+        'div',
+        {},
+        el('div', { class: 'stat__label', text: t('connectedAs') }),
+        el('div', { class: 'me__handle', text: `@${me.handle}` }),
+      ),
+      button(
+        t('disconnectX'),
+        () => {
+          disconnectX();
+          this.me = null;
+          this.showBrief();
+        },
+        'quiet',
+      ),
+    );
+  }
+
+  private async doConnectX(): Promise<void> {
+    const profile = await connectX();
+
+    if (!profile) {
+      // Declined, closed, or failed. All the same to the player, and none of
+      // them are worth a red banner over a cosmetic feature.
+      this.notice = t('connectXFailed');
+      this.showBrief();
+      return;
+    }
+
+    this.me = profile;
+    this.notice = null;
+    // Decode it now so the first frame of the run already has a head on it.
+    this.renderer.preload(profile.avatarUrl);
+    this.showBrief();
+  }
+
   private startRun(): void {
-    // The first tap of the session is the only chance to start audio.
-    audio.unlock();
+    // The first tap of the session is the only chance to start audio. Safe to
+    // call repeatedly: both unlocks are idempotent.
+    this.unlockSound();
     audio.play('ui');
+    music.play('run');
 
     this.prepareRun();
     this.firstRun = false;
     this.rank = null;
+    this.rankedUp = null;
+    this.unlockedWeapon = null;
+    this.stageCleared = false;
     this.cardUrl = null;
     this.postError = null;
     this.screen = 'run';
-    this.ui.replaceChildren();
+    this.paused = false;
+    this.showRunOverlay();
   }
 
   private prepareRun(): void {
     const mission = this.mission;
     if (!mission) return;
 
-    this.run = new RunState(mission);
+    // The weapon is decided here, once, rather than read every frame. A gun
+    // that could change mid-run would make the recorded trace disagree with
+    // the run that produced it.
+    this.run = new RunState(mission, this.weapon().id, this.activeStage());
     this.lastHealth = this.run.player.health;
     this.effects.clear();
     this.input.reset();
@@ -255,9 +933,17 @@ class App {
     const run = this.run;
     if (!run) return;
 
+    this.ui.className = '';
+
     this.screen = 'results';
     this.input.reset();
     audio.play(run.phase === 'extracted' ? 'extract' : 'down');
+    music.duck();
+    music.playSting();
+
+    // Judged here, once, off the finished run. The stage owns the rule; this
+    // only asks it. See src/data/campaign.ts.
+    this.stageCleared = run.stage.clear(stageProgressOf(run, PLAYER_MAX_HEALTH));
 
     const data = cardDataFrom(run, null);
     this.cardUrl = drawScoreCard(data);
@@ -286,7 +972,7 @@ class App {
 
     await postGhost({
       deviceId: this.pilot,
-      name: pilotName(this.pilot),
+      name: this.displayName(),
       seed: run.mission.seed,
       score: run.score,
       facesExtracted: run.facesExtracted,
@@ -306,12 +992,20 @@ class App {
       return;
     }
 
+    this.ui.className = '';
+
     this.screen = 'results';
     renderResults(this.ui, {
       state: run,
       cardUrl: this.cardUrl,
       postError: this.postError,
       rank: this.rank,
+      profile: this.profile,
+      rankedUp: this.rankedUp,
+      unlockedWeapon: this.unlockedWeapon,
+      stageCleared: this.stageCleared,
+      onLoadout: () => this.showLoadout(),
+      onCampaign: () => this.showCampaign(),
       onReplay: () => this.startRun(),
       onChallenge: () => void this.createChallenge(),
       onShare: () => void this.share(),
@@ -319,31 +1013,44 @@ class App {
     });
   }
 
-  private async showBoard(): Promise<void> {
+  private async showBoard(tab: BoardTab = this.boardTab): Promise<void> {
     const mission = this.mission;
     if (!mission) return;
 
+    this.boardTab = tab;
+    this.ui.className = '';
     this.screen = 'board';
-    renderLoading(this.ui, t('boardTitle'));
 
-    let entries: BoardEntry[] = [];
-    let offline = !apiConfigured();
+    // Paint the frame immediately with a loading body, so switching tabs is
+    // instant and the fetch fills in underneath rather than blanking the page.
+    const paint = (entries: BoardEntry[], offline: boolean, loading: boolean): void => {
+      if (this.screen !== 'board') return;
+      renderBoard(this.ui, {
+        mission,
+        tab: this.boardTab,
+        entries,
+        meId: this.pilot,
+        offline,
+        loading,
+        onTab: (next) => void this.showBoard(next),
+        onBack: () => (this.run?.finished ? this.showResults() : this.showBrief()),
+      });
+    };
 
-    if (!offline) {
-      const result = await fetchBoard(mission.date);
-      if (result.ok) entries = result.value;
-      else offline = true;
+    paint([], false, true);
+
+    if (!apiConfigured()) {
+      paint([], true, false);
+      return;
     }
 
-    if (this.screen !== 'board') return;
+    const result = tab === 'daily' ? await fetchBoard(mission.date) : await fetchAllTime();
 
-    renderBoard(this.ui, {
-      mission,
-      entries,
-      meId: this.pilot,
-      offline,
-      onBack: () => (this.run?.finished ? this.showResults() : this.showBrief()),
-    });
+    // A tab switched while this was in flight must not be overwritten by the
+    // answer to the question the player already moved on from.
+    if (this.boardTab !== tab) return;
+
+    paint(result.ok ? result.value : [], !result.ok, false);
   }
 
   // Scores and challenges --------------------------------------------------
@@ -367,19 +1074,50 @@ class App {
       if (deviceId && upgradeTo(deviceId)) this.pilot = deviceId;
     }
 
+    // Captured before the post, so a tier crossed by this run can be detected
+    // by comparing against where the pilot stood a moment ago.
+    const faceBefore = this.profile?.lifetimeFace ?? 0;
+    const before = rankFor(faceBefore).rank.tier;
+    const rackBefore = unlockedWeapons(faceBefore).length;
+
     const result = await postScore({
       deviceId: this.pilot,
-      name: pilotName(this.pilot),
+      name: this.displayName(),
+      avatarUrl: this.me?.avatarUrl ?? null,
+      cachesTaken: run.cachesTaken,
+      relicTaken: run.relicTaken,
+      extracted: run.phase === 'extracted',
       date: run.mission.date,
       seed: run.mission.seed,
       score: run.score,
       facesExtracted: run.facesExtracted,
       attackersCleared: run.attackersCleared,
       duration: run.time,
+      stage: run.stage.n,
+      stageCleared: this.stageCleared,
     });
 
     if (result.ok) {
       this.rank = result.value.rank;
+
+      // The server returns the updated record alongside the rank, so the
+      // strip on the results screen is the real total rather than a local
+      // guess that could drift from what the board says.
+      const updated = parseProfile(result.value.profile);
+      if (updated) {
+        this.profile = updated;
+        cacheProfile(updated);
+
+        const after = rankFor(updated.lifetimeFace);
+        this.rankedUp = after.rank.tier > before ? after.rank.name : null;
+
+        // A gun that opens quietly is a gun nobody ever equips. Name it on the
+        // one screen the player is already reading.
+        const rack = unlockedWeapons(updated.lifetimeFace);
+        this.unlockedWeapon =
+          rack.length > rackBefore ? (rack[rack.length - 1]?.name ?? null) : null;
+      }
+
       this.cardUrl = drawScoreCard(cardDataFrom(run, this.rank));
       this.postError = null;
     } else {
@@ -407,7 +1145,7 @@ class App {
 
     const result = await createChallenge({
       deviceId: this.pilot,
-      name: pilotName(this.pilot),
+      name: this.displayName(),
       address: this.session?.address ?? null,
       date: run.mission.date,
       seed: run.mission.seed,
@@ -428,8 +1166,8 @@ class App {
 
   /** Opened from a deeplink. Show the terms before the run, not after. */
   private async openChallenge(id: string): Promise<void> {
+    this.ui.className = '';
     this.screen = 'challenge';
-    renderLoading(this.ui, t('challengeTitle'));
 
     const result = await fetchChallenge(id);
     if (!result.ok) {
@@ -459,7 +1197,7 @@ class App {
 
     const result = await acceptChallenge(challenge.id, {
       deviceId: this.pilot,
-      name: pilotName(this.pilot),
+      name: this.displayName(),
       address: this.session?.address ?? null,
       score: run.score,
       seed: run.mission.seed,
@@ -486,6 +1224,8 @@ class App {
      * level.
      */
     const seedMatches = challenge.seed === mission.seed;
+
+    this.ui.className = '';
 
     this.screen = 'challenge';
     renderChallenge(this.ui, {
@@ -591,8 +1331,13 @@ class App {
     const run = this.run;
     if (!run) return;
 
-    if (this.screen === 'run' && !run.finished) {
+    if (this.screen === 'run' && !run.finished && !this.paused) {
+      const firedAt = run.player.lastFiredAt;
       step(run, dt, this.command());
+      // One blip per round that actually left the gun. Playing it while the
+      // trigger was merely held meant the sound ran at the frame rate and had
+      // nothing to do with the weapon's fire rate.
+      if (run.player.lastFiredAt !== firedAt) audio.play('shoot');
       this.watchDamage(run);
       // Record after the step, so a frame is the pose the player ended it in.
       this.recorder.sample(run);
@@ -603,6 +1348,8 @@ class App {
     // Squadmates read the run clock, which is why a recording made yesterday
     // lines up with a run happening now without any synchronisation.
     this.squad.update(run.time, dt);
+    // Sound before effects, because consuming the list empties it.
+    this.playEvents(run);
     this.effects.consume(run.events, this.camera);
     this.effects.update(dt);
 
@@ -611,16 +1358,26 @@ class App {
     }
   }
 
+  /**
+   * Everything the run reported this step, as sound.
+   *
+   * Kills and rescues both emitted an event and neither made a noise, because
+   * nothing was listening to the stream that already carried them. One loop
+   * fixes both and every future event arrives audible by default.
+   */
+  private playEvents(run: RunState): void {
+    for (const event of run.events) {
+      const voice = voiceForEvent(event.kind);
+      if (voice) audio.play(voice);
+    }
+  }
+
   /** Turn raw input into the command the simulation takes. */
   private command(): PlayerCommand {
     // Set only by the dev-only advance() helper, so an automated run can steer.
     if (this.commandOverride) return this.commandOverride;
 
-    const aim = this.input.aim
-      ? this.camera.screenToWorld(this.input.aim.x, this.input.aim.y)
-      : null;
-
-    if (this.input.firing) audio.play('shoot');
+    const aim = this.aimTarget();
 
     return {
       moveX: this.input.move.x,
@@ -631,12 +1388,52 @@ class App {
     };
   }
 
+  /**
+   * Where the gun is pointing, in world coordinates.
+   *
+   * Three sources, in order of how explicit the player was being:
+   *
+   *   1. The right thumb, which reports a direction rather than a point.
+   *   2. The mouse, which reports the point it is over.
+   *   3. Failing both, the direction of flight.
+   *
+   * That third case is not a nicety. Fly with the keyboard and never touch the
+   * mouse and there is no aim input at all, so the gun sits at its initial
+   * heading and fires due right for the entire run, which is exactly as broken
+   * as it sounds. Following the flight direction means the gun sweeps around
+   * as you turn, and anyone who wants to aim independently still can.
+   */
+  private aimTarget(): { x: number; y: number } | null {
+    const run = this.run;
+    if (!run) return null;
+
+    const REACH = 400;
+    const player = run.player;
+
+    const vector = this.input.aimVector;
+    if (vector) {
+      return { x: player.x + vector.x * REACH, y: player.y + vector.y * REACH };
+    }
+
+    if (this.input.aim) {
+      return this.camera.screenToWorld(this.input.aim.x, this.input.aim.y);
+    }
+
+    // No explicit aim. player.ts falls back to the direction of flight, which
+    // is a simulation rule and applies to every command source, so there is
+    // nothing to compute here.
+    return null;
+  }
+
   /** Effects and audio react to health, which the run itself knows nothing about. */
   private watchDamage(run: RunState): void {
     if (run.player.health < this.lastHealth) {
       this.effects.damageFlash();
       this.camera.shake(9);
-      audio.play('hit');
+      // Going down is its own sound, at the moment it happens rather than a
+      // beat later on the results screen.
+      audio.play(run.player.health <= 0 ? 'down' : 'hit');
+      if (run.player.health <= 0) this.camera.shake(22);
     }
     this.lastHealth = run.player.health;
   }
@@ -645,7 +1442,10 @@ class App {
     const run = this.run;
     if (!run) return;
 
-    this.renderer.draw(run, this.camera, this.effects, this.squad);
+    this.renderer.draw(run, this.camera, this.effects, this.squad, {
+      handle: this.me?.handle ?? null,
+      avatarUrl: this.me?.avatarUrl ?? null,
+    });
 
     if (this.screen === 'run') {
       this.hud.draw(
@@ -670,12 +1470,14 @@ class App {
     run: RunState | null;
     screen: Screen;
     squad: Squad;
+    music: typeof music;
     advance: (seconds: number, command?: Partial<PlayerCommand>) => void;
   } {
     return {
       run: this.run,
       screen: this.screen,
       squad: this.squad,
+      music,
       advance: (seconds, command) => {
         const steps = Math.min(Math.round(seconds * 60), 60 * 200);
         this.commandOverride = command
@@ -731,7 +1533,7 @@ void app.boot().catch((error) => {
   if (ui) {
     ui.replaceChildren();
     const wrap = document.createElement('div');
-    wrap.className = 'screen screen--center';
+    wrap.className = 'screen screen--center screen--bare';
     const heading = document.createElement('h1');
     heading.textContent = 'sFace could not start';
     const detail = document.createElement('p');

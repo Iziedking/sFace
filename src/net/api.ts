@@ -20,6 +20,33 @@ export interface BoardEntry {
   id: string;
   name: string;
   score: number;
+  avatarUrl?: string | null;
+  clanTag?: string | null;
+  /** Lifetime Face, so a row can show a rank badge. Daily rows carry it too. */
+  lifetimeFace?: number;
+}
+
+/** The all-time board is a list of profiles ranked on lifetime Face. */
+export async function fetchAllTime(): Promise<ApiResult<BoardEntry[]>> {
+  const result = await request<Array<Record<string, unknown>>>('/board/all-time');
+  if (!result.ok) return result;
+
+  return {
+    ok: true,
+    value: result.value.map((row) => ({
+      id: String(row.id ?? ''),
+      name: typeof row.name === 'string' ? row.name : 'Pilot',
+      // All-time ranks on the lifetime total, so that is the number shown.
+      score: numberOf(row.lifetimeFace),
+      avatarUrl: typeof row.avatarUrl === 'string' ? row.avatarUrl : null,
+      clanTag: typeof row.clanTag === 'string' ? row.clanTag : null,
+      lifetimeFace: numberOf(row.lifetimeFace),
+    })),
+  };
+}
+
+function numberOf(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.floor(value) : 0;
 }
 
 export interface ScoreSubmission {
@@ -32,6 +59,14 @@ export interface ScoreSubmission {
   attackersCleared: number;
   /** Seconds the run lasted. The server uses it as a plausibility check. */
   duration: number;
+  /** Folded into the lifetime record alongside the daily board entry. */
+  cachesTaken: number;
+  relicTaken: boolean;
+  extracted: boolean;
+  avatarUrl: string | null;
+  /** Which campaign stage this was, and whether it met the objective. */
+  stage: number;
+  stageCleared: boolean;
 }
 
 export type ChallengeStatus = 'open' | 'resolved' | 'settled';
@@ -62,10 +97,105 @@ export async function fetchBoard(date: string): Promise<ApiResult<BoardEntry[]>>
   return request<BoardEntry[]>(`/board/${encodeURIComponent(date)}`);
 }
 
-export async function postScore(submission: ScoreSubmission): Promise<ApiResult<{ rank: number }>> {
-  return request<{ rank: number }>('/board', {
+/**
+ * Post a run. Returns the daily rank and the updated lifetime record.
+ *
+ * Both come back from the one call on purpose: a rank that disagreed with the
+ * profile strip on the same screen would be a bug the player can see, and two
+ * calls is exactly how that happens.
+ */
+export async function postScore(
+  submission: ScoreSubmission,
+): Promise<ApiResult<{ rank: number; profile?: unknown }>> {
+  return request<{ rank: number; profile?: unknown }>('/board', {
     method: 'POST',
     body: JSON.stringify(submission),
+  });
+}
+
+// Clans --------------------------------------------------------------------
+
+export interface ClanRow {
+  tag: string;
+  /** Pooled lifetime Face across every member. */
+  face: number;
+  members: number;
+  bestScore: number;
+  topPilot: string | null;
+  topPilotAvatar: string | null;
+}
+
+export interface ClanMember {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+  lifetimeFace: number;
+  runs: number;
+}
+
+export interface ClanRequest {
+  id: string;
+  name: string;
+  askedAt: number;
+}
+
+export interface ClanDetail extends ClanRow {
+  place: number;
+  roster: ClanMember[];
+  ownerId: string | null;
+  ownerName: string | null;
+  /** Pilots waiting on the owner. Only actionable by the owner. */
+  pending: ClanRequest[];
+}
+
+export type JoinOutcome =
+  | { status: 'founded'; tag: string }
+  | { status: 'member'; tag: string }
+  | { status: 'requested'; tag: string; ownerName: string | null }
+  | { status: 'left' }
+  | { status: 'refused'; reason: string };
+
+export interface JoinResponse {
+  outcome: JoinOutcome;
+  profile: unknown;
+  /** Tags this pilot has an outstanding request on. */
+  pending: string[];
+}
+
+export async function fetchClans(): Promise<ApiResult<ClanRow[]>> {
+  return request<ClanRow[]>('/clans');
+}
+
+export async function fetchClan(tag: string): Promise<ApiResult<ClanDetail>> {
+  return request<ClanDetail>(`/clans/${encodeURIComponent(tag)}`);
+}
+
+/**
+ * Found a clan, ask to join one, or leave.
+ *
+ * All three are one call because from the service's side they are one write.
+ * The outcome says which of them actually happened, and it matters: founding
+ * puts you in immediately, asking does not.
+ */
+export async function joinClan(body: {
+  deviceId: string;
+  name: string;
+  tag: string | null;
+}): Promise<ApiResult<JoinResponse>> {
+  return request<JoinResponse>('/clans/join', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+/** The owner lets someone in or turns them away. The service checks who asked. */
+export async function decideClanRequest(
+  tag: string,
+  body: { deviceId: string; memberId: string; approve: boolean },
+): Promise<ApiResult<ClanDetail>> {
+  return request<ClanDetail>(`/clans/${encodeURIComponent(tag)}/decide`, {
+    method: 'POST',
+    body: JSON.stringify(body),
   });
 }
 
