@@ -82,13 +82,20 @@ rather than a headline with nothing behind it. No service at all and the whole
 mission falls back to a practice run generated from the date, labelled as
 practice everywhere it appears.
 
-**On real people.** The roster carries real handles and real public context,
-because that is a fact about the day. It does not carry photographs: KOL
-characters are drawn as generated figures derived deterministically from the
-handle, so the same person looks the same on every device without anyone's
-likeness being used. The one place a real profile picture appears is on your
-own character, from your own connected account. That distinction is deliberate
-and the code says so in `server/xsense.ts`.
+**On real people.** The roster carries real handles, real public context and
+real profile pictures, because all three are facts about the day and a wall of
+generated figures made the whole thing feel invented. Pictures come from X's
+public `profile_image_url` in `server/xusers.ts`, hotlinked at display time,
+never copied or stored. With no token the character falls back to a figure
+derived deterministically from the handle, so the same person still looks the
+same on every device.
+
+The hard line is on words, not faces. **No statement is ever attributed to a
+real person without a link to the post it came from.** The model is handed real
+posts with an index and returns indices; it never writes a URL, so a fabricated
+citation cannot be expressed in the first place. `server/xsense.ts` carries a
+comment saying not to reintroduce a model-written URL field, because an earlier
+version had one and it invented quotes.
 
 ## Connect X
 
@@ -155,6 +162,32 @@ key anywhere in this repo.
 The honest consequence: **a loser can decline to pay.** There is nothing here
 that can force a settlement, and the challenge screen says so rather than
 implying an enforcement that does not exist.
+
+## CT Signals
+
+The one thing in here that charges money, and the reason is boring: reading X
+costs per lookup and the credit has to come from somewhere.
+
+It answers a question you cannot answer about yourself. Of the accounts that
+publicly replied to or mentioned you this week, which ones already fly here,
+and which clan are they in. Picking a clan blind was the weakest decision in
+the game, so this is the fix for it: two or more of your actual engagers in one
+clan is a reason to look at it, and one is a coincidence.
+
+The free glance is deliberately useful rather than a teaser. It shows the real
+totals and your top three, computed from exactly the same read the paid tier
+uses. A paywall whose free side is worthless teaches people the paid side is
+worse. The deep read extends it to twenty and adds the clan overlap.
+
+**Nothing is stored.** Public replies and mentions only, computed on request
+and discarded. There is no engagement graph on disk, about players or about
+anyone they talk to. Set `SFACE_TREASURY` to charge for the deep read and
+`SIGNALS_PRICE_NIM` to price it; leave the treasury unset and it is simply
+free, which is the right default for a paywall with nowhere to pay. The
+payment is reported by the client, not verified on chain, exactly like
+challenge settlement and with the same caveat below. It matters less here:
+this repo is MIT and public, so the deep read was never behind a lock anybody
+had to break, and the screen says as much.
 
 ## The campaign
 
@@ -228,13 +261,14 @@ screen rather than implying a security model that is not there.
 
 ## What this build does not verify
 
-Two things, stated plainly because dressing them up would be worse than the
-gaps themselves.
+Stated plainly, because dressing them up would be worse than the gaps
+themselves.
 
-**Settlements are reported, not verified.** When a payment goes through, the
+**Payments are reported, not verified.** When a payment goes through, the
 client sends the serialized transaction to the service and it is stored and
 displayed as *reported by the payer*. There is no Nimiq node in this build to
-check it against.
+check it against. This covers both challenge settlements and the CT Signals
+deep read.
 
 **Leaderboard scores are bounded, not proven.** A client can lie about its
 score. Input-trace replay was scoped out, so what the service does instead is
@@ -261,9 +295,10 @@ the wallet, against an address shown on the payer's own screen.
 - `src/nimiq/` every call that touches the wallet, each one guarded
 - `src/net/` the service client, the live socket, and pilot identity
 - `src/ui/` the screens either side of a run, plus the score card
-- `server/` the daily oracle, leaderboard, challenges, ghost traces, the live
-  relay, and a JSON snapshot that survives a restart
-- `tests/` 201 tests, weighted toward the seed invariant, the payment path, and
+- `server/` the daily oracle, leaderboard, clans, challenges, ghost traces, the
+  live relay, the X reads behind the Dispatch and CT Signals, and a JSON
+  snapshot that survives a restart
+- `tests/` 215 tests, weighted toward the seed invariant, the payment path, and
   the trace decoder, which is the one place network data reaches the renderer
 
 ## Stack
