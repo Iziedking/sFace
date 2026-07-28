@@ -12,15 +12,14 @@
  * shape is agent tools on the Responses endpoint, and anything written from
  * memory of the old API will silently do nothing.
  *
- * ## What this deliberately does not do
+ * ## What this asks for, and what it does not
  *
- * It asks for handles and for what was publicly said. It does not ask for,
- * receive, or store profile pictures, and the roster it returns is rendered as
- * a generated character derived from the handle rather than as a photograph of
- * a real person. Naming a public figure and quoting what they publicly said is
- * ordinary; putting their face on a game character in a commercial submission
- * is a likeness question nobody needs. The player's own avatar is different:
- * they connected the account themselves, and that path is in server/xauth.ts.
+ * It asks for handles and for what was publicly said. It does not ask Grok for
+ * pictures: a language model is the wrong place to source an image URL, since
+ * it can produce a plausible one that points at nothing or, worse, at the
+ * wrong person. Pictures come from X's own API in server/xusers.ts, keyed on
+ * the handles this read returns, and the reasoning for showing them at all is
+ * written out at the top of that file.
  *
  * ## Why it is wrapped so heavily
  *
@@ -30,9 +29,20 @@
  * A Grok outage must cost the mission its flavour text, never its playability.
  */
 
+import { resolve, type XCandidate } from './xposts';
+
 const API_URL = 'https://api.x.ai/v1/responses';
 const MODEL = process.env.XAI_MODEL ?? 'grok-4.5';
-const TIMEOUT_MS = 45_000;
+/**
+ * Generous on purpose.
+ *
+ * This is a search-backed model call composing a headline, five people, six
+ * posts and up to four ongoing situations, and it runs once a day on a
+ * background tick rather than on a request. Nobody is waiting on it, so the
+ * only thing a short timeout buys is a mission with no story in it. Forty-five
+ * seconds was not enough once the feed was added and every read aborted.
+ */
+const TIMEOUT_MS = 150_000;
 
 /**
  * Hard ceiling on paid calls per UTC day. The mission is composed once a day,
@@ -42,6 +52,8 @@ const TIMEOUT_MS = 45_000;
 const MAX_CALLS_PER_DAY = 8;
 
 const QUIRKS = ['heavy', 'talker', 'paranoid', 'skittish', 'mercenary'] as const;
+const POST_KINDS = ['loud', 'call', 'warning', 'receipt', 'denial'] as const;
+const THREAD_STATES = ['watching', 'escalating', 'resolved', 'cold'] as const;
 export type Quirk = (typeof QUIRKS)[number];
 
 export interface XRosterEntry {
@@ -50,6 +62,59 @@ export interface XRosterEntry {
   line: string;
   quirk: Quirk;
   bounty: number;
+  /**
+   * Public profile picture, filled in by server/xusers.ts after this read.
+   * Null when X did not serve one, which renders as a generated figure.
+   */
+  avatarUrl?: string | null;
+}
+
+/**
+ * One thing worth reading, pulled off the timeline.
+ *
+ * Deliberately a summary and an attribution, never a verbatim quote. The point
+ * is to tell somebody what happened and who to go and read, not to reprint
+ * their post inside our product.
+ */
+export interface XPost {
+  handle: string;
+  /** What was said or what happened, in one dry sentence. */
+  summary: string;
+  /** Why it mattered today. */
+  why: string;
+  /** loud, call, warning, receipt, denial. Colours the chip. */
+  kind: 'loud' | 'call' | 'warning' | 'receipt' | 'denial';
+  /**
+   * A link to the post being summarised. REQUIRED, and anything without one
+   * is dropped before it reaches a screen.
+   *
+   * This is the single most important field in the file. Without it the model
+   * will happily produce a fluent, plausible sentence attributing a view to a
+   * real named person who never said it, and there is no way to tell from the
+   * output that it did. That is not a quality problem, it is putting words in
+   * somebody's mouth, and it is the thing the competition rules call
+   * deceptive content.
+   *
+   * A citation does not make the model honest. It makes it CHECKABLE, which is
+   * the only property that actually helps: a dead link is visible to anyone,
+   * including us, including a judge.
+   */
+  url: string;
+}
+
+/**
+ * A situation that is still running.
+ *
+ * The reason the feed is worth opening on a day you are not going to play: a
+ * rug or an exploit is not one day's news, and following it to the end is
+ * exactly what is hard to do by scrolling.
+ */
+export interface XThread {
+  title: string;
+  /** Where it stands right now. */
+  status: string;
+  /** watching, escalating, resolved, cold. */
+  state: 'watching' | 'escalating' | 'resolved' | 'cold';
 }
 
 export interface XBrief {
@@ -58,6 +123,10 @@ export interface XBrief {
   sentiment: number;
   topics: string[];
   roster: XRosterEntry[];
+  /** The heavy posts of the day. Empty when the read found nothing worth it. */
+  posts: XPost[];
+  /** Situations still being followed. Empty is a normal, quiet day. */
+  threads: XThread[];
 }
 
 export function xsenseConfigured(): boolean {
@@ -78,6 +147,12 @@ export async function readCryptoX(input: {
   ticker: string;
   changePct: number;
   fearGreed: number;
+  /**
+   * Real posts, already fetched from X. The model picks from these by index
+   * and never writes a link. See server/xposts.ts for why that is structural
+   * rather than a validation rule.
+   */
+  candidates?: readonly XCandidate[];
 }): Promise<XBrief | null> {
   const key = process.env.XAI_API_KEY;
   if (!key) return null;
@@ -112,7 +187,7 @@ export async function readCryptoX(input: {
       throw new Error(`xAI returned ${response.status}: ${(await response.text()).slice(0, 300)}`);
     }
 
-    const brief = parseBrief(extractText(await response.json()));
+    const brief = parseBrief(extractText(await response.json()), input.candidates ?? []);
     if (!brief) throw new Error('xAI returned a body we could not read');
 
     failures = 0;
@@ -139,11 +214,39 @@ export async function readCryptoX(input: {
   }
 }
 
+/**
+ * The real posts, numbered, for the model to choose from.
+ *
+ * Verbatim text goes IN because the model has to read what was actually said
+ * to judge it. Nothing verbatim comes back out: the schema only accepts a
+ * number and a summary, so the player never sees a reproduced post.
+ *
+ * Newlines are flattened because a post containing one would otherwise break
+ * the numbered list into what looks like extra items.
+ */
+function candidateBlock(candidates: readonly XCandidate[]): string[] {
+  if (candidates.length === 0) {
+    return [
+      '',
+      'No posts were retrievable today. Return an empty posts array. Do not describe any.',
+    ];
+  }
+
+  return [
+    '',
+    'THE NUMBERED LIST. These are the real posts, already retrieved from X. Choose only from these.',
+    ...candidates.map(
+      (c) => `${c.index}. @${c.handle}${c.kind === 'repost' ? ' (repost)' : ''}: ${c.text.replace(/\s+/g, ' ')}`,
+    ),
+  ];
+}
+
 function requestBody(input: {
   date: string;
   ticker: string;
   changePct: number;
   fearGreed: number;
+  candidates?: readonly XCandidate[];
 }) {
   // Only today. Yesterday's argument is not today's mission.
   const from = input.date;
@@ -156,16 +259,27 @@ function requestBody(input: {
         content: [
           'You are briefing a game that turns each day on crypto X into a rescue mission.',
           '',
-          `Today is ${input.date}. The worst performer in the top 100 is ${input.ticker}, down ${Math.abs(
-            input.changePct,
-          ).toFixed(1)} percent. The Fear and Greed index reads ${input.fearGreed}.`,
+          `Today is ${input.date}. The Fear and Greed index reads ${input.fearGreed}.`,
           '',
-          'Search X for what crypto is actually talking about today and answer with:',
+          /*
+           * The ticker is deliberately NOT given.
+           *
+           * It used to be, and it poisoned everything downstream: handed an
+           * obscure top-100 token and asked what X is discussing, the model
+           * anchored on the token and produced confident attributed quotes
+           * about it for real, named people who had never mentioned it. The
+           * level comes from the market; the conversation has to come from the
+           * conversation. They are two independent true things and joining
+           * them invented a third that was false.
+           */
+          'Search X for what crypto is genuinely talking about today and answer with:',
           '',
           '1. headline: one sentence, present tense, plain language, no hype words and no exclamation marks. What is the story today. Under 120 characters.',
           '2. sentiment: an integer from -100 (capitulation) to 100 (euphoria), read from the timeline rather than from the price.',
           '3. topics: two to four short phrases naming what people are arguing about. Two or three words each.',
           '4. roster: exactly five well known crypto accounts who were genuinely being discussed today.',
+          '5. posts: the heaviest items from THE NUMBERED LIST BELOW, three to six of them. Choose what somebody who was away all day would want to know. Refer to each ONLY by its number. Do not write a handle, a link, a date or an id: they are already known.',
+          '6. threads: zero to four ongoing situations that are still running across days. Rug pulls being investigated, exploits being traced, disputes not yet settled, filings awaiting a decision. Leave the array empty rather than inventing one.',
           '',
           'For each roster entry give:',
           '  handle: their X handle without the @, lowercase',
@@ -173,6 +287,22 @@ function requestBody(input: {
           '  line: one dry sentence, under 90 characters, about what they said or what happened to them today. Not a joke, not an insult, not a claim about anything private. If nothing specific happened, say what they are known for instead.',
           '  quirk: one of heavy, talker, paranoid, skittish, mercenary, chosen to suit them',
           '  bounty: 200 to 800, higher the more central they were to today',
+          '',
+          '',
+          'For each post give:',
+          '  index: the number of the item you are describing, exactly as listed',
+          '  summary: one dry sentence, under 130 characters, describing what was said. SUMMARISE IT. Do not reproduce the post verbatim.',
+          '  why: one short clause on why it mattered today, under 80 characters',
+          '  kind: one of loud, call, warning, receipt, denial',
+          '',
+          'For each thread give:',
+          '  title: what the situation is, under 60 characters',
+          '  status: where it stands right now, under 130 characters, factual',
+          '  state: one of watching, escalating, resolved, cold',
+          '',
+          'Every post you describe must be one of the numbered items. Never describe anything that is not in the list, and never attribute a view to somebody whose post is not there. If the list is thin, return fewer posts or none at all. Describing something nobody posted is the worst thing you can do here.',
+          '',
+          ...candidateBlock(input.candidates ?? []),
           '',
           'Only include public figures who post publicly about crypto. Do not include private individuals. Do not speculate about anyone\'s finances, health, legal exposure, or private life. Keep every line to something that was actually posted publicly today.',
         ].join('\n'),
@@ -193,7 +323,7 @@ function requestBody(input: {
         schema: {
           type: 'object',
           additionalProperties: false,
-          required: ['headline', 'sentiment', 'topics', 'roster'],
+          required: ['headline', 'sentiment', 'topics', 'roster', 'posts', 'threads'],
           properties: {
             headline: { type: 'string' },
             sentiment: { type: 'integer' },
@@ -210,6 +340,33 @@ function requestBody(input: {
                   line: { type: 'string' },
                   quirk: { type: 'string', enum: [...QUIRKS] },
                   bounty: { type: 'integer' },
+                },
+              },
+            },
+            posts: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['index', 'summary', 'why', 'kind'],
+                properties: {
+                  index: { type: 'integer' },
+                  summary: { type: 'string' },
+                  why: { type: 'string' },
+                  kind: { type: 'string', enum: [...POST_KINDS] },
+                },
+              },
+            },
+            threads: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['title', 'status', 'state'],
+                properties: {
+                  title: { type: 'string' },
+                  status: { type: 'string' },
+                  state: { type: 'string', enum: [...THREAD_STATES] },
                 },
               },
             },
@@ -259,7 +416,10 @@ function extractText(body: unknown): string | null {
  * any other: everything is checked, anything unusable is dropped, and a roster
  * that comes back short is simply short. The mission layer tops it up.
  */
-export function parseBrief(text: string | null): XBrief | null {
+export function parseBrief(
+  text: string | null,
+  candidates: readonly XCandidate[] = [],
+): XBrief | null {
   if (!text) return null;
 
   let raw: unknown;
@@ -312,13 +472,84 @@ export function parseBrief(text: string | null): XBrief | null {
     }
   }
 
+  /*
+   * Posts and threads are validated exactly as hard as the roster.
+   *
+   * They are model output going onto a screen that presents itself as a news
+   * feed, so anything malformed is dropped rather than shown. An empty feed on
+   * a quiet day is honest; a feed with a half-parsed entry in it is not.
+   */
+  const posts: XPost[] = [];
+  const seenIndex = new Set<number>();
+  if (Array.isArray(value.posts)) {
+    for (const item of value.posts) {
+      if (typeof item !== 'object' || item === null) continue;
+      const entry = item as Record<string, unknown>;
+
+      /*
+       * The index is the whole safety property.
+       *
+       * The handle, the link and the timestamp all come from the post X gave
+       * us, never from the model. An index that was invented, repeated or out
+       * of range resolves to nothing and the row simply does not exist.
+       */
+      const source = resolve(candidates, entry.index);
+      const summary = str(entry.summary, 160);
+      if (!source || !summary || seenIndex.has(source.index)) continue;
+      seenIndex.add(source.index);
+
+      posts.push({
+        handle: source.handle,
+        summary,
+        why: str(entry.why, 100) ?? '',
+        kind: POST_KINDS.includes(entry.kind as never) ? (entry.kind as XPost['kind']) : 'loud',
+        url: source.url,
+      });
+
+      if (posts.length === 6) break;
+    }
+  }
+
+  const threads: XThread[] = [];
+  if (Array.isArray(value.threads)) {
+    for (const item of value.threads) {
+      if (typeof item !== 'object' || item === null) continue;
+      const entry = item as Record<string, unknown>;
+
+      const title = str(entry.title, 80);
+      const status = str(entry.status, 160);
+      if (!title || !status) continue;
+
+      threads.push({
+        title,
+        status,
+        state: THREAD_STATES.includes(entry.state as never)
+          ? (entry.state as XThread['state'])
+          : 'watching',
+      });
+
+      if (threads.length === 4) break;
+    }
+  }
+
   return {
     headline: headline.slice(0, 140),
     sentiment: clamp(Math.round(numberOf(value.sentiment) ?? 0), -100, 100),
     topics,
     roster,
+    posts,
+    threads,
   };
 }
+
+/*
+ * postUrl() used to live here: it validated a URL the model wrote, checking
+ * the host, the /status/ path and that the handle in the path matched the
+ * handle being attributed. It is gone because the model no longer writes URLs
+ * at all. It picks a numbered real post and server/xposts.ts builds the link
+ * from X's own id, which makes a fabricated link impossible to express rather
+ * than merely detectable. Do not reintroduce a model-written URL field.
+ */
 
 function str(value: unknown, max: number): string | null {
   if (typeof value !== 'string') return null;

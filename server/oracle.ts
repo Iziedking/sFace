@@ -15,13 +15,25 @@
  * hard, which is exactly why this runs once a day and caches, not per request.
  */
 
-import { readCryptoX, xsenseConfigured, type XRosterEntry } from './xsense';
+import {
+  readCryptoX,
+  xsenseConfigured,
+  type XPost,
+  type XRosterEntry,
+  type XThread,
+} from './xsense';
+import { lookupAvatars } from './xusers';
+import { recentFrom } from './xposts';
 
 export interface MissionStory {
   headline: string;
   sentiment: number;
   topics: string[];
   live: boolean;
+  /** The heavy posts of the day, for the dispatch feed. */
+  posts: XPost[];
+  /** Situations still running across days. */
+  threads: XThread[];
 }
 
 export interface MissionPayload {
@@ -71,15 +83,64 @@ export async function composeMission(): Promise<MissionPayload> {
    * or a Grok outage produces a mission with less flavour rather than no
    * mission.
    */
-  const brief = await readCryptoX({
+  /*
+   * Two reads, in order, and the order is the point.
+   *
+   * The first asks Grok who crypto X is actually arguing about today, which is
+   * a judgement and the thing a model is good at. The second goes to X and
+   * fetches what those accounts genuinely posted, which is a fact and the
+   * thing a model must never be asked for. The third call hands those real
+   * posts back to Grok to rank and summarise.
+   *
+   * Costed deliberately: it is three round trips once a day on a background
+   * tick, and it is what stands between a news feed and a machine that invents
+   * quotes about real people. See server/xposts.ts.
+   */
+  const cast = await readCryptoX({
     date,
     ticker: worst.symbol.toUpperCase(),
     changePct: worst.changePct,
     fearGreed: fng.value,
   });
 
+  const candidates = cast ? await recentFrom(cast.roster.map((r) => r.handle)) : [];
+
+  // Only worth a second Grok call if X actually gave us something to rank.
+  const brief =
+    candidates.length > 0
+      ? ((await readCryptoX({
+          date,
+          ticker: worst.symbol.toUpperCase(),
+          changePct: worst.changePct,
+          fearGreed: fng.value,
+          candidates,
+        })) ?? cast)
+      : cast;
+
   if (!brief && xsenseConfigured()) {
     console.warn('[sface] mission composed without an X read, falling back to archetypes');
+  }
+
+  /*
+   * Put a real face on each of them.
+   *
+   * Done here rather than inside the Grok read because a language model is the
+   * wrong source for an image URL, and done after the roster is settled so it
+   * is one lookup for the whole cast. It resolves to an empty map on any
+   * failure, in which case every entry keeps a null picture and renders as the
+   * generated figure it did before.
+   *
+   * Note that this runs AFTER the seed material is decided below only in
+   * reading order: the fingerprint deliberately does not include the picture,
+   * because a KOL changing their avatar mid-day must not invalidate every
+   * in-flight challenge on today's seed.
+   */
+  const roster = brief?.roster ?? [];
+  if (roster.length > 0) {
+    const pictures = await lookupAvatars(roster.map((r) => r.handle));
+    for (const entry of roster) {
+      entry.avatarUrl = pictures.get(entry.handle) ?? null;
+    }
   }
 
   return {
@@ -108,11 +169,13 @@ export async function composeMission(): Promise<MissionPayload> {
     difficulty,
     // Extreme fear means a harder run, so it pays more. The market sets the purse.
     bountyMultiplier: 1 + (5 - difficulty === 0 ? 0.5 : (difficulty - 1) * 0.15),
-    roster: brief?.roster ?? [],
+    roster,
     story: brief
       ? {
           headline: brief.headline,
           sentiment: brief.sentiment,
+          posts: brief.posts,
+          threads: brief.threads,
           topics: brief.topics,
           live: true,
         }
