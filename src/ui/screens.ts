@@ -19,7 +19,10 @@ import { ATTACKER_SCORE, TIME_BONUS_PER_SECOND } from '../game/state';
 import type { BoardEntry } from '../net/api';
 import { progressOf, type Profile } from '../net/profile';
 import { rankFor } from '../data/story';
+import { deck, type DeckPanel } from './deck';
+import { footer } from './footer';
 import { STAGES, type Stage } from '../data/campaign';
+import type { Contract } from '../data/contracts';
 
 export interface BriefOptions {
   mission: DailyMission;
@@ -32,6 +35,8 @@ export interface BriefOptions {
   profile: Profile | null;
   /** Shown when the host wallet is not on the main network. */
   testnet: boolean;
+  /** The wallet's network, or null when there is no wallet. Three states. */
+  network: string | null;
   /** Current sound state, for the toggle's label. */
   soundOn: boolean;
   /** What is in hand, named on the button so the rack is never a mystery box. */
@@ -41,7 +46,11 @@ export interface BriefOptions {
   /** The stage about to be flown, and how far up the campaign they are. */
   stage: Stage;
   stagesCleared: number;
+  /** Today's three jobs inside this stage. */
+  contracts: Contract[];
   onCampaign: () => void;
+  onDispatch: () => void;
+  onSignals: () => void;
   onStart: () => void;
   onBoard: () => void;
   onLoadout: () => void;
@@ -55,6 +64,12 @@ export interface BriefOptions {
   /** Absent when X connect is not configured on this deployment. */
   onConnectX: (() => void) | null;
 }
+
+/**
+ * The live deck, so it can be stopped before the next screen replaces it.
+ * Module state because there is only ever one brief on screen.
+ */
+let activeDeck: { stop: () => void } | null = null;
 
 export function renderBrief(root: HTMLElement, options: BriefOptions): void {
   const { mission } = options;
@@ -102,6 +117,43 @@ export function renderBrief(root: HTMLElement, options: BriefOptions): void {
    * the mobile layout changes, and there is no second markup path to keep in
    * step with this one.
    */
+  /*
+   * The brief turns itself over rather than scrolling.
+   *
+   * It grew: a mission card, then the story, then the stage, then three
+   * contracts, then five people, and by the end it was a screen you had to
+   * scroll to understand. That is the wrong shape for the first thing anybody
+   * sees, and "can somebody go from zero to using this in under 60 seconds" is
+   * a scored criterion in as many words.
+   *
+   * So the categories take turns in one fixed frame while the primary action
+   * stays put underneath, never scrolled away. See ui/deck.ts, including why
+   * an auto-advancing panel is only acceptable with four specific guarantees.
+   */
+  const panels: DeckPanel[] = [
+    { label: "TODAY'S WRECK", body: el('div', { class: 'panel' }, card, hints) },
+  ];
+
+  const story = storyBlock(mission);
+  if (story) panels.push({ label: 'ON X', body: el('div', { class: 'panel' }, story) });
+
+  panels.push({
+    label: 'YOUR STAGE',
+    body: el('div', { class: 'panel' }, stageStrip(options)),
+  });
+
+  const contracts = contractBlock(options.contracts);
+  if (contracts) panels.push({ label: 'CONTRACTS', body: el('div', { class: 'panel' }, contracts) });
+
+  const roster = rosterBlock(mission);
+  if (roster) panels.push({ label: 'IN THE WRECK', body: el('div', { class: 'panel' }, roster) });
+
+  // Torn down on the next mount. Without this the timer outlives the DOM it
+  // was written for and keeps firing against detached nodes.
+  activeDeck?.stop();
+  const built = deck({ panels });
+  activeDeck = built;
+
   mount(
     root,
     el(
@@ -112,13 +164,7 @@ export function renderBrief(root: HTMLElement, options: BriefOptions): void {
         { class: 'col' },
         el('p', { class: 'eyebrow', text: t('missionToday') }),
         el('h1', { text: t('tagline') }),
-        card,
-        storyBlock(mission),
-        // Moved over from the right column. The roster and the actions are
-        // both long, so leaving the explanation with them left the left column
-        // ending halfway up the page with nothing under it.
-        el('p', { class: 'quiet', text: t('briefBody') }),
-        hints,
+        built.root,
         // A stake reading "5 NIM" means something different on testnet, and
         // the honest fix is to say which network it is rather than hide it.
         options.testnet
@@ -131,12 +177,7 @@ export function renderBrief(root: HTMLElement, options: BriefOptions): void {
       ),
       el(
         'div',
-        { class: 'col' },
-        // The one thing the bar cannot carry: what this particular run is for.
-        // No rank strip here any more, because the bar has the tier and the
-        // lifetime total on every screen and two copies of it is noise.
-        stageStrip(options),
-        rosterBlock(mission),
+        { class: 'col col--top' },
         options.me,
         el(
           'div',
@@ -145,15 +186,30 @@ export function renderBrief(root: HTMLElement, options: BriefOptions): void {
           options.onConnectX && !options.me
             ? button(t('connectX'), options.onConnectX, 'x')
             : null,
-          button(`Loadout · ${options.weaponName}`, options.onLoadout, 'ghost'),
-          button('The campaign', options.onCampaign, 'ghost'),
-          button(
-            options.clanTag ? `Clan · ${options.clanTag}` : 'Find a clan',
-            options.onClan,
-            'ghost',
+          /*
+           * Everything else is a small tile rather than a full-width block.
+           *
+           * Eight stacked blocks all the size of "Start the run" said that
+           * eight things mattered equally, which is both untrue and the reason
+           * the screen needed scrolling. One primary action, then a grid.
+           */
+          el(
+            'div',
+            { class: 'tiles' },
+            tile('Campaign', `${options.stagesCleared}/${STAGES.length}`, options.onCampaign),
+            tile(
+              'Dispatch',
+              mission.story?.live ? 'live' : 'cached',
+              options.onDispatch,
+              mission.story?.live === true,
+            ),
+            // Named for what it is. "Board" was a tile nobody read as the
+            // leaderboard, so the leaderboard was effectively missing.
+            tile('Leaderboard', 'today and all time', options.onBoard),
+            tile('Loadout', options.weaponName, options.onLoadout),
+            tile('Clan', options.clanTag ?? 'none', options.onClan),
+            tile('Signals', 'who talks to you', options.onSignals),
           ),
-          button('How to play', options.onControls, 'ghost'),
-          button(t('viewBoard'), options.onBoard, 'ghost'),
           el(
             'div',
             { class: 'minor' },
@@ -173,8 +229,34 @@ export function renderBrief(root: HTMLElement, options: BriefOptions): void {
           ),
         ),
       ),
+
+      footer({
+        onControls: options.onControls,
+        onDispatch: options.onDispatch,
+        onBoard: options.onBoard,
+        onCampaign: options.onCampaign,
+        network: options.network,
+        testnet: options.testnet,
+      }),
     ),
   );
+}
+
+/** One small square of the secondary grid: what it is, and its current state. */
+function tile(
+  label: string,
+  value: string,
+  onClick: () => void,
+  live = false,
+): HTMLElement {
+  const node = el(
+    'button',
+    { class: live ? 'tile tile--live' : 'tile', type: 'button' },
+    el('span', { class: 'tile__label', text: label }),
+    el('span', { class: 'tile__value', text: value }),
+  );
+  node.addEventListener('click', onClick);
+  return node;
 }
 
 /**
@@ -200,6 +282,43 @@ function stageStrip(options: BriefOptions): HTMLElement {
       class: 'chrome__ticker',
       text: `${options.stagesCleared}/${STAGES.length}`,
     }),
+  );
+}
+
+/**
+ * Today's three jobs.
+ *
+ * On the brief rather than behind a tab, because they are the answer to "why
+ * am I playing today rather than yesterday" and that question gets asked on
+ * this screen or not at all.
+ */
+function contractBlock(contracts: readonly Contract[]): HTMLElement | null {
+  if (contracts.length === 0) return null;
+
+  return el(
+    'div',
+    {},
+    el('p', { class: 'stat__label', text: "TODAY'S CONTRACTS" }),
+    el(
+      'div',
+      { class: 'contracts' },
+      ...contracts.map((contract) =>
+        el(
+          'div',
+          { class: 'contract' },
+          el(
+            'div',
+            { class: 'contract__body' },
+            el('div', { class: 'contract__label', text: contract.label }),
+            el('div', { class: 'contract__why', text: contract.because }),
+          ),
+          el('span', {
+            class: 'contract__pay',
+            text: `+${Math.round(contract.bonus * 100)}%`,
+          }),
+        ),
+      ),
+    ),
   );
 }
 
@@ -230,6 +349,12 @@ function storyBlock(mission: DailyMission): HTMLElement | null {
       el('span', { class: 'chip', text: sentimentLabel(story.sentiment) }),
     ),
     el('p', { class: 'story__headline', text: story.headline }),
+    story.posts.length + story.threads.length > 0
+      ? el('p', {
+          class: 'story__more',
+          text: `${story.posts.length} posts · ${story.threads.length} still running`,
+        })
+      : null,
     chips.length > 0 ? el('div', { class: 'story__topics' }, ...chips) : null,
   );
 }
@@ -336,8 +461,16 @@ export interface ResultsOptions {
   unlockedWeapon: string | null;
   /** Whether this run met its stage's objective. */
   stageCleared: boolean;
+  /** The three that were on offer, and the ones this run actually met. */
+  contracts: Contract[];
+  contractsMet: Contract[];
+  /** The stage this run just opened, when it opened one. */
+  nextStage: Stage | null;
   onLoadout: () => void;
   onCampaign: () => void;
+  onNextStage: () => void;
+  /** Back to the brief. Every run has to end somewhere that is not itself. */
+  onHome: () => void;
   onReplay: () => void;
   onChallenge: () => void;
   onShare: () => void;
@@ -363,6 +496,11 @@ export function renderResults(root: HTMLElement, options: ResultsOptions): void 
     row(t('attackers'), `${state.attackersCleared} × ${ATTACKER_SCORE}`),
     row(t('timeBonus'), timeBonus.toLocaleString()),
     row(t('bounty'), `×${state.mission.bountyMultiplier.toFixed(2)}`),
+    row('Stage', `×${state.stage.bounty}`),
+    row(
+      `Contracts (${options.contractsMet.length} of ${options.contracts.length})`,
+      `×${state.contractBonus.toFixed(2)}`,
+    ),
   );
 
   const lostCount = state.faces.filter((f) => f.state === 'lost').length;
@@ -404,6 +542,36 @@ export function renderResults(root: HTMLElement, options: ResultsOptions): void 
 
         breakdown,
 
+        // Which of today's three landed, named. A multiplier with no reason
+        // beside it is a number nobody learns anything from.
+        options.contracts.length > 0
+          ? el(
+              'div',
+              { class: 'contracts' },
+              ...options.contracts.map((contract) =>
+                el(
+                  'div',
+                  {
+                    class: options.contractsMet.includes(contract)
+                      ? 'contract contract--met'
+                      : 'contract contract--missed',
+                  },
+                  el(
+                    'div',
+                    { class: 'contract__body' },
+                    el('div', { class: 'contract__label', text: contract.label }),
+                  ),
+                  el('span', {
+                    class: 'contract__pay',
+                    text: options.contractsMet.includes(contract)
+                      ? `+${Math.round(contract.bonus * 100)}%`
+                      : 'missed',
+                  }),
+                ),
+              ),
+            )
+          : null,
+
         // The rank moves on the results screen, which is the one moment the
         // player is already looking at what a run was worth.
         options.rankedUp
@@ -423,6 +591,28 @@ export function renderResults(root: HTMLElement, options: ResultsOptions): void 
               text: `Stage ${state.stage.n} not cleared. ${state.stage.objective}`,
             }),
 
+        // Clearing a stage used to say so and then leave you on a screen whose
+        // only button was "Run it again", which is the one thing you have just
+        // finished doing. The campaign is the reason to come back, so it has to
+        // be the thing the screen points at.
+        options.nextStage
+          ? el(
+              'div',
+              { class: 'nextup' },
+              el(
+                'div',
+                { class: 'nextup__body' },
+                el('span', { class: 'stat__label', text: 'NEXT' }),
+                el('div', {
+                  class: 'nextup__name',
+                  text: `Stage ${options.nextStage.n} · ${options.nextStage.name}`,
+                }),
+                el('div', { class: 'nextup__what', text: options.nextStage.objective }),
+              ),
+              button('Fly it', options.onNextStage, 'ghost'),
+            )
+          : null,
+
         options.unlockedWeapon
           ? el(
               'div',
@@ -436,10 +626,6 @@ export function renderResults(root: HTMLElement, options: ResultsOptions): void 
       el(
         'div',
         { class: 'col' },
-        options.postError
-          ? el('div', { class: 'notice notice--error', text: options.postError })
-          : null,
-
         options.cardUrl
           ? el('img', {
               class: 'card-preview',
@@ -448,18 +634,35 @@ export function renderResults(root: HTMLElement, options: ResultsOptions): void 
             })
           : null,
 
+        /*
+         * The answer sits with the buttons, not at the top of the column.
+         *
+         * Challenge a friend in a plain browser sets a notice explaining that
+         * staking needs Nimiq Pay, and that notice used to render above the
+         * card, a full screen away from the button that caused it. The feature
+         * worked and reported itself correctly, and it still read as a dead
+         * button, because nothing changed anywhere the player was looking.
+         */
         el(
           'div',
           { class: 'actions' },
-          button(t('playAgain'), options.onReplay),
+          options.postError
+            ? el('div', { class: 'notice notice--error', text: options.postError })
+            : null,
+          options.nextStage
+            ? button(`Start Stage ${options.nextStage.n}`, options.onNextStage)
+            : button(t('playAgain'), options.onReplay),
+          options.nextStage
+            ? button(t('playAgain'), options.onReplay, 'ghost')
+            : null,
           button(t('challengeFriend'), options.onChallenge, 'ghost'),
           button(t('shareRun'), options.onShare, 'ghost'),
           el(
             'div',
             { class: 'minor' },
+            button('Home', options.onHome, 'quiet'),
             button(t('viewBoard'), options.onBoard, 'quiet'),
             button('Campaign', options.onCampaign, 'quiet'),
-            button('Loadout', options.onLoadout, 'quiet'),
           ),
         ),
       ),
@@ -477,19 +680,31 @@ export interface BoardOptions {
   meId: string | null;
   offline: boolean;
   loading: boolean;
+  /** Zero-based page. */
+  page: number;
+  onPage: (page: number) => void;
   onTab: (tab: BoardTab) => void;
   onBack: () => void;
 }
 
-/** How many rows the board shows before it starts pinning instead. */
-const BOARD_VISIBLE = 20;
+/**
+ * Rows per page.
+ *
+ * Ten fits a phone without scrolling past the controls. The board used to show
+ * twenty in one run and simply stop, which both buried the Back button and gave
+ * anyone outside the top twenty no way to look further down.
+ */
+const PAGE_SIZE = 10;
 
 export function renderBoard(root: HTMLElement, options: BoardOptions): void {
   const ranked = options.entries.map((entry, index) => ({ entry, place: index + 1 }));
-  const visible = ranked.slice(0, BOARD_VISIBLE);
+  const pages = Math.max(1, Math.ceil(ranked.length / PAGE_SIZE));
+  const page = Math.min(Math.max(0, options.page), pages - 1);
+  const from = page * PAGE_SIZE;
+  const visible = ranked.slice(from, from + PAGE_SIZE);
 
   /*
-   * Pin the player's own row when it falls outside the visible top.
+   * Pin the player's own row when it is not on the page being looked at.
    *
    * A board that only shows the leaders answers "who is winning" and refuses
    * to answer "where am I", which is the question the person looking at it
@@ -497,7 +712,8 @@ export function renderBoard(root: HTMLElement, options: BoardOptions): void {
    * the next run feel like it is for something.
    */
   const mine = options.meId ? ranked.find((r) => r.entry.id === options.meId) : undefined;
-  const pinned = mine && mine.place > BOARD_VISIBLE ? mine : undefined;
+  const onThisPage = mine && mine.place > from && mine.place <= from + PAGE_SIZE;
+  const pinned = mine && !onThisPage ? mine : undefined;
 
   const body = options.loading
     ? el('p', { class: 'spinner', text: 'Reading the board' })
@@ -515,7 +731,21 @@ export function renderBoard(root: HTMLElement, options: BoardOptions): void {
             : null,
           pinned ? boardRow(pinned.entry, pinned.place, options.meId, options.tab) : null,
         )
-      : el('div', { class: 'empty', text: t('boardEmpty') });
+      : el(
+          'div',
+          { class: 'empty' },
+          el('p', { text: t('boardEmpty') }),
+          el('p', {
+            class: 'quiet',
+            // Said plainly. A board with nobody on it is the truth on a new day,
+            // and filling it with names that never played would be a lie that
+            // costs more than the empty space.
+            text:
+              options.tab === 'daily'
+                ? 'Nobody has posted a run on this level yet. First score sets the mark.'
+                : 'No lifetime totals yet. Every finished run counts toward this.',
+          }),
+        );
 
   mount(
     root,
@@ -548,7 +778,31 @@ export function renderBoard(root: HTMLElement, options: BoardOptions): void {
         : null,
 
       body,
-      el('div', { class: 'actions' }, button('Back', options.onBack, 'ghost')),
+
+      !options.loading && pages > 1
+        ? el(
+            'div',
+            { class: 'pager' },
+            el('span', {
+              class: 'pager__where',
+              text: `${from + 1}–${Math.min(from + PAGE_SIZE, ranked.length)} of ${ranked.length}`,
+            }),
+            el(
+              'div',
+              { class: 'pager__steps' },
+              button('Back', () => options.onPage(page - 1), 'quiet', { disabled: page === 0 }),
+              button('More', () => options.onPage(page + 1), 'ghost', {
+                disabled: page >= pages - 1,
+              }),
+            ),
+          )
+        : null,
+
+      el(
+        'div',
+        { class: 'actions' },
+        button('Back', options.onBack, 'ghost'),
+      ),
     ),
   );
 }

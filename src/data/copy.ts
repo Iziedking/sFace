@@ -6,9 +6,14 @@
  * back to English when a translation is missing, so adding a language is
  * additive and a missing key is a small English word rather than a blank.
  *
- * Voice: short declaratives. Problem first, action second. The mission copy can
- * be dry and funny, it is never breathless. No exclamation marks in failure
- * states, nobody wants to be shouted at after dying.
+ * Voice: short declaratives. Problem first, action second. Dry, and allowed to
+ * be funny, but never breathless and never a marketing line. It talks the way
+ * crypto X talks about a bad day, which is flatly and with the joke buried.
+ *
+ * Two hard rules. No exclamation marks in a failure state, because nobody
+ * wants to be shouted at after dying. And nothing claims anything the product
+ * cannot back: no invented numbers, no "the best", no promise of a prize that
+ * is not already funded.
  */
 
 const en = {
@@ -21,13 +26,13 @@ const en = {
   fearIndex: 'Fear and Greed',
   difficulty: 'Difficulty',
   briefBody:
-    'Fly the chart. Free the faces trapped in the wreck. Reach extraction before the clock runs out.',
+    'The chart is the ground. The people in it are whoever crypto spent today arguing about. Get them out before the clock does.',
   startRun: 'Start the run',
   howToPlay: 'How to play',
   connectX: 'Connect X',
   connectedAs: 'Flying as',
   disconnectX: 'Disconnect',
-  connectXWhy: 'Your profile picture rides on your character.',
+  connectXWhy: 'Your picture rides on your character and your handle goes on the board.',
   connectXFailed: 'Could not connect that account. Playing without it.',
   controlsMove: 'Left thumb flies',
   controlsShoot: 'Right thumb aims and fires',
@@ -36,13 +41,13 @@ const en = {
   // Live run
   timeLeft: 'Time',
   carrying: 'Carrying',
-  extractAhead: 'Extraction ahead',
+  extractAhead: 'Pad ahead',
   extractReached: 'Extraction',
   facesFreed: 'freed',
 
   // Results
   runComplete: 'Run complete',
-  runFailed: 'You went down',
+  runFailed: 'You went down with them',
   score: 'Score',
   faces: 'Faces out',
   attackers: 'Attackers cleared',
@@ -55,14 +60,15 @@ const en = {
 
   // Leaderboard
   boardTitle: 'Today',
-  boardEmpty: 'No runs posted yet. Yours would be first.',
+  boardEmpty: 'Nobody has flown this one yet. First score sets the mark.',
   boardYou: 'You',
   boardOffline: 'The board is unreachable. Your score is saved on this device.',
 
   // Challenges
   challengeTitle: 'Challenge',
   challengeStake: 'Stake',
-  challengeSame: 'Same mission, same seed, same level. Loser pays.',
+  challengeSame:
+    'Same day, same seed, same level, down to the pixel. No advantage anyone can buy. Higher score takes the stake.',
   challengeCreate: 'Create the challenge',
   challengeOpen: 'Waiting on them',
   challengeAccept: 'Accept and play',

@@ -56,11 +56,13 @@ export function button(
   label: string,
   onClick: () => void,
   variant: ButtonVariant = 'primary',
+  options: { disabled?: boolean } = {},
 ): HTMLButtonElement {
   const node = el('button', {
     class: BUTTON_CLASS[variant],
     type: 'button',
     text: label,
+    disabled: options.disabled === true,
   });
   node.addEventListener('click', onClick);
   return node;

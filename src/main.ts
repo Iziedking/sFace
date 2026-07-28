@@ -40,6 +40,9 @@ import { renderPause, renderRunOverlay } from './ui/pause';
 import { renderLoadout } from './ui/loadout';
 import { renderClan } from './ui/clan';
 import { renderCampaign } from './ui/campaign';
+import { renderDispatch } from './ui/dispatch';
+import { renderSignals } from './ui/signals';
+import { SPLASH_FULL_MS, pause as splashPause, renderSplash } from './ui/splash';
 import { hideChrome, renderChrome } from './ui/chrome';
 import { chooseWeapon, resolveWeapon } from './core/loadout';
 import { narrator } from './core/voice';
@@ -49,7 +52,7 @@ import {
   onFullscreenChange,
   toggleFullscreen,
 } from './core/fullscreen';
-import { cardDataFrom, drawScoreCard, shareLink, shareRun } from './ui/share';
+import { cardDataFrom, cardFile, drawScoreCard, shareLink, shareRun } from './ui/share';
 import {
   acceptChallenge,
   apiConfigured,
@@ -61,7 +64,9 @@ import {
   fetchClan,
   fetchClans,
   fetchGhosts,
+  fetchSignals,
   joinClan,
+  unlockSignals,
   postGhost,
   postScore,
   reportSettlement,
@@ -69,6 +74,7 @@ import {
   type Challenge,
   type ClanDetail,
   type ClanRow,
+  type Signals,
 } from './net/api';
 import { pilotId, pilotName, upgradeTo } from './net/identity';
 import {
@@ -80,6 +86,7 @@ import {
 } from './net/profile';
 import { rankFor } from './data/story';
 import { unlockedWeapons } from './data/weapons';
+import { contractsFor, contractBonus, metContracts, type Contract } from './data/contracts';
 import {
   STAGES,
   progressOf as stageProgressOf,
@@ -94,17 +101,20 @@ import {
   type XProfile,
 } from './net/xconnect';
 import { el, button } from './ui/dom';
-import { connect, askDeviceId, isTestnet, type WalletSession } from './nimiq/wallet';
+import { connect, askDeviceId, hostLanguage, isTestnet, type WalletSession } from './nimiq/wallet';
 import { settle } from './nimiq/payments';
 import { challengeDeeplink, clanDeeplink, readChallengeId, readClanTag } from './nimiq/deeplink';
 
 type Screen =
   | 'loading'
+  | 'splash'
   | 'intro'
   | 'controls'
   | 'loadout'
   | 'clan'
   | 'campaign'
+  | 'dispatch'
+  | 'signals'
   | 'brief'
   | 'run'
   | 'results'
@@ -160,6 +170,8 @@ class App {
   private unlockedWeapon: string | null = null;
   /** Which board tab was last open. Remembered across visits. */
   private boardTab: BoardTab = 'daily';
+  /** Which page of it. Reset whenever the tab changes. */
+  private boardPage = 0;
 
   /** Clan state. All of it is cached so reopening the screen is instant. */
   private clanTable: ClanRow[] = [];
@@ -172,6 +184,12 @@ class App {
   /** A tag we have asked to join and are waiting on the owner for. */
   private awaitingTag: string | null = null;
 
+  /** CT Signals. Nothing here is persisted; see server/xsignals.ts. */
+  private signals: Signals | null = null;
+  private signalsLoading = false;
+  private signalsBusy = false;
+  private signalsNotice: string | null = null;
+
   /**
    * The stage about to be flown. Defaults to the next one not yet cleared, so
    * a returning player presses start and gets the thing they are up to.
@@ -179,6 +197,10 @@ class App {
   private stage = 1;
   /** Set when the run just finished cleared its stage. Cleared on the next run. */
   private stageCleared = false;
+  /** Today's three jobs for the selected stage. Recomputed when either changes. */
+  private contracts: Contract[] = [];
+  /** Which of them the finished run met. */
+  private contractsMet: Contract[] = [];
 
   /** Boot progress. Each entry flips when the work behind it actually lands. */
   private steps: LoadStep[] = initialSteps();
@@ -191,6 +213,12 @@ class App {
   private commandOverride: PlayerCommand | null = null;
   private rank: number | null = null;
   private cardUrl: string | null = null;
+  /**
+   * The card as a File, converted the moment it is drawn. Share cannot await
+   * for it: the wait costs the click's activation and the sheet refuses. See
+   * shareRun in ui/share.ts.
+   */
+  private cardShareFile: File | null = null;
   private postError: string | null = null;
 
   private challenge: Challenge | null = null;
@@ -250,7 +278,10 @@ class App {
   }
 
   async boot(): Promise<void> {
-    setLanguage(navigator.language);
+    // The host seeds its language synchronously before this script runs, so
+    // the very first paint is already in the player's language. The docs are
+    // explicit that a mini app must not assume it from the device locale.
+    setLanguage(hostLanguage());
     renderLoading(this.ui, this.steps);
 
     // The wallet probe runs alongside the mission fetch rather than before it.
@@ -283,7 +314,7 @@ class App {
 
     this.mission = mission;
     this.notice = notice;
-    setLanguage(this.session?.language ?? navigator.language);
+    setLanguage(this.session?.language ?? hostLanguage());
 
     this.prepareRun();
     this.loop.start();
@@ -300,11 +331,8 @@ class App {
       this.screen = 'intro';
       renderIntro(this.ui, {
         voice: music.on,
-        onBegin: () => this.unlockSound(),
-        onDone: () => {
-          music.play('menu');
-          this.landing();
-        },
+        onBegin: () => this.startSound(),
+        onDone: () => void this.enter(),
       });
     }
 
@@ -328,6 +356,38 @@ class App {
    * them on the brief would mean the link they tapped did nothing visible and
    * they would have to go looking for what it was for.
    */
+  /**
+   * The full splash, then the game.
+   *
+   * Deliberately three seconds rather than as short as possible. It is the one
+   * moment the product is a poster rather than a page, and it happens once on
+   * the way in. See ui/splash.ts.
+   */
+  private async enter(then?: () => void): Promise<void> {
+    this.ui.className = '';
+    this.screen = 'splash';
+    renderSplash(this.ui);
+
+    await new Promise((resolve) => setTimeout(resolve, SPLASH_FULL_MS));
+
+    if (then) then();
+    else this.landing();
+  }
+
+  /**
+   * A short splash between two screens.
+   *
+   * Only where the destination is a change of place rather than a step: the
+   * campaign, the rack, the clan hall. Putting it on every button would turn a
+   * brand moment into a toll booth.
+   */
+  private async cross(then: () => void): Promise<void> {
+    this.ui.className = '';
+    this.screen = 'splash';
+    await splashPause(this.ui);
+    then();
+  }
+
   private landing(): void {
     if (this.invitedTag && !this.profile?.clanTag) {
       this.openClan();
@@ -401,6 +461,19 @@ class App {
   private unlockSound(): void {
     audio.unlock();
     music.unlock();
+  }
+
+  /**
+   * Open the taps and start the bed, from inside the opening tap.
+   *
+   * The title card is silent on purpose: it is the first thing anybody sees and
+   * a game that starts making noise before you have touched it is a game people
+   * mute. Sound begins the moment they choose to go in, which is also the only
+   * moment a mobile browser will allow it.
+   */
+  private startSound(): void {
+    this.unlockSound();
+    music.play('menu');
   }
 
   /** Tick a boot step and repaint, but only while the loader is still up. */
@@ -498,7 +571,7 @@ class App {
    */
   private paintChrome(): void {
     const screen = this.screenValue;
-    if (screen === 'loading' || screen === 'intro' || screen === 'run') {
+    if (screen === 'loading' || screen === 'splash' || screen === 'intro' || screen === 'run') {
       hideChrome(this.chrome);
       return;
     }
@@ -508,6 +581,7 @@ class App {
       profile: this.profile,
       clanTag: this.profile?.clanTag ?? null,
       onHome: () => this.playIntro(),
+      onRank: () => void this.showBoard('allTime'),
     });
   }
 
@@ -525,11 +599,30 @@ class App {
     this.screen = 'intro';
     renderIntro(this.ui, {
       voice: music.on,
-      onBegin: () => this.unlockSound(),
-      onDone: () => {
-        music.play('menu');
-        this.showBrief();
-      },
+      onBegin: () => this.startSound(),
+      onDone: () => void this.enter(() => this.showBrief()),
+    });
+  }
+
+  /**
+   * Today's three jobs for the stage about to be flown.
+   *
+   * Derived rather than stored, because it is a pure function of the mission
+   * and the stage and caching it is one more thing that can be stale. See
+   * data/contracts.ts for why they are generated from the seed.
+   */
+  private todaysContracts(): Contract[] {
+    const mission = this.mission;
+    if (!mission) return [];
+
+    return contractsFor({
+      seed: mission.seed,
+      ticker: mission.ticker,
+      changePct: mission.changePct,
+      fearGreed: mission.fearGreed,
+      roster: mission.roster.map((r) => r.handle),
+      topics: mission.story?.topics ?? [],
+      stage: this.activeStage(),
     });
   }
 
@@ -547,6 +640,7 @@ class App {
       me: this.meChip(),
       profile: this.profile,
       testnet: isTestnet(this.session?.network ?? null),
+      network: this.session?.network ?? null,
       soundOn: music.on,
       onToggleSound: () => {
         // One switch for everything audible: the bed, the sting, the blips
@@ -557,12 +651,15 @@ class App {
         this.showBrief();
       },
       weaponName: this.weapon().name,
-      onLoadout: () => this.showLoadout(),
+      onLoadout: () => void this.cross(() => this.showLoadout()),
       clanTag: this.profile?.clanTag ?? null,
-      onClan: () => this.openClan(),
+      onClan: () => void this.cross(() => this.openClan()),
       stage: stageAt(this.activeStage()),
       stagesCleared: this.cleared(),
-      onCampaign: () => this.showCampaign(),
+      contracts: this.todaysContracts(),
+      onCampaign: () => void this.cross(() => this.showCampaign()),
+      onDispatch: () => void this.cross(() => this.showDispatch()),
+      onSignals: () => void this.cross(() => this.openSignals()),
       fullscreen: isFullscreen(),
       onFullscreen: fullscreenAvailable()
         ? () => void toggleFullscreen()
@@ -627,6 +724,136 @@ class App {
     return stageUnlocked(this.stage, cleared) ? this.stage : Math.min(STAGES.length, cleared + 1);
   }
 
+  /**
+   * What crypto X did today.
+   *
+   * The read that builds the mission already knows all of this; until now it
+   * was thrown away after one headline. See ui/dispatch.ts.
+   */
+  private showDispatch(): void {
+    const mission = this.mission;
+    if (!mission) return;
+
+    this.ui.className = '';
+    this.screen = 'dispatch';
+
+    renderDispatch(this.ui, {
+      mission,
+      onBack: () => this.showBrief(),
+      onOpen: (url) => {
+        // Opened straight from the click so the popup blocker does not eat it.
+        // The same lost-activation bug broke Share. See ui/share.ts.
+        window.open(url, '_blank', 'noopener,noreferrer');
+      },
+    });
+  }
+
+  /**
+   * CT Signals: who publicly engages this player, and what they fly for.
+   *
+   * Painted first, fetched second, same split as the clan screen and for the
+   * same reason: a render that starts its own fetch and then repaints is how
+   * the clan screen ended up looping against the service.
+   */
+  private openSignals(): void {
+    this.paintSignals();
+    void this.loadSignals();
+  }
+
+  private paintSignals(): void {
+    this.ui.className = '';
+    this.screen = 'signals';
+
+    renderSignals(this.ui, {
+      handle: this.me?.handle ?? null,
+      signals: this.signals,
+      loading: this.signalsLoading,
+      busy: this.signalsBusy,
+      notice: this.signalsNotice,
+      onConnectX: this.xAvailable ? () => void this.doConnectX() : null,
+      onUnlock: () => void this.unlockDeepRead(),
+      onBack: () => this.showBrief(),
+    });
+  }
+
+  private async loadSignals(depth: 'glance' | 'full' = 'glance'): Promise<void> {
+    const handle = this.me?.handle;
+    if (!handle || !apiConfigured()) return;
+
+    this.signalsLoading = true;
+    if (this.screen === 'signals') this.paintSignals();
+
+    const result = await fetchSignals(handle, this.pilot, depth);
+    this.signalsLoading = false;
+
+    if (result.ok) {
+      this.signals = result.value;
+      this.signalsNotice = null;
+    } else {
+      this.signalsNotice = result.error;
+    }
+
+    if (this.screen === 'signals') this.paintSignals();
+  }
+
+  /**
+   * Pay for the deep read.
+   *
+   * The money goes straight to the treasury address the service names, exactly
+   * like a challenge settlement, and the service is told afterwards. It is
+   * reported rather than verified for the same reason and with the same
+   * honesty about it: there is no Nimiq node here to check against.
+   */
+  private async unlockDeepRead(): Promise<void> {
+    const signals = this.signals;
+    if (!signals || this.signalsBusy) return;
+
+    // No treasury configured means the deep read is simply free.
+    if (!signals.treasury) {
+      await this.loadSignals('full');
+      return;
+    }
+
+    if (!this.session?.available) {
+      this.signalsNotice = t('challengeNoWallet');
+      this.paintSignals();
+      return;
+    }
+
+    this.signalsBusy = true;
+    this.signalsNotice = null;
+    this.paintSignals();
+
+    const paid = await settle({
+      recipient: signals.treasury,
+      amountNim: signals.priceNim,
+      memo: `sFace signals ${utcDate()}`,
+    });
+
+    if (!paid.ok) {
+      this.signalsBusy = false;
+      this.signalsNotice = paid.reason;
+      this.paintSignals();
+      return;
+    }
+
+    const told = await unlockSignals({
+      deviceId: this.pilot,
+      serializedTx: paid.serializedTx,
+    });
+
+    this.signalsBusy = false;
+    if (!told.ok) {
+      // Paid on chain but the service did not hear. Say exactly that.
+      this.signalsNotice =
+        'Paid on chain, but the service did not record it. Your transaction is fine.';
+      this.paintSignals();
+      return;
+    }
+
+    await this.loadSignals('full');
+  }
+
   private showCampaign(): void {
     this.ui.className = '';
     this.screen = 'campaign';
@@ -675,6 +902,14 @@ class App {
       notice: this.clanNotice,
       busy: this.clanBusy,
       onJoin: (tag) => void this.setClan(tag),
+      onLookup: async (tag) => {
+        if (!apiConfigured()) return null;
+        const found = await fetchClan(tag);
+        if (!found.ok) return null;
+        // An unclaimed tag comes back with no owner rather than a 404, which is
+        // exactly the distinction the button needs.
+        return { taken: found.value.ownerId !== null, owner: found.value.ownerName };
+      },
       onLeave: () => void this.setClan(null),
       onCancelRequest: () => void this.setClan(null),
       onDecide: (memberId, approve) => void this.decideRequest(memberId, approve),
@@ -866,6 +1101,7 @@ class App {
     audio.play('ui');
     music.play('run');
 
+    this.contracts = this.todaysContracts();
     this.prepareRun();
     this.firstRun = false;
     this.rank = null;
@@ -873,6 +1109,7 @@ class App {
     this.unlockedWeapon = null;
     this.stageCleared = false;
     this.cardUrl = null;
+    this.cardShareFile = null;
     this.postError = null;
     this.screen = 'run';
     this.paused = false;
@@ -943,10 +1180,16 @@ class App {
 
     // Judged here, once, off the finished run. The stage owns the rule; this
     // only asks it. See src/data/campaign.ts.
-    this.stageCleared = run.stage.clear(stageProgressOf(run, PLAYER_MAX_HEALTH));
+    const progress = stageProgressOf(run, PLAYER_MAX_HEALTH);
+    this.stageCleared = run.stage.clear(progress);
+    this.contractsMet = metContracts(this.contracts, progress);
+    // Contracts pay on top of the market and the stage. Applied to the run so
+    // the number on the results screen is the number that gets posted.
+    run.contractBonus = contractBonus(this.contracts, progress);
 
     const data = cardDataFrom(run, null);
     this.cardUrl = drawScoreCard(data);
+    void this.prepareCardFile(run.mission.date);
 
     // Paint the results immediately, then fill in rank and challenge state as
     // the network answers. A good run should never wait on a leaderboard.
@@ -1004,8 +1247,21 @@ class App {
       rankedUp: this.rankedUp,
       unlockedWeapon: this.unlockedWeapon,
       stageCleared: this.stageCleared,
+      contracts: this.contracts,
+      contractsMet: this.contractsMet,
+      // Only when this run actually opened something new. Offering "next" for a
+      // stage they had already cleared would be a promotion to nowhere.
+      nextStage:
+        this.stageCleared && run.stage.n === this.cleared() && run.stage.n < STAGES.length
+          ? stageAt(run.stage.n + 1)
+          : null,
+      onNextStage: () => {
+        this.stage = Math.min(STAGES.length, run.stage.n + 1);
+        this.startRun();
+      },
       onLoadout: () => this.showLoadout(),
       onCampaign: () => this.showCampaign(),
+      onHome: () => this.showBrief(),
       onReplay: () => this.startRun(),
       onChallenge: () => void this.createChallenge(),
       onShare: () => void this.share(),
@@ -1017,6 +1273,8 @@ class App {
     const mission = this.mission;
     if (!mission) return;
 
+    // A new tab is a new list, so page one of it.
+    if (tab !== this.boardTab) this.boardPage = 0;
     this.boardTab = tab;
     this.ui.className = '';
     this.screen = 'board';
@@ -1032,6 +1290,11 @@ class App {
         meId: this.pilot,
         offline,
         loading,
+        page: this.boardPage,
+        onPage: (next) => {
+          this.boardPage = Math.max(0, next);
+          paint(entries, offline, loading);
+        },
         onTab: (next) => void this.showBoard(next),
         onBack: () => (this.run?.finished ? this.showResults() : this.showBrief()),
       });
@@ -1119,6 +1382,7 @@ class App {
       }
 
       this.cardUrl = drawScoreCard(cardDataFrom(run, this.rank));
+      void this.prepareCardFile(run.mission.date);
       this.postError = null;
     } else {
       this.postError = t('errorBoardPost');
@@ -1298,11 +1562,16 @@ class App {
     this.showChallengeScreen();
   }
 
+  /** Convert the drawn card off the click path, so Share never has to wait. */
+  private async prepareCardFile(date: string): Promise<void> {
+    this.cardShareFile = await cardFile(this.cardUrl, date);
+  }
+
   private async share(): Promise<void> {
     const run = this.run;
     if (!run) return;
     const data = cardDataFrom(run, this.rank);
-    await shareRun(data, this.cardUrl, window.location.origin);
+    await shareRun(data, this.cardShareFile, window.location.origin);
   }
 
   private async shareChallenge(): Promise<void> {
@@ -1322,7 +1591,7 @@ class App {
       return;
     }
 
-    await shareRun(cardDataFrom(run, this.rank), this.cardUrl, link);
+    await shareRun(cardDataFrom(run, this.rank), this.cardShareFile, link);
   }
 
   // Loop -------------------------------------------------------------------

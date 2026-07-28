@@ -45,7 +45,7 @@ export function renderLoadout(root: HTMLElement, options: LoadoutOptions): void 
         // The rule, on the screen where somebody would otherwise assume the
         // opposite. A player who thinks the top gun is the strong one will
         // read a locked row as being kept from them.
-        text: 'Unlocked with Face, never bought. None of these is stronger than the sidearm, they are different shapes, so a challenge is still a fair bet whatever either side brings.',
+        text: 'Unlocked with Face, never bought. None of these is stronger than the sidearm. They are different shapes, so a challenge stays a fair bet whatever either side brings to it.',
       }),
 
       el('div', { class: 'rack' }, ...WEAPONS.map((w) => rackRow(w, face, options))),

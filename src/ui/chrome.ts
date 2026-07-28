@@ -36,6 +36,8 @@ export interface ChromeOptions {
    * takes you anywhere other than the front door is a logo doing the wrong job.
    */
   onHome: () => void;
+  /** The rank chip opens the ladder, which is the thing it is a number from. */
+  onRank: () => void;
 }
 
 export function renderChrome(root: HTMLElement, options: ChromeOptions): void {
@@ -85,9 +87,23 @@ export function renderChrome(root: HTMLElement, options: ChromeOptions): void {
     ? el('span', { class: 'chrome__clan', text: options.clanTag })
     : null;
 
+  /*
+   * The rank chip.
+   *
+   * It used to collapse to a bare orange square with a number in it on a phone,
+   * because the label beside it was hidden to save width. A "4" on its own
+   * means nothing to anybody, which is exactly what a player asked. So the
+   * number keeps its Face total at every width, the whole chip is a button
+   * that opens the ladder it refers to, and it carries a label for anyone who
+   * cannot see the layout at all.
+   */
   const rank = el(
-    'div',
-    { class: 'chrome__rank' },
+    'button',
+    {
+      class: 'chrome__rank',
+      type: 'button',
+      'aria-label': `Rank ${tier.tier}, ${tier.name}, ${face.toLocaleString()} Face. Open the ladder.`,
+    },
     el('span', { class: 'chrome__tier', text: String(tier.tier) }),
     el(
       'div',
@@ -96,6 +112,7 @@ export function renderChrome(root: HTMLElement, options: ChromeOptions): void {
       el('span', { class: 'chrome__face', text: `${face.toLocaleString()} Face` }),
     ),
   );
+  rank.addEventListener('click', options.onRank);
 
   root.replaceChildren(
     ...[mark, wreck, el('div', { class: 'chrome__spacer' }), clan, rank].filter(

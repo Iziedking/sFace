@@ -37,6 +37,11 @@ export interface ClanOptions {
   notice: string | null;
   busy: boolean;
   onJoin: (tag: string) => void;
+  /**
+   * Ask whether a tag is already somebody's. Resolves null when unknown, which
+   * keeps the button on its neutral label rather than guessing.
+   */
+  onLookup: (tag: string) => Promise<{ taken: boolean; owner: string | null } | null>;
   onLeave: () => void;
   onInvite: () => void;
   onBack: () => void;
@@ -270,6 +275,58 @@ function joinPanel(options: ClanOptions, carried: string): HTMLElement {
     if (clean !== field.value) field.value = clean;
   });
 
+  const action = button(options.busy ? 'Working' : 'Go', () => submit());
+  const hint = el('p', { class: 'field__hint' });
+
+  /*
+   * Say which of the two things is about to happen.
+   *
+   * One button doing either "found a clan" or "ask to join somebody else's" is
+   * the whole reason a player asks whether they can create one at all. The
+   * copy explained it and the button still said Join, so the copy lost. Now the
+   * button reads the tag and renames itself.
+   *
+   * Debounced, because this fires per keystroke and it is a network call.
+   */
+  let lookupAt = 0;
+  const describe = async (): Promise<void> => {
+    const tag = field.value.trim().toUpperCase();
+
+    if (!/^[A-Z0-9]{2,4}$/.test(tag)) {
+      action.textContent = 'Go';
+      hint.textContent = '';
+      return;
+    }
+
+    const at = ++lookupAt;
+    const found = await options.onLookup(tag);
+    // A slower answer to an older keystroke must not overwrite a newer one.
+    if (at !== lookupAt) return;
+
+    if (!found) {
+      action.textContent = `Go with ${tag}`;
+      hint.textContent = '';
+      return;
+    }
+
+    action.textContent = found.taken ? `Ask to join ${tag}` : `Found ${tag}`;
+    hint.textContent = found.taken
+      ? `${tag} belongs to ${found.owner ?? 'somebody'}. They decide.`
+      : `${tag} is free. Taking it makes you its owner.`;
+  };
+
+  // Wired after describe exists. Debounced, because it fires per keystroke and
+  // it is a network call.
+  let debounce: number | null = null;
+  field.addEventListener('input', () => {
+    if (debounce !== null) clearTimeout(debounce);
+    debounce = window.setTimeout(() => void describe(), 400);
+  });
+
+  // A pre-filled invite gets its label straight away rather than waiting for a
+  // keystroke that is never coming.
+  if (field.value) void describe();
+
   const submit = (): void => {
     if (options.busy) return;
     options.onJoin(field.value.trim().toUpperCase());
@@ -289,9 +346,10 @@ function joinPanel(options: ClanOptions, carried: string): HTMLElement {
       // free one founds a clan and makes you its owner.
       text: options.suggested
         ? `You were invited to ${options.suggested}. Ask to join and its owner lets you in.`
-        : 'Pick two to four characters. A tag nobody has taken is yours to found, and one that is taken sends its owner a request.',
+        : 'Type two to four characters. If nobody has taken it you found it and you own it. If somebody has, this asks them to let you in.',
     }),
-    el('div', { class: 'field__row' }, field, button(options.busy ? 'Joining' : 'Join', submit)),
+    el('div', { class: 'field__row' }, field, action),
+    hint,
   );
 }
 

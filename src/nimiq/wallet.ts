@@ -86,7 +86,7 @@ let provider: NimiqProvider | null = null;
  * Nimiq Pay seeds the language before the page script runs, so this is safe to
  * read during module init. Outside Nimiq Pay we fall back to the browser.
  */
-export function readLanguage(): string {
+export function hostLanguage(): string {
   return getHostLanguage() ?? navigator.language.split('-')[0] ?? 'en';
 }
 
@@ -115,7 +115,7 @@ export async function getProvider(): Promise<NimiqProvider | null> {
  * the provider afterwards, so calling this once per session is enough.
  */
 export async function connect(): Promise<WalletSession> {
-  const language = readLanguage();
+  const language = hostLanguage();
 
   const nimiq = await getProvider();
   if (!nimiq) return { ...OFFLINE, language };
