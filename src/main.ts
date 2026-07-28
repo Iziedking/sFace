@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Boot, screen routing, and the one loop that drives everything.
  *
  * Design decisions worth knowing before you edit this file:
@@ -46,6 +46,7 @@ import {
   type BoardEntry,
   type Challenge,
 } from './net/api';
+import { pilotId, pilotName, upgradeTo } from './net/identity';
 import { connect, askDeviceId, type WalletSession } from './nimiq/wallet';
 import { settle } from './nimiq/payments';
 import { challengeDeeplink, readChallengeId } from './nimiq/deeplink';
@@ -77,10 +78,19 @@ class App {
   private run: RunState | null = null;
 
   private session: WalletSession | null = null;
-  private deviceId: string | null = null;
+  /**
+   * Always present. Starts as a locally generated identifier so squadmates,
+   * co-op and the board work everywhere, and upgrades to the Nimiq device
+   * identifier after the first run if the player grants it. See net/identity.
+   */
+  private pilot: string = pilotId();
+  /** True once the stronger Nimiq identifier has been asked for. */
+  private askedForDeviceId = false;
 
   private firstRun = true;
   private lastHealth = 0;
+  /** Dev-only steering, set by debug().advance. Null in every normal frame. */
+  private commandOverride: PlayerCommand | null = null;
   private rank: number | null = null;
   private cardUrl: string | null = null;
   private postError: string | null = null;
@@ -145,7 +155,7 @@ class App {
     const mission = this.mission;
     if (!mission || !apiConfigured()) return;
 
-    const result = await fetchGhosts(mission.seed, this.deviceId, 4);
+    const result = await fetchGhosts(mission.seed, this.pilot, 4);
     if (!result.ok) return;
 
     this.ghostPool = result.value.flatMap((record) => {
@@ -225,12 +235,7 @@ class App {
     if (!mission || !apiConfigured()) return;
     if (this.live) return;
 
-    // Without a device id we have nothing stable to identify ourselves with,
-    // and we are not going to prompt for one just to render extra ships.
-    const id = this.deviceId;
-    if (!id) return;
-
-    this.live = new LiveLink(mission.seed, id, pilotName(id), {
+    this.live = new LiveLink(mission.seed, this.pilot, pilotName(this.pilot), {
       onJoin: (peerId, name) => this.squad.addLive(peerId, name),
       onLeave: (peerId) => this.squad.remove(peerId),
       onPose: (peerId, frame) => {
@@ -275,13 +280,13 @@ class App {
    * that would.
    */
   private async submitGhost(run: RunState): Promise<void> {
-    if (!apiConfigured() || !this.deviceId) return;
+    if (!apiConfigured()) return;
     if (this.recorder.length < 40) return;
     if (run.score <= 0) return;
 
     await postGhost({
-      deviceId: this.deviceId,
-      name: pilotName(this.deviceId),
+      deviceId: this.pilot,
+      name: pilotName(this.pilot),
       seed: run.mission.seed,
       score: run.score,
       facesExtracted: run.facesExtracted,
@@ -335,7 +340,7 @@ class App {
     renderBoard(this.ui, {
       mission,
       entries,
-      meId: this.deviceId,
+      meId: this.pilot,
       offline,
       onBack: () => (this.run?.finished ? this.showResults() : this.showBrief()),
     });
@@ -353,12 +358,18 @@ class App {
   private async submitScore(run: RunState): Promise<void> {
     if (!apiConfigured()) return;
 
-    if (!this.deviceId) this.deviceId = await askDeviceId();
-    if (!this.deviceId) return;
+    // Ask for the stronger identity exactly once, and only after a finished
+    // run, which is the first moment the player gets anything for it. If they
+    // decline, or we are not inside Nimiq Pay, the local one carries on.
+    if (!this.askedForDeviceId && this.session?.available) {
+      this.askedForDeviceId = true;
+      const deviceId = await askDeviceId();
+      if (deviceId && upgradeTo(deviceId)) this.pilot = deviceId;
+    }
 
     const result = await postScore({
-      deviceId: this.deviceId,
-      name: pilotName(this.deviceId),
+      deviceId: this.pilot,
+      name: pilotName(this.pilot),
       date: run.mission.date,
       seed: run.mission.seed,
       score: run.score,
@@ -386,16 +397,17 @@ class App {
       return;
     }
 
-    if (!this.deviceId) this.deviceId = await askDeviceId();
-    if (!this.deviceId) {
-      this.postError = 'A challenge needs a device id to settle against.';
+    // A challenge needs a wallet address to pay to, and that is the one thing
+    // an identifier cannot stand in for. Say so before creating a dead bet.
+    if (!this.session?.address) {
+      this.postError = t('challengeNoWallet');
       this.showResults();
       return;
     }
 
     const result = await createChallenge({
-      deviceId: this.deviceId,
-      name: pilotName(this.deviceId),
+      deviceId: this.pilot,
+      name: pilotName(this.pilot),
       address: this.session?.address ?? null,
       date: run.mission.date,
       seed: run.mission.seed,
@@ -433,8 +445,8 @@ class App {
   /** Report our score against an open challenge and find out who won. */
   private async resolveChallenge(run: RunState): Promise<void> {
     const challenge = this.challenge;
-    if (!challenge || !this.deviceId) return;
-    if (challenge.creatorId === this.deviceId) return;
+    if (!challenge || !this.pilot) return;
+    if (challenge.creatorId === this.pilot) return;
     if (challenge.status !== 'open') return;
 
     // Never report a score against a level we did not actually play. The UI
@@ -446,8 +458,8 @@ class App {
     }
 
     const result = await acceptChallenge(challenge.id, {
-      deviceId: this.deviceId,
-      name: pilotName(this.deviceId),
+      deviceId: this.pilot,
+      name: pilotName(this.pilot),
       address: this.session?.address ?? null,
       score: run.score,
       seed: run.mission.seed,
@@ -480,7 +492,7 @@ class App {
       challenge,
       mission,
       seedMatches,
-      meId: this.deviceId,
+      meId: this.pilot,
       walletAvailable: this.session?.available ?? false,
       notice: this.challengeNotice,
       settling: this.settling,
@@ -503,9 +515,9 @@ class App {
    */
   private async settleChallenge(): Promise<void> {
     const challenge = this.challenge;
-    if (!challenge || this.settling || !this.deviceId) return;
+    if (!challenge || this.settling || !this.pilot) return;
 
-    const winnerAddress = winnerAddressOf(challenge, this.deviceId);
+    const winnerAddress = winnerAddressOf(challenge, this.pilot);
     if (!winnerAddress) {
       this.challengeNotice = 'The winner has no address to pay to.';
       this.showChallengeScreen();
@@ -531,7 +543,7 @@ class App {
     }
 
     const recorded = await reportSettlement(challenge.id, {
-      deviceId: this.deviceId,
+      deviceId: this.pilot,
       serializedTx: result.serializedTx,
     });
 
@@ -601,6 +613,9 @@ class App {
 
   /** Turn raw input into the command the simulation takes. */
   private command(): PlayerCommand {
+    // Set only by the dev-only advance() helper, so an automated run can steer.
+    if (this.commandOverride) return this.commandOverride;
+
     const aim = this.input.aim
       ? this.camera.screenToWorld(this.input.aim.x, this.input.aim.y)
       : null;
@@ -643,9 +658,33 @@ class App {
     }
   }
 
-  /** Development helper. See the DEV block at the bottom of this file. */
-  debug(): { run: RunState | null; screen: Screen } {
-    return { run: this.run, screen: this.screen };
+  /**
+   * Development helper. See the DEV block at the bottom of this file.
+   *
+   * `advance` exists because a browser throttles requestAnimationFrame to a
+   * standstill in a background tab, which makes a ninety second run impossible
+   * to drive from an automated test. It steps the real update path rather than
+   * a parallel one, so anything it exercises is the code that actually ships.
+   */
+  debug(): {
+    run: RunState | null;
+    screen: Screen;
+    squad: Squad;
+    advance: (seconds: number, command?: Partial<PlayerCommand>) => void;
+  } {
+    return {
+      run: this.run,
+      screen: this.screen,
+      squad: this.squad,
+      advance: (seconds, command) => {
+        const steps = Math.min(Math.round(seconds * 60), 60 * 200);
+        this.commandOverride = command
+          ? { moveX: 0, moveY: 0, aimX: null, aimY: null, firing: false, ...command }
+          : null;
+        for (let i = 0; i < steps; i++) this.update(1 / 60);
+        this.commandOverride = null;
+      },
+    };
   }
 
   private onResize = (): void => {
@@ -653,14 +692,6 @@ class App {
     this.camera.resize(this.renderer.width, this.renderer.height);
     this.hud.measure();
   };
-}
-
-/**
- * A name with no form to fill in. Derived from the device id, so it is stable
- * for this device and means nothing anywhere else.
- */
-function pilotName(deviceId: string): string {
-  return `Pilot ${deviceId.slice(0, 4).toUpperCase()}`;
 }
 
 /** The player's current pose, in the shape squadmates are drawn from. */
