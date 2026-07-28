@@ -62,6 +62,34 @@ export interface StageLook {
   ground: string;
   /** Ruled hatching in the ground. Wider means emptier and colder. */
   hatch: number;
+  /**
+   * Weather over the level.
+   *
+   * The one thing that changes what a stage FEELS like rather than what colour
+   * it is, and it is drawn from the fiction rather than picked to look nice:
+   * ash for a market that burned down, static for a compromised bridge, embers
+   * for the last stand. Rendered as slow drifting flecks with no gameplay
+   * effect whatsoever, because a stage that is harder to see is not a harder
+   * stage, it is an unfair one.
+   */
+  weather: 'clear' | 'dust' | 'ash' | 'static' | 'ember';
+  /** How much of it. Zero is none at all. */
+  density: number;
+}
+
+/**
+ * The one line that makes somebody want to get there.
+ *
+ * Shown on a LOCKED stage card, where the brief is not. A player looking at
+ * Stage 5 from Stage 2 can read what it is going to be like without being told
+ * how to clear something they cannot attempt yet, which is the difference
+ * between a teaser and a spoiler.
+ */
+export interface StageTease {
+  /** What it looks like when you get there. */
+  scene: string;
+  /** What is going to be different about flying it. */
+  threat: string;
 }
 
 export interface Stage {
@@ -97,6 +125,8 @@ export interface Stage {
    */
   runners: number;
   look: StageLook;
+  /** Shown while it is still locked. See StageTease. */
+  tease: StageTease;
 
   /** Did this finished run clear the stage? */
   clear: (run: StageProgress) => boolean;
@@ -105,10 +135,10 @@ export interface Stage {
 export const STAGES: readonly Stage[] = [
   {
     n: 1,
-    name: 'The Fear Index',
-    restores: 'Market panic and pure FUD',
+    name: 'Daily Humiliation Ritual',
+    restores: 'Nerve, on the worst chart of the day',
     brief:
-      'Sentiment bottomed out and stayed there. Drop into the shallow end of the day\'s chart, clear the doom off it, and get to the Fear and Greed vault at the bottom before the reading falls further.',
+      "Today's biggest loser is the map. You fly the exact shape of somebody's bad morning, clear the doom off it, and reach the vault at the bottom before the reading drops again. Everyone starts here, every day, on a different disaster.",
     objective: 'Reach extraction and take the relic.',
     seconds: 110,
     density: 0.7,
@@ -118,15 +148,19 @@ export const STAGES: readonly Stage[] = [
     span: 0.45,
     bounty: 1,
     runners: 0,
-    look: { sky: '#f4ede0', ground: '#ded2ba', hatch: 26 },
+    look: { sky: '#f6f0e4', ground: '#ded2ba', hatch: 26, weather: 'clear', density: 0 },
+    tease: {
+      scene: 'A pale chart with the panic still settling on it.',
+      threat: 'Nothing hurries you. This is where you find out the ship answers.',
+    },
     clear: (r) => r.survived && r.relic,
   },
   {
     n: 2,
-    name: 'Ghost Protocols',
-    restores: 'Project shutdowns and abandoned promises',
+    name: 'Shutdown Tour',
+    restores: 'Everything that went dark without a note',
     brief:
-      'Wallets, bridges, exchanges and layer twos went dark by the dozen. Most did not post a note. Their contracts are still running and the residue is still in them, right up until somebody stops paying the bill.',
+      'Wallets, bridges, exchanges, layer twos. Some posted a thread. Most changed nothing and stopped replying. The contracts are still running and the residue is still in them, right up until somebody stops paying the bill.',
     objective: 'Pull four caches out and get two people to the pad.',
     seconds: 110,
     density: 0.9,
@@ -136,7 +170,11 @@ export const STAGES: readonly Stage[] = [
     span: 0.6,
     bounty: 1.15,
     runners: 0,
-    look: { sky: '#efe6d6', ground: '#d3c7ae', hatch: 22 },
+    look: { sky: '#efe1c4', ground: '#d3c096', hatch: 22, weather: 'dust', density: 0.35 },
+    tease: {
+      scene: 'Shuttered towers throwing dust over a longer stretch of the day.',
+      threat: 'The clock starts to matter, and the sky learns to fire twice.',
+    },
     // Reaching the pad is part of every objective. Caches are banked on pickup
     // and survive a crash, so without this a player could dive for four, die,
     // and be told they cleared a stage whose brief says "to the pad".
@@ -144,10 +182,10 @@ export const STAGES: readonly Stage[] = [
   },
   {
     n: 3,
-    name: 'Exploit Shadows',
-    restores: 'Security failures and lost trust',
+    name: 'Exploit Afterparty',
+    restores: 'Trust, after somebody found the hole',
     brief:
-      'A bridge got drained and the trust went with it. What is left is still bleeding: every second you spend in here is value going out of a hole nobody sealed.',
+      'The bridge got drained at four in the morning and the thread went up at nine. What is left is still bleeding: every second in here is value leaving through a hole nobody has sealed.',
     objective: 'Clear twelve attackers and finish above half hull.',
     seconds: 105,
     density: 1.25,
@@ -157,15 +195,19 @@ export const STAGES: readonly Stage[] = [
     span: 0.7,
     bounty: 1.3,
     runners: 0.14,
-    look: { sky: '#efe4de', ground: '#d2bdb4', hatch: 20 },
+    look: { sky: '#f0dcd4', ground: '#d6b3a6', hatch: 20, weather: 'static', density: 0.5 },
+    tease: {
+      scene: 'A drained bridge under a haze of dead signal.',
+      threat: 'The floor stops being safe. Things start coming at you along it.',
+    },
     clear: (r) => r.survived && r.attackers >= 12 && r.hull >= 0.5,
   },
   {
     n: 4,
-    name: 'Clarity Gauntlet',
-    restores: 'Regulatory uncertainty and stalled legislation',
+    name: 'Clarity Circus',
+    restores: 'The rules, such as they are',
     brief:
-      'The rules were nearly written four times. Fly the part of the day where nobody knew what was legal, and come out holding something anyway.',
+      'They nearly wrote the rules four times. Fly the part of the day where nobody could tell you what was legal, take the wrong line and get roasted for it, and come out holding something anyway.',
     objective: 'Take the relic, six caches, and reach the pad.',
     seconds: 100,
     density: 1.4,
@@ -175,15 +217,19 @@ export const STAGES: readonly Stage[] = [
     span: 0.8,
     bounty: 1.5,
     runners: 0.2,
-    look: { sky: '#ece7d8', ground: '#c9c2a6', hatch: 18 },
+    look: { sky: '#e7ead3', ground: '#c4cc9e', hatch: 18, weather: 'dust', density: 0.6 },
+    tease: {
+      scene: 'A washed-out maze of half-written rules.',
+      threat: 'Two rounds a volley from the first second, and a longer way home.',
+    },
     clear: (r) => r.survived && r.relic && r.caches >= 6,
   },
   {
     n: 5,
-    name: 'Tokenization Frontier',
-    restores: 'Institutional credibility and real-world utility',
+    name: 'Institutional Face Escort',
+    restores: 'The case that any of this is real',
     brief:
-      'The institutions came, looked at the wreckage, and did not sign. What they wanted to see was that somebody could get value out of here intact. Show them.',
+      'They came, they looked at the wreckage, and they did not sign. What they wanted was proof that somebody could get value out of here intact. Nobody has shown them yet.',
     objective: 'Get four people out alive.',
     seconds: 100,
     density: 1.55,
@@ -193,15 +239,19 @@ export const STAGES: readonly Stage[] = [
     span: 0.85,
     bounty: 1.7,
     runners: 0.26,
-    look: { sky: '#e9e8dc', ground: '#c2c3ac', hatch: 16 },
+    look: { sky: '#dee7e2', ground: '#b4c4bc', hatch: 16, weather: 'ash', density: 0.55 },
+    tease: {
+      scene: 'Ash over a wide contested floor, with people watching who do not post.',
+      threat: 'Everyone comes out or nobody does. Losing one is losing the stage.',
+    },
     clear: (r) => r.survived && r.extracted >= 4,
   },
   {
     n: 6,
-    name: 'Narrative War',
-    restores: 'Broken storytelling and influencer credibility',
+    name: 'Narrative Thunderdome',
+    restores: 'The story, off whoever is shouting loudest',
     brief:
-      'Everyone who spent the last cycle telling you we were early went quiet. The loudest voices left are the ones with nothing to lose. Take the story back off them.',
+      'Everyone who spent last cycle saying we were early has gone quiet. What is left is the accounts with nothing to lose, and they are setting the terms. Take the day back off them before the timeline files it under failure.',
     objective: 'All five out, eighteen attackers cleared.',
     seconds: 100,
     density: 1.8,
@@ -211,15 +261,19 @@ export const STAGES: readonly Stage[] = [
     span: 0.92,
     bounty: 2,
     runners: 0.3,
-    look: { sky: '#eae2e2', ground: '#c6b4b6', hatch: 14 },
+    look: { sky: '#e0dae8', ground: '#bcb2c8', hatch: 14, weather: 'static', density: 0.8 },
+    tease: {
+      scene: 'Four narratives burning at once across nearly the whole chart.',
+      threat: 'Three rounds a volley, and the ground belongs to the chasers.',
+    },
     clear: (r) => r.survived && r.extracted >= 5 && r.attackers >= 18,
   },
   {
     n: 7,
-    name: 'The Final Reckoning',
+    name: 'The Final Look',
     restores: "The industry's collective dignity",
     brief:
-      'Everything the Collapse still holds is in the last stretch of the chart, in the worst place on it, behind everything that has already tried to stop you. Nobody is coming after you. This is the run.',
+      'Everything still held is in the last stretch, at the worst hour, behind every single thing that has already tried to stop you. No reinforcements. No second run. This is the one.',
     objective: 'Everyone out, the relic recovered, and eight caches.',
     seconds: 95,
     density: 2,
@@ -229,7 +283,11 @@ export const STAGES: readonly Stage[] = [
     span: 1,
     bounty: 2.5,
     runners: 0.34,
-    look: { sky: '#e6dcd6', ground: '#b9a89f', hatch: 11 },
+    look: { sky: '#e9cdba', ground: '#b8917a', hatch: 11, weather: 'ember', density: 1 },
+    tease: {
+      scene: 'Embers over the entire day at its lowest point, with everything awake.',
+      threat: 'Every threat in the campaign at once, on the shortest clock in it.',
+    },
     clear: (r) => r.survived && r.extracted >= 5 && r.relic && r.caches >= 8,
   },
 ];

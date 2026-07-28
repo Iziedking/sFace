@@ -301,3 +301,45 @@ describe('runners', () => {
     }
   });
 });
+
+describe('anticipation', () => {
+  /**
+   * A locked stage has to be worth wanting. The tease is the only thing a
+   * player sees of Stage 5 while they are on Stage 2, so every stage needs one
+   * and no two may read the same.
+   */
+  it('gives every stage its own tease', () => {
+    for (const stage of STAGES) {
+      expect(stage.tease.scene.length).toBeGreaterThan(25);
+      expect(stage.tease.threat.length).toBeGreaterThan(20);
+    }
+    expect(new Set(STAGES.map((s) => s.tease.scene)).size).toBe(STAGES.length);
+    expect(new Set(STAGES.map((s) => s.tease.threat)).size).toBe(STAGES.length);
+  });
+
+  /** The first stage is the tutorial, so it is the only one with clear skies. */
+  it('starts clear and never goes back to it', () => {
+    expect(STAGES[0]!.look.weather).toBe('clear');
+    expect(STAGES[0]!.look.density).toBe(0);
+    for (const stage of STAGES.slice(1)) {
+      expect(stage.look.weather).not.toBe('clear');
+      expect(stage.look.density).toBeGreaterThan(0);
+    }
+  });
+
+  /**
+   * Weather is atmosphere and must never be difficulty. A stage that is harder
+   * to READ is not a harder stage, it is an unfair one, and every stage has to
+   * stay a fair bet.
+   */
+  it('keeps weather thin enough to see through', () => {
+    for (const stage of STAGES) {
+      expect(stage.look.density).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('saves the embers for the last stage', () => {
+    expect(STAGES[STAGES.length - 1]!.look.weather).toBe('ember');
+    expect(STAGES.filter((s) => s.look.weather === 'ember')).toHaveLength(1);
+  });
+});

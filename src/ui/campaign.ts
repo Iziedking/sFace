@@ -38,8 +38,8 @@ export function renderCampaign(root: HTMLElement, options: CampaignOptions): voi
       el('p', {
         class: 'quiet',
         text: done
-          ? 'Every stage cleared. The industry got its face back, which is a sentence nobody could write in 2026. Any stage can be flown again.'
-          : `Seven stages. Each one takes back a piece of what 2026 cost, and each one is harder than the last. ${cleared} of ${STAGES.length} restored.`,
+          ? 'All seven. The whole winter, walked back. Nobody could have written that sentence in January, and any stage is still there to fly again.'
+          : `Seven stages, one for each thing 2026 took. The setup stays the same and the job inside it changes every day. ${cleared} of ${STAGES.length} restored.`,
       }),
 
       progressBar(cleared),
@@ -101,14 +101,31 @@ function card(stage: Stage, cleared: number, options: CampaignOptions): HTMLElem
           : el('span', { class: 'stage__badge stage__badge--locked', text: 'LOCKED' }),
     ),
 
-    el('p', { class: 'stage__brief', text: stage.brief }),
+    /*
+     * A locked stage shows the tease, not the brief.
+     *
+     * The brief tells you how to fly something you cannot attempt yet, which
+     * is a spoiler with no payoff. The tease tells you what it will look like
+     * and what will be different about it, which is the anticipation the whole
+     * seven-stage arc is supposed to build.
+     */
+    unlocked
+      ? el('p', { class: 'stage__brief', text: stage.brief })
+      : el(
+          'div',
+          { class: 'tease' },
+          el('p', { class: 'tease__scene', text: stage.tease.scene }),
+          el('p', { class: 'tease__threat', text: stage.tease.threat }),
+        ),
 
-    el(
-      'div',
-      { class: 'stage__objective' },
-      el('span', { class: 'stat__label', text: 'TO CLEAR' }),
-      el('span', { text: stage.objective }),
-    ),
+    unlocked
+      ? el(
+          'div',
+          { class: 'stage__objective' },
+          el('span', { class: 'stat__label', text: 'TO CLEAR' }),
+          el('span', { text: stage.objective }),
+        )
+      : null,
 
     el(
       'div',
@@ -125,6 +142,8 @@ function card(stage: Stage, cleared: number, options: CampaignOptions): HTMLElem
       figure('FACE', `×${stage.bounty}`),
     ),
 
+    el('div', { class: 'stage__weather' }, ...swatch(stage)),
+
     unlocked && !selected
       ? button(restored ? 'Fly it again' : 'Select', () => options.onSelect(stage.n), 'ghost')
       : null,
@@ -136,6 +155,27 @@ function card(stage: Stage, cleared: number, options: CampaignOptions): HTMLElem
         })
       : null,
   );
+}
+
+/**
+ * What the place looks like, as three colours and a word.
+ *
+ * The sky and ground are the actual values the renderer uses, so the swatch on
+ * the card cannot drift from the stage it describes. That matters more than it
+ * sounds: a preview that lies about the thing it previews is worse than none.
+ */
+function swatch(stage: Stage): HTMLElement[] {
+  return [
+    el('span', {
+      class: 'swatch',
+      style: `background:${stage.look.sky};border-color:${stage.look.ground}`,
+    }),
+    el('span', { class: 'swatch', style: `background:${stage.look.ground}` }),
+    el('span', {
+      class: 'stage__weatherword',
+      text: stage.look.weather === 'clear' ? 'clear skies' : stage.look.weather,
+    }),
+  ];
 }
 
 function figure(label: string, value: string): HTMLElement {

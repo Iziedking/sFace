@@ -45,6 +45,23 @@ export interface RosterEntry {
   avatarUrl: string | null;
 }
 
+/** One thing worth reading off today's timeline. */
+export interface DispatchPost {
+  handle: string;
+  summary: string;
+  why: string;
+  kind: 'loud' | 'call' | 'warning' | 'receipt' | 'denial';
+  /** The post being summarised. Required; unsourced entries never get here. */
+  url: string;
+}
+
+/** A situation still running across days. */
+export interface DispatchThread {
+  title: string;
+  status: string;
+  state: 'watching' | 'escalating' | 'resolved' | 'cold';
+}
+
 /** Today's crypto X story, when we could read it. */
 export interface MissionStory {
   /** One line, present tense, no hype. Shown on the brief. */
@@ -55,6 +72,10 @@ export interface MissionStory {
   topics: string[];
   /** True when this came from a live read, false when it is the fallback. */
   live: boolean;
+  /** The heavy posts of the day. Empty on a quiet day or a failed read. */
+  posts: DispatchPost[];
+  /** Situations still being followed. Empty is normal. */
+  threads: DispatchThread[];
 }
 
 export interface DailyMission {
@@ -221,7 +242,85 @@ function parseStory(raw: unknown): MissionStory | null {
     sentiment: clamp(num(value.sentiment) ?? 0, -100, 100),
     topics,
     live: value.live === true,
+    posts: parsePosts(value.posts),
+    threads: parseThreads(value.threads),
   };
+}
+
+const POST_KINDS = ['loud', 'call', 'warning', 'receipt', 'denial'] as const;
+const THREAD_STATES = ['watching', 'escalating', 'resolved', 'cold'] as const;
+
+/**
+ * The feed off the wire.
+ *
+ * Checked as hard as everything else that crosses this boundary, and then
+ * some: this is the one screen that presents itself as news, so an entry that
+ * does not parse is dropped rather than shown half-formed. An empty feed is
+ * honest. A feed with a broken row in it is not.
+ */
+function parsePosts(raw: unknown): DispatchPost[] {
+  if (!Array.isArray(raw)) return [];
+
+  const out: DispatchPost[] = [];
+  for (const item of raw) {
+    if (typeof item !== 'object' || item === null) continue;
+    const value = item as Record<string, unknown>;
+
+    const handle = str(value.handle)?.replace(/^@/, '').toLowerCase() ?? '';
+    const summary = str(value.summary);
+    const url = postUrl(value.url, handle);
+
+    // Checked again on this side of the wire. A summary attributed to a real
+    // person with nothing to check it against does not go on a screen.
+    if (!/^[a-z0-9_]{1,15}$/.test(handle) || !summary || !url) continue;
+
+    const kind = POST_KINDS.find((k) => k === value.kind) ?? 'loud';
+    out.push({
+      handle,
+      summary: summary.slice(0, 160),
+      why: str(value.why)?.slice(0, 100) ?? '',
+      kind,
+      url,
+    });
+    if (out.length === 6) break;
+  }
+  return out;
+}
+
+/** Same shape check the service does, because this side must not trust it. */
+function postUrl(raw: unknown, handle: string): string | null {
+  if (typeof raw !== 'string') return null;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'https:') return null;
+    if (!['x.com', 'www.x.com', 'twitter.com', 'www.twitter.com'].includes(url.hostname)) {
+      return null;
+    }
+    const match = /^\/([A-Za-z0-9_]{1,15})\/status\/(\d{5,25})/.exec(url.pathname);
+    if (!match || (match[1] ?? '').toLowerCase() !== handle) return null;
+    return `https://x.com/${match[1]}/status/${match[2]}`;
+  } catch {
+    return null;
+  }
+}
+
+function parseThreads(raw: unknown): DispatchThread[] {
+  if (!Array.isArray(raw)) return [];
+
+  const out: DispatchThread[] = [];
+  for (const item of raw) {
+    if (typeof item !== 'object' || item === null) continue;
+    const value = item as Record<string, unknown>;
+
+    const title = str(value.title);
+    const status = str(value.status);
+    if (!title || !status) continue;
+
+    const state = THREAD_STATES.find((s) => s === value.state) ?? 'watching';
+    out.push({ title: title.slice(0, 80), status: status.slice(0, 160), state });
+    if (out.length === 4) break;
+  }
+  return out;
 }
 
 /** The original fictional archetypes. Safe, funny, and always available. */

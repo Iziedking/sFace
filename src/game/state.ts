@@ -215,6 +215,15 @@ export class RunState {
   /** Whether the day's single relic was recovered. Tracked for the profile. */
   relicTaken = false;
 
+  /**
+   * Multiplier from today's contracts, set once when the run ends.
+   *
+   * One means none were met, which is a normal outcome rather than a penalty.
+   * It is applied last, after the market bounty and the stage bounty, because
+   * it is the only one of the three the player had any say over.
+   */
+  contractBonus = 1;
+
   private nextId = 1;
 
   constructor(mission: DailyMission, weapon: WeaponId = DEFAULT_WEAPON, stageNumber = 1) {
@@ -311,7 +320,7 @@ export class RunState {
       this.cacheScore +
       this.attackersCleared * ATTACKER_SCORE +
       timeBonus;
-    return Math.floor(raw * this.mission.bountyMultiplier * this.stage.bounty);
+    return Math.floor(raw * this.mission.bountyMultiplier * this.stage.bounty * this.contractBonus);
   }
 
   emit(event: RunEvent): void {
