@@ -1,0 +1,45 @@
+# sFace's service, joining the shared ingress on the VPS.
+#
+# Same arrangement as avow-deploy and Agent QA on that box: this project runs
+# its own container, joins the arcrun compose project's default network, and
+# borrows that project's Caddy rather than running one of its own. Caddy owns
+# 80 and 443 there and a second one cannot have them.
+#
+# Two things that follow from that, both of which have bitten this VPS before:
+#
+#   1. The site block for api.sface.site does NOT live here. It lives in the
+#      arcrun repo, in deploy/caddy/Caddyfile, because the arcrun deploy runs
+#      `git reset --hard origin/main` and would wipe a block added by hand on
+#      the box. Avow's block was lost exactly that way.
+#   2. Never run `docker compose down` in the arcrun deploy directory. It
+#      deletes deploy_default and takes this service down with it.
+services:
+  api:
+    build: .
+    image: sface-api:latest
+    # A stable name, because the shared Caddy reaches this by name and not by
+    # port. Changing it means changing the Caddyfile in the other repo.
+    container_name: sface-api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Behind Caddy, so the rate limiter must key on the forwarded hop rather
+      # than on the proxy's own address, or every caller shares one bucket.
+      TRUST_PROXY: 'true'
+      PORT: '8790'
+      DATA_DIR: /data
+    volumes:
+      - sface-data:/data
+    networks:
+      - proxy
+    # No ports: mapping. Publishing 8790 to the host would put the service on
+    # the public internet next to the TLS one, which is the whole thing Caddy
+    # is here to prevent.
+
+networks:
+  proxy:
+    external: true
+    name: deploy_default
+
+volumes:
+  sface-data:

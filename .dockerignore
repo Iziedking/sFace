@@ -1,0 +1,16 @@
+# Everything the service does not need. Keeping the build context small is the
+# cheap half; the important half is that .env must never reach an image layer.
+.env
+.env.*
+!.env.example
+.data
+node_modules
+dist
+.git
+.github
+src
+tests
+public
+scripts
+docs
+*.md
