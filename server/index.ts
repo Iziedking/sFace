@@ -20,6 +20,7 @@ import * as board from './leaderboard';
 import * as challenges from './challenges';
 import * as clans from './clans';
 import * as ghosts from './ghosts';
+import * as signals from './xsignals';
 import * as profiles from './profiles';
 import * as xauth from './xauth';
 import { attachLive } from './live';
@@ -192,6 +193,12 @@ const decideClanBody = z.object({
   deviceId,
   memberId: deviceId,
   approve: z.boolean(),
+});
+
+const unlockBody = z.object({
+  deviceId,
+  /** Reported, not verified. Same limitation as challenge settlement. */
+  serializedTx: z.string().regex(/^[0-9a-f]+$/i).min(32).max(4096),
 });
 
 const settleBody = z.object({
@@ -370,6 +377,52 @@ app.post('/clans/:tag/decide', limit(30, 15), (req, res) => {
   }
 
   res.json(clans.detail(tag));
+});
+
+/*
+ * CT Signals. Who publicly engages a handle, and what they fly for.
+ *
+ * Public data only, computed on the fly and never stored. See the header of
+ * server/xsignals.ts for why that posture matters and for the honest note on
+ * what the payment does and does not buy.
+ */
+app.get('/signals/:handle', limit(20, 8), async (req, res) => {
+  const handle = String(req.params.handle ?? '').replace(/^@/, '').toLowerCase();
+  if (!/^[a-z0-9_]{1,15}$/.test(handle)) {
+    res.status(400).json({ error: 'Not an X handle.' });
+    return;
+  }
+
+  const asked = req.query.depth === 'full';
+  const who = typeof req.query.deviceId === 'string' ? req.query.deviceId : '';
+  // Free when no treasury is configured: a paywall with nowhere to pay is a
+  // dead end, not a business model.
+  const paid = signals.treasury() === null || (who !== '' && signals.unlocked(who));
+  const depth = asked && paid ? 'full' : 'glance';
+
+  const out = await signals.readSignals(handle, depth);
+  if (!out) {
+    res.status(503).json({ error: 'Could not read X right now. Try later.' });
+    return;
+  }
+
+  res.json({
+    ...out,
+    priceNim: signals.SIGNALS_PRICE_NIM,
+    treasury: signals.treasury(),
+    unlocked: paid,
+  });
+});
+
+app.post('/signals/unlock', limit(12, 6), (req, res) => {
+  const parsed = unlockBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: firstIssue(parsed.error) });
+    return;
+  }
+
+  signals.grant(parsed.data.deviceId, parsed.data.serializedTx);
+  res.json({ unlocked: true });
 });
 
 app.get('/profile/:id', limit(60, 20), (req, res) => {
@@ -569,6 +622,7 @@ function snapshot() {
     profiles: profiles.serialise(),
     ghosts: ghosts.serialise(),
     clans: clans.serialise(),
+    signals: signals.serialise(),
   };
 }
 
@@ -583,6 +637,7 @@ async function main(): Promise<void> {
     profiles.restore((restored as { profiles?: unknown }).profiles);
     ghosts.restore((restored as { ghosts?: unknown }).ghosts);
     clans.restore((restored as { clans?: unknown }).clans);
+    signals.restore((restored as { signals?: unknown }).signals);
     console.log('[sface] restored snapshot');
   }
 
@@ -592,6 +647,7 @@ async function main(): Promise<void> {
   profiles.onChange(() => scheduleSave(snapshot));
   ghosts.onChange(() => scheduleSave(snapshot));
   clans.onChange(() => scheduleSave(snapshot));
+  signals.onChange(() => scheduleSave(snapshot));
 
   startRefreshLoop();
 
@@ -600,6 +656,7 @@ async function main(): Promise<void> {
     () => {
       board.prune(utcDate());
       challenges.prune();
+      signals.pruneUnlocks();
       // Traces are the bulkiest thing stored and a seed is only playable on
       // its own day, so everything but today's room goes.
       void getMission().then((mission) => {

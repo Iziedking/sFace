@@ -199,6 +199,50 @@ export async function decideClanRequest(
   });
 }
 
+// CT Signals ---------------------------------------------------------------
+
+export interface Engager {
+  handle: string;
+  touches: number;
+  followers: number;
+  clanTag: string | null;
+  playing: boolean;
+}
+
+export interface Signals {
+  handle: string;
+  reach: number;
+  touches: number;
+  top: Engager[];
+  clans: Array<{ tag: string; among: number }>;
+  depth: 'glance' | 'full';
+  moreAtFull: number;
+  priceNim: number;
+  /** Where a deep read is paid to. Null means it is simply free here. */
+  treasury: string | null;
+  unlocked: boolean;
+}
+
+export async function fetchSignals(
+  handle: string,
+  deviceId: string,
+  depth: 'glance' | 'full',
+): Promise<ApiResult<Signals>> {
+  const query = new URLSearchParams({ deviceId, depth });
+  return request<Signals>(`/signals/${encodeURIComponent(handle)}?${query.toString()}`);
+}
+
+/** Report the payment. Reported, not verified: see the README. */
+export async function unlockSignals(body: {
+  deviceId: string;
+  serializedTx: string;
+}): Promise<ApiResult<{ unlocked: boolean }>> {
+  return request<{ unlocked: boolean }>('/signals/unlock', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
 export interface GhostRecord {
   id: string;
   name: string;
