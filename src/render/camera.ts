@@ -103,9 +103,18 @@ export class Camera {
      * terrain and the entire premise, losing sight of it is not acceptable.
      *
      * Half the gap, capped, so the ship never drifts toward the top edge.
+     *
+     * The cap was a fifth of the view and that was not enough. A wide desktop
+     * window is short in world units, about 490 tall once the fairness cap
+     * bites, so a fifth is under a hundred units of bias against a gap that
+     * routinely runs past four hundred. The chart went off the bottom of the
+     * screen and stayed there for most of a run, which means the one thing the
+     * whole game is built on was invisible while you played it. A third keeps
+     * the ground on screen at any sane altitude and still leaves the ship
+     * comfortably inside the frame rather than riding the top edge.
      */
     const gap = Math.max(0, groundY - player.y);
-    const bias = Math.min(gap * 0.5, this.viewH * 0.2);
+    const bias = Math.min(gap * 0.55, this.viewH * 0.32);
     const eye = player.y + bias;
 
     // When the view is wider or taller than the world, centre on the world

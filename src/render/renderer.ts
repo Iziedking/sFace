@@ -94,6 +94,8 @@ export class Renderer {
     camera.applyTo(ctx);
 
     this.drawGrid(camera);
+    this.drawRidge(state, camera);
+    this.drawWeather(state, camera);
     this.drawTerrain(state, camera);
     this.drawExtraction(state, camera);
     this.drawRefills(state, camera);
@@ -120,21 +122,35 @@ export class Renderer {
     this.avatars.get(url);
   }
 
-  /** Faint rules, the way a chart pane is ruled. Not a decorative grid. */
+  /**
+   * Faint rules, the way a chart pane is ruled. Not a decorative grid.
+   *
+   * The two axes are no longer drawn alike, because they do not mean alike. A
+   * price pane is ruled horizontally: those lines are levels, and against them
+   * you can see whether you are climbing. The vertical rules are just time and
+   * on screen they were doing the most damage, cutting the sky into boxes and
+   * competing with everything that can kill you. They are still there, at a
+   * third of the weight, which is enough to read speed against and not enough
+   * to look at.
+   */
   private drawGrid(camera: Camera): void {
     const ctx = this.ctx;
     const spacing = 120;
 
     ctx.lineWidth = 1;
     ctx.strokeStyle = theme.hairline;
-    ctx.globalAlpha = 0.5;
-    ctx.beginPath();
 
+    ctx.globalAlpha = 0.16;
+    ctx.beginPath();
     const startX = Math.floor(camera.left / spacing) * spacing;
     for (let x = startX; x < camera.left + camera.viewW; x += spacing) {
       ctx.moveTo(x, CEILING);
       ctx.lineTo(x, WORLD_HEIGHT);
     }
+    ctx.stroke();
+
+    ctx.globalAlpha = 0.45;
+    ctx.beginPath();
     for (let y = CEILING; y <= WORLD_HEIGHT; y += spacing) {
       ctx.moveTo(camera.left, y);
       ctx.lineTo(camera.left + camera.viewW, y);
@@ -152,9 +168,171 @@ export class Renderer {
   }
 
   /**
+   * A distant echo of the same chart, scrolling at half speed behind the level.
+   *
+   * The sky was a flat wash with a grid on it, so flying felt like moving
+   * through nothing: no speed, no depth, no sense of a place. The obvious fix
+   * is a parallax layer and the obvious parallax layer is invented scenery,
+   * which is exactly the decorative filler the design forbids.
+   *
+   * So this is the chart again. Same heights, sampled at half the rate and
+   * flattened toward a horizon, which is what a real range does when it is far
+   * away. It reads as distance, it gives the eye something to measure speed
+   * against, and every ridge on it is still today's price action rather than
+   * something a designer drew.
+   *
+   * Cosmetic and deterministic: it reads terrain heights and the camera, never
+   * a random stream, so it cannot diverge between two players on a seed and
+   * costs the simulation nothing.
+   */
+  private drawRidge(state: RunState, camera: Camera): void {
+    const ctx = this.ctx;
+    const terrain = state.terrain;
+    const heights = terrain.heights;
+    if (heights.length < 2) return;
+
+    /** Fraction of the camera's motion the ridge takes. Lower reads further. */
+    const PARALLAX = 0.5;
+    /** How much of the chart's relief survives the distance. */
+    const FLATTEN = 0.55;
+    /**
+     * Pushes the range up so it clears the near ground and stays visible. At
+     * 150 it spent most of the run hidden behind the terrain it sits behind,
+     * which is a layer nobody ever sees.
+     */
+    const LIFT = 250;
+
+    const left = camera.left;
+    const right = left + camera.viewW;
+    // One vertex every 24 world units is smooth at any zoom this game reaches
+    // and keeps the whole ridge under a hundred points.
+    const stride = 24;
+
+    ctx.save();
+    ctx.beginPath();
+
+    let started = false;
+    for (let x = left - stride; x <= right + stride; x += stride) {
+      // Sample the chart at half the travel, so the range slides past at half
+      // the speed of the ground under it.
+      const sampleX = x * PARALLAX;
+      const index = sampleX / POINT_SPACING;
+      const low = Math.floor(index);
+      const high = low + 1;
+      const blend = index - low;
+
+      const a = heights[((low % heights.length) + heights.length) % heights.length] ?? WORLD_HEIGHT;
+      const b =
+        heights[((high % heights.length) + heights.length) % heights.length] ?? WORLD_HEIGHT;
+      const sampled = a + (b - a) * blend;
+
+      const y = WORLD_HEIGHT - (WORLD_HEIGHT - sampled) * FLATTEN - LIFT;
+
+      if (!started) {
+        ctx.moveTo(x, y);
+        started = true;
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+
+    ctx.lineTo(right + stride, WORLD_HEIGHT + 900);
+    ctx.lineTo(left - stride, WORLD_HEIGHT + 900);
+    ctx.closePath();
+
+    // Ink at low alpha rather than a second tan. A distant range is a value
+    // shift, not a different material, and tinting it would invent a colour
+    // the palette does not have.
+    /*
+     * Deliberately weak, and it has to stay that way. The near ground carries a
+     * six pixel ink rule and a bright accent line on top of it; this carries
+     * neither and no outline at all. That gap is the only thing telling a
+     * player at speed which of the two shapes is solid, and a ridge mistaken
+     * for terrain is worse than no ridge.
+     */
+    ctx.globalAlpha = 0.085;
+    ctx.fillStyle = theme.ink;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  /**
    * The chart, as ground. Solid mass below the line rather than a tint, so it
    * reads as something you cannot fly through, which is exactly what it is.
    */
+  /**
+   * Weather over the level. Ash, dust, static or embers, by stage.
+   *
+   * Three rules, and they are what keep this from being the decorative motion
+   * the whole design forbids:
+   *
+   *   1. It never affects play. No collision, no occlusion of anything you
+   *      need to see. A stage that is harder to READ is not a harder stage, it
+   *      is an unfair one, and the level is a fair bet before it is a picture.
+   *   2. It is drawn BEHIND the terrain and everything on it, so nothing that
+   *      can kill you is ever obscured by a fleck.
+   *   3. It is deterministic from the fleck's index and the run clock rather
+   *      than from any random stream, so it costs no state, never diverges
+   *      between two players, and cannot touch the level RNG.
+   *
+   * Positions are computed in world space from the camera window, so flecks
+   * scroll with the world rather than sitting on the glass like a screen
+   * effect, which is what makes it read as weather rather than as a filter.
+   */
+  private drawWeather(state: RunState, camera: Camera): void {
+    const look = state.stage.look;
+    if (look.weather === 'clear' || look.density <= 0) return;
+
+    const ctx = this.ctx;
+    const count = Math.round(90 * look.density);
+    const time = state.time;
+
+    ctx.save();
+
+    for (let i = 0; i < count; i++) {
+      // Two incommensurate multipliers, so the field never lines up into
+      // visible rows the way a single stride does.
+      const lane = (i * 137.508) % 1;
+      const seed = (i * 0.6180339887) % 1;
+
+      const drift = look.weather === 'ember' ? -34 : 22 + seed * 26;
+      const fall = look.weather === 'static' ? 0 : 14 + seed * 30;
+
+      const spanX = camera.viewW + 240;
+      const spanY = WORLD_HEIGHT + 260;
+
+      const x = camera.left - 120 + (((lane * spanX + time * drift) % spanX) + spanX) % spanX;
+      const y = CEILING - 130 + (((seed * spanY + time * fall) % spanY) + spanY) % spanY;
+
+      if (look.weather === 'static') {
+        // Signal noise: short horizontal ticks that blink rather than fall.
+        const on = Math.sin(time * 9 + i * 2.3) > 0.55;
+        if (!on) continue;
+        ctx.globalAlpha = 0.16;
+        ctx.fillStyle = theme.ink;
+        ctx.fillRect(x, y, 9 + seed * 12, 2);
+        continue;
+      }
+
+      if (look.weather === 'ember') {
+        // The only weather that carries colour, and it rises.
+        ctx.globalAlpha = 0.28 + Math.sin(time * 2.4 + i) * 0.12;
+        ctx.fillStyle = seed > 0.7 ? theme.accent : theme.accentDeep;
+        const size = 2 + seed * 2.4;
+        ctx.fillRect(x, y, size, size);
+        continue;
+      }
+
+      // Dust and ash: ink flecks at low alpha, ash heavier and slower.
+      ctx.globalAlpha = look.weather === 'ash' ? 0.15 : 0.1;
+      ctx.fillStyle = theme.ink;
+      const size = look.weather === 'ash' ? 2.4 + seed * 2.6 : 1.6 + seed * 1.8;
+      ctx.fillRect(x, y, size, size);
+    }
+
+    ctx.restore();
+  }
+
   private drawTerrain(state: RunState, camera: Camera): void {
     const ctx = this.ctx;
     const terrain = state.terrain;
@@ -544,7 +722,16 @@ private drawExtraction(state: RunState, camera: Camera): void {
       seed: me?.handle ?? 'you',
       avatar: this.avatars.get(me?.avatarUrl),
       alpha: 1,
-      firing: player.fireCooldown > 0.06,
+      /*
+       * Time since the shot, not time left on the cooldown.
+       *
+       * The cooldown test lit the muzzle for whatever fraction of the interval
+       * was left, which on a slow weapon is nearly all of it. The lance sat
+       * with a permanently lit barrel and the sidearm flickered at its own fire
+       * rate, so neither one actually marked the moment a round left. Recency
+       * gives every weapon the same short flash on the frame it fires.
+       */
+      firing: state.time - player.lastFiredAt < 0.055,
       label: null,
     });
 

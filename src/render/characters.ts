@@ -313,10 +313,33 @@ function drawArm(
   roundRect(ctx, 9, -2.4, 9, 4.8, 1.5);
   ctx.fill();
 
+  /*
+   * Muzzle flash.
+   *
+   * A flare along the barrel rather than a dot on the end of it. The dot was
+   * too small to register at the size a character actually occupies, so a shot
+   * looked identical to no shot and the gun read as inert. This also matters
+   * for the people shooting at you: a flash you can see across the level is
+   * the warning that something has line of sight on you, which is information
+   * the player was not being given.
+   *
+   * Drawn in the barrel's own rotated space, so it always points where the
+   * round went.
+   */
   if (o.firing) {
     ctx.fillStyle = theme.accent;
     ctx.beginPath();
-    ctx.arc(20, 0, 3.4, 0, Math.PI * 2);
+    ctx.moveTo(18, 0);
+    ctx.lineTo(23, -5.2);
+    ctx.lineTo(31, 0);
+    ctx.lineTo(23, 5.2);
+    ctx.closePath();
+    ctx.fill();
+
+    // A pale core, so the flare reads as light rather than as an orange shape.
+    ctx.fillStyle = theme.canvas;
+    ctx.beginPath();
+    ctx.arc(22, 0, 2, 0, Math.PI * 2);
     ctx.fill();
   }
 
