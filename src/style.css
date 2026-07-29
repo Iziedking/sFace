@@ -3670,3 +3670,234 @@ body.is-fullscreen .foot,
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+/* Settings ---------------------------------------------------------------
+ *
+ * One decision, laid out as three rows you can actually read the difference
+ * between. A dropdown would be smaller and would hide exactly the explanation
+ * that makes the choice possible.
+ */
+
+.settings {
+  max-width: 620px;
+}
+
+.schemes {
+  display: grid;
+  gap: 10px;
+}
+
+.scheme {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  border: 2px solid var(--ink);
+  border-radius: var(--round);
+  background: var(--paper);
+  box-shadow: var(--lift-sm);
+  padding: 14px 16px;
+}
+
+.scheme--on {
+  background: var(--accent-pale);
+}
+
+.scheme__body {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.scheme__name {
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.scheme__say {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+
+.scheme__mark {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  flex: none;
+  min-width: 22px;
+  text-align: right;
+}
+
+.settings__note {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+  border-top: 1px solid var(--ink-faint);
+  padding-top: 12px;
+  max-width: 52ch;
+}
+
+/* Our own button, not a borrowed one --------------------------------------
+ *
+ * The treatment before this was a rounded slab floating on a hard offset
+ * shadow, cast down and to the RIGHT, which is the exact signature of the site
+ * we took the cartoon cue from and which a competing entry is already using.
+ * Copying it twice over would read as somebody else's house style.
+ *
+ * ## What this is instead
+ *
+ * A key, not a card. The shadow is not a shadow: it is the side wall of a
+ * physical thing, extruded straight DOWN with no horizontal offset at all.
+ * That single difference is what separates a button standing on the page from
+ * a card hovering above it, and it is the whole reason this does not look
+ * borrowed. A dropped card is lit from the top left and floats. A key is lit
+ * from directly above and is bolted down; you press it and it goes nowhere but
+ * into its own wall.
+ *
+ * Everything else follows from that:
+ *
+ *   3px outline    heavier than the 2px used everywhere else, because a key
+ *                  has a moulded edge and a card has a hairline.
+ *   6px radius     enough to read as moulded plastic, nowhere near a pill.
+ *                  A pill is a lozenge; this is a cap with its corners eased.
+ *   inner highlight a light line inside the top edge, so the face reads as
+ *                  slightly domed rather than flat. This is the cartoon.
+ *   travel         presses the full height of its own wall and stops. The
+ *                  button ends flush with the page, which is what a real key
+ *                  does at the bottom of its throw.
+ *
+ * The chart is still the loudest thing on screen. These are chunky, not bright.
+ */
+
+.button:not(.button--quiet) {
+  border-width: 3px;
+  border-radius: 6px;
+  /*
+   * Straight down. Never `Npx Npx`, which is the diagonal drop we are
+   * deliberately not using, and never blurred: a moulded wall has an edge.
+   */
+  box-shadow:
+    0 6px 0 0 var(--ink),
+    inset 0 3px 0 0 rgba(255, 255, 255, 0.28);
+  transition:
+    box-shadow 0.07s ease,
+    transform 0.07s ease,
+    background-color 0.12s ease;
+}
+
+.button:not(.button--quiet):active:not(:disabled) {
+  /* Exactly the wall height, so it bottoms out rather than sinking through. */
+  transform: translateY(6px);
+  box-shadow:
+    0 0 0 0 var(--ink),
+    inset 0 3px 0 0 rgba(255, 255, 255, 0.18);
+}
+
+/* Tiles are keys too, at a smaller gauge, because a grid of full-height keys
+   would be a wall of chunk with no hierarchy left in it. */
+.tile {
+  border-width: 3px;
+  border-radius: 6px;
+  box-shadow:
+    0 4px 0 0 var(--ink),
+    inset 0 2px 0 0 rgba(255, 255, 255, 0.22);
+  transition:
+    box-shadow 0.07s ease,
+    transform 0.07s ease;
+}
+
+.tile:active {
+  transform: translateY(4px);
+  box-shadow: 0 0 0 0 var(--ink);
+}
+
+/*
+ * Surfaces stay flat and stay square.
+ *
+ * The keys are the only things that stand up. A panel that also floated would
+ * put a surface at the same height as the control sitting on it, and the whole
+ * point of the extrude is that pressable things are raised and nothing else is.
+ */
+.mission,
+.notice,
+.board,
+.stage,
+.engagers,
+.signals__head,
+.unlock,
+.wallet-cta,
+.chapter,
+.scheme,
+.panel,
+.clan,
+.card-preview {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* Small marks square up, so the eased corners belong to keys alone and read
+   as a property of "you can press this". */
+.eyebrow,
+.chip,
+.clan__tag,
+.engager__clan,
+.stage__badge,
+.mission__change,
+.board__tier,
+.chapter__n {
+  border-radius: 0;
+}
+
+.chapter__n {
+  border-width: 2px;
+}
+
+/* A scheme row is a control, so it gets the key treatment rather than sitting
+   flat like the panels around it. */
+.scheme {
+  border-width: 3px;
+  border-radius: 6px;
+  box-shadow: 0 4px 0 0 var(--ink);
+}
+
+.scheme:active {
+  transform: translateY(4px);
+  box-shadow: 0 0 0 0 var(--ink);
+}
+
+/* A stage that looks back says so on its own card. */
+.stage__watched {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  flex-wrap: wrap;
+  border-top: 2px solid var(--ink);
+  padding-top: 9px;
+}
+
+.stage__watchedmark {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  flex: none;
+  padding: 3px 7px;
+  border: 2px solid var(--ink);
+  background: var(--danger-pale);
+}
+
+.stage__watchedsay {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-muted);
+  flex: 1;
+  min-width: 180px;
+}

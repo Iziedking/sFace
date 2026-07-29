@@ -62,6 +62,7 @@ export interface BriefOptions {
   onFullscreen: (() => void) | null;
   fullscreen: boolean;
   onReplayIntro: () => void;
+  onSettings: () => void;
   /** Absent when X connect is not configured on this deployment. */
   onConnectX: (() => void) | null;
 }
@@ -227,6 +228,7 @@ export function renderBrief(root: HTMLElement, options: BriefOptions): void {
                 )
               : null,
             button('Replay intro', options.onReplayIntro, 'quiet'),
+            button('Controls', options.onSettings, 'quiet'),
           ),
         ),
       ),
