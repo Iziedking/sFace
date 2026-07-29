@@ -98,6 +98,7 @@ import {
   connectX,
   connectedX,
   disconnectX,
+  takeRedirectResult,
   xConnectAvailable,
   type XProfile,
 } from './net/xconnect';
@@ -108,6 +109,7 @@ import { challengeDeeplink, clanDeeplink, readChallengeId, readClanTag } from '.
 import { buy } from './game/consume';
 import { CONSUMABLES } from './data/consumables';
 import { signClaim } from './nimiq/wallet';
+import { renderSettings } from './ui/settings';
 
 type Screen =
   | 'loading'
@@ -115,6 +117,7 @@ type Screen =
   | 'intro'
   | 'gate'
   | 'controls'
+  | 'settings'
   | 'loadout'
   | 'clan'
   | 'campaign'
@@ -163,7 +166,16 @@ class App {
   private askedForDeviceId = false;
 
   /** The connected X account, whose picture rides on the character's head. */
-  private me: XProfile | null = connectedX();
+  /**
+   * The connected account.
+   *
+   * takeRedirectResult first: on the very load that comes back from X the
+   * profile is in the URL fragment and not yet in storage, so reading the cache
+   * alone would show a player who just signed in as still signed out. It falls
+   * through to the cache on every other load, and returns null when there is
+   * neither.
+   */
+  private me: XProfile | null = takeRedirectResult() ?? connectedX();
   /** False until the service confirms X connect is configured here. */
   private xAvailable = false;
   /**
@@ -260,6 +272,8 @@ class App {
     this.chrome = chrome;
     this.renderer = new Renderer(canvas);
     this.input = new Input(canvas);
+    // The pad layout needs a count, and this is the only place that knows it.
+    this.input.slotCount = CONSUMABLES.length;
     this.loop = new GameLoop({
       update: (dt) => this.update(dt),
       render: () => this.render(),
@@ -706,6 +720,15 @@ class App {
     this.notice = null;
   }
 
+  private showSettings(): void {
+    this.ui.className = '';
+    this.screen = 'settings';
+    renderSettings(this.ui, {
+      onBack: () => this.showBrief(),
+      onChange: () => this.showSettings(),
+    });
+  }
+
   private showBrief(): void {
     const mission = this.mission;
     if (!mission) return;
@@ -758,6 +781,16 @@ class App {
         this.ui.className = '';
         this.screen = 'controls';
         renderControls(this.ui, { onBack: () => this.showBrief() });
+      },
+      onSettings: () => {
+        this.ui.className = '';
+        this.screen = 'settings';
+        renderSettings(this.ui, {
+          onBack: () => this.showBrief(),
+          // Re-render in place rather than bouncing home, so a player trying
+          // the three schemes can feel the difference without losing the page.
+          onChange: () => this.showSettings(),
+        });
       },
       onReplayIntro: () => this.playIntro(),
       onStart: () => this.startRun(),

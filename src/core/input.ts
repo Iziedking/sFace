@@ -34,6 +34,9 @@ const MOUSE_AIM_TTL_MS = 1200;
 /** Shared empty result, so a quiet frame allocates nothing. */
 const EMPTY_BUYS: number[] = [];
 
+import { hit, padLayout, padVector, type PadLayout } from './pads';
+import { snapsToDirections, usingPads } from './scheme';
+
 export class Input {
   /** Thrust direction, each axis in [-1, 1]. */
   readonly move: Vec2 = { x: 0, y: 0 };
@@ -83,6 +86,14 @@ export class Input {
 
   private movePointer: number | null = null;
   private aimPointer: number | null = null;
+  /**
+   * Which pad each live pointer grabbed, when the pads are in force.
+   *
+   * Keyed by pointerId rather than stored as one value, because a player using
+   * pads has two thumbs down constantly and the second one must not steal the
+   * first one's control.
+   */
+  private padGrab = new Map<number, 'move' | 'fire'>();
   private stickOrigin: Vec2 = { x: 0, y: 0 };
   private aimOrigin: Vec2 = { x: 0, y: 0 };
   private keys = new Set<string>();
@@ -111,6 +122,7 @@ export class Input {
     this.aimStick = null;
     this.movePointer = null;
     this.aimPointer = null;
+    this.padGrab.clear();
     this.keys.clear();
   }
 
@@ -149,6 +161,27 @@ export class Input {
     return { x: event.clientX - rect.left, y: event.clientY - rect.top };
   }
 
+  /** The pad layout for the canvas as it is right now. Never cached: rotating
+   *  a phone changes it, and a stale layout is a button that has moved out
+   *  from under the place it is drawn. */
+  private pads(): PadLayout {
+    return padLayout(this.canvas.clientWidth, this.canvas.clientHeight, this.slotCount);
+  }
+
+  /**
+   * How many consumable buttons to lay out.
+   *
+   * Set by the app from the consumables table rather than hardcoded here, and
+   * read by the HUD from this same field rather than from the table directly.
+   * One runtime value, two consumers. A constant in each place would agree
+   * today and silently disagree the moment a fifth consumable is added, and
+   * the symptom would be a button that is drawn and cannot be pressed, which
+   * is the exact failure core/pads.ts exists to prevent.
+   *
+   * Input still knows nothing about what a slot contains. Only how many.
+   */
+  slotCount = 0;
+
   private onDown = (event: PointerEvent): void => {
     const point = this.local(event);
 
@@ -161,6 +194,15 @@ export class Input {
       this.firing = true;
       return;
     }
+
+    /*
+     * Pads take the touch before the halves do.
+     *
+     * Order matters: a fire button sits in the right half and a move pad in
+     * the left, so falling through to the half-screen logic first would have
+     * the floating sticks swallow every press before a pad ever saw it.
+     */
+    if (usingPads() && this.onPadDown(event, point)) return;
 
     const leftHalf = point.x < this.canvas.clientWidth / 2;
 
@@ -181,8 +223,54 @@ export class Input {
     }
   };
 
+  /**
+   * Route a press to a pad. Returns true when one took it.
+   *
+   * A press that lands on nothing is deliberately swallowed rather than
+   * falling through to the floating sticks. Mixing the schemes would mean a
+   * stray touch in the middle of the screen starts steering a ship the player
+   * is steering with a pad, and the two inputs would fight.
+   */
+  private onPadDown(event: PointerEvent, point: Vec2): boolean {
+    const pads = this.pads();
+
+    if (hit(pads.move, point.x, point.y)) {
+      this.padGrab.set(event.pointerId, 'move');
+      const v = padVector(pads.move, point.x, point.y, snapsToDirections());
+      this.move.x = v.x;
+      this.move.y = v.y;
+      return true;
+    }
+
+    for (let i = 0; i < pads.slots.length; i++) {
+      if (hit(pads.slots[i]!, point.x, point.y)) {
+        // Buy on press rather than release. A consumable is used in a fight,
+        // and a button that waits for the lift feels broken under pressure.
+        this.press(i);
+        return true;
+      }
+    }
+
+    if (hit(pads.fire, point.x, point.y)) {
+      this.padGrab.set(event.pointerId, 'fire');
+      this.firing = true;
+      return true;
+    }
+
+    return true;
+  }
+
   private onMove = (event: PointerEvent): void => {
     const point = this.local(event);
+
+    const grabbed = this.padGrab.get(event.pointerId);
+    if (grabbed === 'move') {
+      const v = padVector(this.pads().move, point.x, point.y, snapsToDirections());
+      this.move.x = v.x;
+      this.move.y = v.y;
+      return;
+    }
+    if (grabbed === 'fire') return;
 
     if (event.pointerId === this.movePointer) {
       const dx = point.x - this.stickOrigin.x;
@@ -246,6 +334,18 @@ export class Input {
   };
 
   private onUp = (event: PointerEvent): void => {
+    const grabbed = this.padGrab.get(event.pointerId);
+    if (grabbed) {
+      this.padGrab.delete(event.pointerId);
+      if (grabbed === 'move') {
+        this.move.x = 0;
+        this.move.y = 0;
+      } else {
+        this.firing = false;
+      }
+      return;
+    }
+
     if (event.pointerId === this.movePointer) {
       this.movePointer = null;
       this.move.x = 0;
