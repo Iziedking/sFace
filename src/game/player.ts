@@ -15,6 +15,7 @@
 
 import { clamp, direction, groundPenetration } from './collision';
 import { spawnBullet, BULLET_RADIUS } from './bullet';
+import { fireRateScale, recoilScale } from './consume';
 import type { Weapon } from '../data/weapons';
 import type { RunState } from './state';
 import { PLAYER_MAX_HEALTH } from './state';
@@ -173,7 +174,10 @@ function fire(state: RunState, dt: number, command: PlayerCommand): void {
 
   if (!command.firing || player.fireCooldown > 0) return;
 
-  player.fireCooldown = weapon.interval;
+  // Overdrive shortens the gap between shots. Scaled here rather than baked
+  // into the weapon so the weapon stays a constant and the effect stays a
+  // property of the run.
+  player.fireCooldown = weapon.interval / fireRateScale(state);
   player.lastFiredAt = state.time;
 
   for (let index = 0; index < weapon.pellets; index++) {
@@ -202,8 +206,11 @@ function fire(state: RunState, dt: number, command: PlayerCommand): void {
 
   // A kick backwards. It sells the gun, and on the heavier ones it is a real
   // cost: a lance fired while hovering will move you.
-  player.vx -= player.aimX * weapon.recoil;
-  player.vy -= player.aimY * weapon.recoil;
+  // Recoil scales with the rate. A gun that fires twice as fast for free would
+  // be a straight upgrade, and no consumable in this game is allowed to be one.
+  const kick = weapon.recoil * recoilScale(state);
+  player.vx -= player.aimX * kick;
+  player.vy -= player.aimY * kick;
 }
 
 /**

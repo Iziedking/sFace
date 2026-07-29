@@ -31,6 +31,9 @@ const STICK_DEADZONE = 8;
 /** How long a mouse position keeps counting as an aim after it stops moving. */
 const MOUSE_AIM_TTL_MS = 1200;
 
+/** Shared empty result, so a quiet frame allocates nothing. */
+const EMPTY_BUYS: number[] = [];
+
 export class Input {
   /** Thrust direction, each axis in [-1, 1]. */
   readonly move: Vec2 = { x: 0, y: 0 };
@@ -260,12 +263,42 @@ export class Input {
     }
   };
 
+  /**
+   * Consumable slots pressed since the last drain, in order.
+   *
+   * A queue rather than a flag, because two presses in one frame are two
+   * purchases and dropping the second one would silently eat the player's
+   * scrip decision. Drained by the loop, never read twice.
+   */
+  private readonly bought: number[] = [];
+
+  /** Slots the player asked for this frame. Empties the queue. */
+  takeBuys(): number[] {
+    if (this.bought.length === 0) return EMPTY_BUYS;
+    return this.bought.splice(0, this.bought.length);
+  }
+
+  /** Raise intent for a slot, from a key or a tap on the HUD. */
+  press(slot: number): void {
+    this.bought.push(slot);
+  }
+
   private onKeyDown = (event: KeyboardEvent): void => {
     this.keys.add(event.code);
     this.applyKeys();
     if (event.code === 'Space') {
       this.firing = true;
       event.preventDefault();
+    }
+
+    // 1 to 4 buy the consumable in that slot. Repeat events are ignored so a
+    // held key does not drain the purse.
+    if (!event.repeat && event.code.startsWith('Digit')) {
+      const slot = Number(event.code.slice(5));
+      if (slot >= 1 && slot <= 4) {
+        this.press(slot - 1);
+        event.preventDefault();
+      }
     }
   };
 
