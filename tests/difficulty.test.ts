@@ -19,6 +19,7 @@ import { RunState, RUN_SECONDS, PLAYER_MAX_HEALTH } from '../src/game/state';
 import { step } from '../src/game/update';
 import { REFILL_HEAL, REFILL_REACH } from '../src/game/refill';
 import { PLAYER_RADIUS, type PlayerCommand } from '../src/game/player';
+import { STAGES, stageAt } from '../src/data/campaign';
 
 const DT = 1 / 60;
 const IDLE: PlayerCommand = { moveX: 0, moveY: 0, aimX: null, aimY: null, firing: false };
@@ -137,18 +138,34 @@ describe('escalation', () => {
 });
 
 describe('refills', () => {
+  it('lays down exactly what the stage table asks for', () => {
+    // The count used to be a flat six everywhere, so stage one handed out 192
+    // hull against its 18 attackers. It is per stage now, and the table is the
+    // only place the number lives.
+    for (let n = 1; n <= STAGES.length; n++) {
+      const run = new RunState(mission(), undefined, n);
+      expect(run.refills.length).toBe(stageAt(n).refills);
+    }
+  });
+
+  it('gives a crowded late stage more lifelines than a quiet first one', () => {
+    const first = new RunState(mission(), undefined, 1);
+    const last = new RunState(mission(), undefined, STAGES.length);
+    expect(last.refills.length).toBeGreaterThan(first.refills.length);
+  });
+
   it('places lifelines on the comfortable line, not off it', () => {
     const run = new RunState(mission());
-    expect(run.refills.length).toBeGreaterThan(3);
+    expect(run.refills.length).toBeGreaterThan(0);
 
     // The opposite requirement to a cache. A refill you have to dive for
     // punishes the player who already needed it.
-    let reachable = 0;
+    // EVERY one, not merely one of them. With six per stage a single lucky
+    // placement satisfied this; with two, the design has to actually hold.
     for (const refill of run.refills) {
       const comfortable = run.terrain.groundAt(refill.x) - 200;
-      if (Math.abs(refill.y - comfortable) <= REFILL_REACH + PLAYER_RADIUS) reachable++;
+      expect(Math.abs(refill.y - comfortable)).toBeLessThanOrEqual(REFILL_REACH + PLAYER_RADIUS);
     }
-    expect(reachable).toBeGreaterThan(0);
   });
 
   it('restores hull on contact', () => {

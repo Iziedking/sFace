@@ -33,32 +33,54 @@ export interface Refill {
 export const REFILL_HEAL = 32;
 export const REFILL_REACH = 30;
 
+/**
+ * The player's radius, duplicated rather than imported.
+ *
+ * player.ts imports state.ts which imports this file, so reaching for the real
+ * constant would close a cycle. Seventeen is small and has not moved; if it
+ * ever does, the test that asserts every refill is on the comfortable line is
+ * what will notice.
+ */
+const PLAYER_SPAN = 17;
+
 /** Roughly the altitude a player holds when they are not doing anything clever. */
 const COMFORT_CLEARANCE = 200;
-const COUNT = 6;
 
 export function layOutRefills(
   rng: Rng,
   terrain: Terrain,
   nextId: () => number,
   extractionX: number,
+  /** How many this stage lays down. See the stage table for why it varies. */
+  count: number,
 ): Refill[] {
   const refills: Refill[] = [];
+  if (count <= 0) return refills;
 
   const first = 1100;
   const last = extractionX - 400;
-  const step = (last - first) / COUNT;
+  const step = (last - first) / count;
 
-  for (let i = 0; i < COUNT; i++) {
+  for (let i = 0; i < count; i++) {
     // Spread evenly with a little jitter, so they arrive at a rhythm rather
     // than clustering wherever the chart happened to be flat.
     const x = first + step * i + rng.range(step * 0.2, step * 0.75);
 
-    // Near the comfortable altitude, not exactly on it. Close enough to grab
-    // without a detour, far enough that flying the line collects them all
-    // without any thought.
+    /*
+     * Near the comfortable altitude, not exactly on it. Close enough to grab
+     * without a detour, far enough that flying the line collects them all
+     * without any thought.
+     *
+     * The spread is smaller than the reach that defines "without a detour"
+     * (REFILL_REACH plus the player's radius), so every refill is genuinely on
+     * the line. It used to be wider than that, and the design only held
+     * because six of them per stage meant one always landed close by accident.
+     * Cutting the count to two on stage one turned that luck into a stage
+     * where neither lifeline was actually on the route.
+     */
     const comfortable = terrain.groundAt(x) - COMFORT_CLEARANCE;
-    const y = comfortable + rng.range(-52, 52);
+    const spread = (REFILL_REACH + PLAYER_SPAN) * 0.85;
+    const y = comfortable + rng.range(-spread, spread);
 
     refills.push({
       id: nextId(),
