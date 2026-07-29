@@ -536,8 +536,24 @@ app.get('/x/config', (_req, res) => {
   res.json({ enabled: xauth.xauthConfigured() });
 });
 
-app.post('/x/start', limit(20, 8), (_req, res) => {
-  const result = xauth.begin();
+app.post('/x/start', limit(20, 8), (req, res) => {
+  /*
+   * Where to send them back to, checked against the allow list.
+   *
+   * Never taken on trust. An open redirect on an OAuth callback is how you
+   * hand somebody else's authorisation to a site of your choosing, so an
+   * origin that is not one of ours is refused outright rather than quietly
+   * replaced with a default.
+   */
+  const asked = typeof req.body?.returnTo === 'string' ? req.body.returnTo : '';
+  const returnTo = ALLOWED_ORIGINS.includes(asked) ? asked : (ALLOWED_ORIGINS[0] ?? '');
+
+  if (!returnTo) {
+    res.status(500).json({ error: 'No allowed origin is configured.' });
+    return;
+  }
+
+  const result = xauth.begin(returnTo);
   if (!result.ok) {
     res.status(result.code).json({ error: result.reason });
     return;
@@ -551,26 +567,60 @@ app.get('/x/callback', limit(30, 12), async (req, res) => {
 
   // The user declined on X's own screen. Not an error, just a no.
   if (typeof req.query.error === 'string') {
-    res.type('html').send(closingPage({ ok: false, reason: 'declined' }));
+    handOff(res, xauth.returnAddress(state), { ok: false, reason: 'declined' });
     return;
   }
 
   if (!state || !code) {
-    res.status(400).type('html').send(closingPage({ ok: false, reason: 'bad_request' }));
+    handOff(res, null, { ok: false, reason: 'bad_request' });
     return;
   }
 
+  // Read before complete(), which consumes the flow.
+  const returnTo = xauth.returnAddress(state);
+
   const result = await xauth.complete(state, code);
-  res.type('html').send(
-    result.ok
-      ? closingPage({ ok: true, profile: result.value })
-      : closingPage({ ok: false, reason: result.reason }),
-  );
+  const payload = result.ok
+    ? { ok: true as const, profile: result.value }
+    : { ok: false as const, reason: result.reason };
+
+  handOff(res, returnTo, payload);
 });
 
 /**
- * The callback lands in a popup. This page hands the result to the opener and
- * closes itself, so the game never navigates away and never loses its run.
+ * Send the browser back to the app with the result.
+ *
+ * ## Why this is a redirect and no longer a popup
+ *
+ * The old flow opened a popup and handed the result back by postMessage. That
+ * works on a desktop and fails on the device this game is actually for. Mobile
+ * browsers refuse a blank popup that is navigated after an await, and inside
+ * Nimiq Pay's WebView window.open either does nothing or escapes to the system
+ * browser, which then has no opener to post a message to. Connect X was simply
+ * dead on every phone.
+ *
+ * The result rides in the URL FRAGMENT, not the query string. A fragment is
+ * never sent to a server, so it stays out of access logs and out of any proxy
+ * in between, which is the right handling for somebody's account details even
+ * though every field in them is public.
+ *
+ * The popup page is kept below for the case where an opener really is there,
+ * so a desktop flow already in progress is not broken by this change.
+ */
+function handOff(res: Response, returnTo: string | null, payload: unknown): void {
+  const target = returnTo ?? ALLOWED_ORIGINS[0] ?? '';
+
+  if (!target) {
+    res.type('html').send(closingPage(payload));
+    return;
+  }
+
+  const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+  res.redirect(302, `${target}/#sface-x=${encoded}`);
+}
+
+/**
+ * The old popup page, kept for a flow that genuinely has an opener.
  *
  * The payload is JSON-encoded into a script tag, so `<` is escaped: a display
  * name is attacker-controlled text and this is the one place it is inlined

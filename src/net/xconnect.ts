@@ -1,10 +1,24 @@
 /**
  * The browser half of connecting an X account.
  *
- * The flow opens in a popup and reports back by postMessage, which is the only
- * shape that does not destroy a run in progress. A full-page redirect would
- * reload the game, drop the run, and reset the level, and doing that to
- * somebody mid-flight to render a small picture is a bad trade.
+ * ## Why this is a redirect and not a popup
+ *
+ * It used to open a popup and listen for a postMessage, on the reasoning that a
+ * full-page redirect would reload the game and drop a run in progress.
+ *
+ * That reasoning was wrong twice over. It fails on mobile, where browsers
+ * refuse a blank popup navigated after an await and where Nimiq Pay's WebView
+ * either ignores window.open entirely or escapes to the system browser, which
+ * then has no opener to report back to. Connect X was dead on every phone, and
+ * a phone is the device this game is actually for.
+ *
+ * And the run it was protecting does not exist. Connect X is reachable from the
+ * gate, the brief, the results screen and CT Signals. There is no run in flight
+ * on any of them. The popup was defending against a case that never happens, at
+ * the cost of the case that always does.
+ *
+ * So: full-page redirect out, full-page redirect back, result read off the URL
+ * fragment on boot. Nothing to block, nothing to postMessage, works everywhere.
  *
  * The profile is cached in local storage so a returning player is already
  * connected. It holds a handle, a display name and a picture URL, all of which
@@ -15,7 +29,6 @@
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
 const STORAGE_KEY = 'sface.x';
-const POPUP_TIMEOUT_MS = 3 * 60_000;
 
 export interface XProfile {
   handle: string;
@@ -64,91 +77,68 @@ export async function xConnectAvailable(): Promise<boolean> {
  * opened after an await is not a user gesture any more and every browser
  * blocks it.
  */
+/**
+ * Leave for X. Never resolves in any useful sense: the page is going away.
+ *
+ * Returns null only when the flow could not even be started, so a caller can
+ * show a failure rather than sitting there waiting for a navigation that is
+ * not coming.
+ */
 export async function connectX(): Promise<XProfile | null> {
   if (!API_BASE) return null;
 
-  const popup = window.open('', 'sface-x', 'width=520,height=720');
-  if (!popup) return null;
-
   try {
-    const response = await fetch(`${API_BASE}/x/start`, { method: 'POST' });
-    if (!response.ok) {
-      popup.close();
-      return null;
-    }
+    const response = await fetch(`${API_BASE}/x/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      // Where to come back to. Validated against the allow list on the service,
+      // so this is a request rather than an instruction.
+      body: JSON.stringify({ returnTo: window.location.origin }),
+    });
+    if (!response.ok) return null;
 
     const { url } = (await response.json()) as { url?: unknown };
-    if (typeof url !== 'string') {
-      popup.close();
-      return null;
-    }
+    if (typeof url !== 'string') return null;
 
-    popup.location.href = url;
-    const profile = await waitForResult(popup);
+    window.location.href = url;
 
-    if (profile) {
-      cached = profile;
-      write(profile);
-    }
-    return profile;
+    // The navigation is under way. Hand back a promise that never settles so no
+    // caller paints a "failed" state over a page that is already leaving.
+    return new Promise<XProfile | null>(() => {});
   } catch {
-    try {
-      popup.close();
-    } catch {
-      // Already gone.
-    }
     return null;
   }
 }
 
-function waitForResult(popup: Window): Promise<XProfile | null> {
-  return new Promise((resolve) => {
-    let settled = false;
+/**
+ * Read a result off the URL fragment, if we have just come back from X.
+ *
+ * Called once on boot, before anything renders. The fragment is stripped
+ * immediately afterwards so a reload cannot replay it and the address bar does
+ * not carry somebody's handle around for the rest of the session.
+ *
+ * Reuses parseProfile, which is the same validation the popup flow used: the
+ * handle is shape-checked rather than trusted, because it arrives from outside
+ * and ends up rendered next to a picture.
+ */
+export function takeRedirectResult(): XProfile | null {
+  const hash = window.location.hash;
+  const marker = '#sface-x=';
+  if (!hash.startsWith(marker)) return null;
 
-    const finish = (profile: XProfile | null): void => {
-      if (settled) return;
-      settled = true;
-      window.removeEventListener('message', onMessage);
-      clearInterval(closedWatch);
-      clearTimeout(timeout);
-      resolve(profile);
-    };
+  // Cleared first, so a malformed payload cannot get stuck and replay forever.
+  history.replaceState(null, '', window.location.pathname + window.location.search);
 
-    const onMessage = (event: MessageEvent): void => {
-      // Only our own service may report a result. Without this check any page
-      // the player has open could hand us an identity.
-      if (!isTrustedOrigin(event.origin)) return;
-
-      const data = event.data as { source?: unknown; payload?: unknown };
-      if (!data || data.source !== 'sface-x') return;
-
-      finish(parseProfile(data.payload));
-    };
-
-    window.addEventListener('message', onMessage);
-
-    // A player who closes the popup has answered. Poll for it, because there
-    // is no event for someone else's window closing.
-    const closedWatch = window.setInterval(() => {
-      if (popup.closed) finish(null);
-    }, 600);
-
-    const timeout = window.setTimeout(() => {
-      try {
-        popup.close();
-      } catch {
-        // Already gone.
-      }
-      finish(null);
-    }, POPUP_TIMEOUT_MS);
-  });
-}
-
-function isTrustedOrigin(origin: string): boolean {
   try {
-    return new URL(API_BASE, window.location.origin).origin === origin;
+    const raw = hash.slice(marker.length).replace(/-/g, '+').replace(/_/g, '/');
+    const profile = parseProfile(JSON.parse(atob(raw)));
+    if (!profile) return null;
+
+    cached = profile;
+    write(profile);
+    return profile;
   } catch {
-    return false;
+    return null;
   }
 }
 

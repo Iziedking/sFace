@@ -58,6 +58,14 @@ export type Result<T> = { ok: true; value: T } | { ok: false; reason: string; co
 interface Pending {
   verifier: string;
   createdAt: number;
+  /**
+   * Where to send the browser when the flow finishes.
+   *
+   * Held here rather than round-tripped through X, so the address the user is
+   * returned to is one this service already trusted at the start of the flow
+   * and cannot be rewritten by anything that happens in between.
+   */
+  returnTo: string;
 }
 
 /** state -> verifier. In memory, short lived, single process. */
@@ -73,7 +81,7 @@ export function xauthConfigured(): boolean {
  * PKCE with S256. The verifier never leaves this process and the challenge is
  * the only thing that travels, so intercepting the redirect gains nothing.
  */
-export function begin(): Result<{ url: string; state: string }> {
+export function begin(returnTo: string): Result<{ url: string; state: string }> {
   if (!xauthConfigured()) {
     return { ok: false, reason: 'X connect is not configured.', code: 503 };
   }
@@ -87,7 +95,7 @@ export function begin(): Result<{ url: string; state: string }> {
   const challenge = base64url(createHash('sha256').update(verifier).digest());
   const state = base64url(randomBytes(16));
 
-  pending.set(state, { verifier, createdAt: Date.now() });
+  pending.set(state, { verifier, createdAt: Date.now(), returnTo });
 
   const url = new URL(AUTHORIZE_URL);
   url.searchParams.set('response_type', 'code');
@@ -104,6 +112,11 @@ export function begin(): Result<{ url: string; state: string }> {
 }
 
 /** Finish a flow. The state is single use, whether or not it succeeds. */
+/** Where a finished flow should send the browser back to, or null. */
+export function returnAddress(state: string): string | null {
+  return pending.get(state)?.returnTo ?? null;
+}
+
 export async function complete(state: string, code: string): Promise<Result<XProfile>> {
   if (!xauthConfigured()) {
     return { ok: false, reason: 'X connect is not configured.', code: 503 };
