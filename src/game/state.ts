@@ -24,6 +24,8 @@ import type { FaceQuirk } from '../data/faces';
 import { DEFAULT_WEAPON, weaponById, type Weapon, type WeaponId } from '../data/weapons';
 import { stageAt, type Stage } from '../data/campaign';
 import { layOutCaches, type Cache } from './cache';
+import { openPurse, rollDrop, type ScripPurse } from './scrip';
+import { lockUp } from './cell';
 import { layOutRefills, type Refill } from './refill';
 import { fallbackRoster, type DailyMission, type RosterEntry } from './mission';
 import { Terrain, EXTRACTION_X, WORLD_HEIGHT, CEILING } from './terrain';
@@ -81,6 +83,15 @@ export interface Enemy {
   /** Anchor for drifters, which bob around where they were placed. */
   homeY: number;
   phase: number;
+  /**
+   * Scrip paid out when this one is cleared.
+   *
+   * Drawn at layout rather than rolled on death. A roll at death time is
+   * consumed in whatever order the player happens to kill things, so two
+   * players on one seed would finish with different money, which is exactly
+   * the divergence the two-stream rule exists to prevent.
+   */
+  drop: number;
 }
 
 export interface Face {
@@ -97,6 +108,12 @@ export interface Face {
   x: number;
   y: number;
   state: FaceState;
+  /**
+   * Locked up. Touching does nothing until a breaching charge takes the door
+   * off. A flag rather than its own entity, so a cell cannot desynchronise
+   * from the person inside it. See cell.ts.
+   */
+  caged: boolean;
   /** Position in the follow chain, set when freed. */
   slot: number;
   /** Talker: run time until which it has stopped to finish a sentence. */
@@ -211,6 +228,22 @@ export class RunState {
    */
   cacheScore = 0;
   cachesTaken = 0;
+  /**
+   * The day's token, scavenged and spent inside this run only.
+   *
+   * Never persisted, never posted, never read from the profile. See scrip.ts
+   * for why it must never be purchasable.
+   */
+  readonly purse: ScripPurse;
+  cacheScrip = 0;
+  /** Run clock at which overdrive expires. Past time means it is not running. */
+  overdriveUntil = -1;
+  /** Cells opened this run. Scored, because breaking in is work. */
+  cellsOpened = 0;
+  /** Nothing about this run will be saved. */
+  readonly practice: boolean;
+  /** A clipped look at a stage this player has not signed in to fly properly. */
+  readonly taster: boolean;
   refillsTaken = 0;
   /** Whether the day's single relic was recovered. Tracked for the profile. */
   relicTaken = false;
@@ -226,14 +259,42 @@ export class RunState {
 
   private nextId = 1;
 
-  constructor(mission: DailyMission, weapon: WeaponId = DEFAULT_WEAPON, stageNumber = 1) {
+  /**
+   * How long a taster lasts on a stage a practice player has not unlocked.
+   *
+   * Long enough to meet the stage properly: see its weather, its density, and
+   * on a caged stage to find a cell and understand that it needs a charge.
+   * Short enough that finishing it is not on the table.
+   */
+  static readonly TASTER_SECONDS = 45;
+
+  constructor(
+    mission: DailyMission,
+    weapon: WeaponId = DEFAULT_WEAPON,
+    stageNumber = 1,
+    /**
+     * A run that will never be saved.
+     *
+     * Stage one is the whole game, unlimited and replayable forever: it is the
+     * argument for signing in and it would be a poor argument if it were
+     * clipped. Every later stage is a taster on a clock, because seeing the
+     * cells and the ash and then running out of time is a far better reason to
+     * sign in than being told about them.
+     */
+    practice = false,
+  ) {
     this.mission = mission;
     this.terrain = new Terrain(mission.terrain);
     this.weapon = weaponById(weapon);
 
     const stage = stageAt(stageNumber);
     this.stage = stage;
-    this.seconds = stage.seconds;
+    this.practice = practice;
+    // Only later stages are clipped. Stage one practice is the full run.
+    this.taster = practice && stage.n > 1;
+    this.seconds = this.taster
+      ? Math.min(stage.seconds, RunState.TASTER_SECONDS)
+      : stage.seconds;
     // Never shorter than a level worth flying, whatever a stage asks for.
     this.extractionX = Math.max(3_000, Math.round(EXTRACTION_X * stage.span));
 
@@ -247,6 +308,10 @@ export class RunState {
      */
     const seed = `${mission.seed}:s${stage.n}`;
     this.runRng = new Rng(`${seed}:run`);
+
+    // Denominated in the day's own ticker. Practice missions have one too, so
+    // a practice run shows the real game rather than a stripped version of it.
+    this.purse = openPurse(mission.ticker);
 
     const levelRng = new Rng(seed);
     // Fear and Greed still sets the day's difficulty; the stage raises the
@@ -269,6 +334,11 @@ export class RunState {
       () => this.nextId++,
       this.extractionX,
     );
+    // Lock some of them up. Drawn from the level stream immediately after the
+    // faces are placed, so the draw order is fixed and two players get the
+    // same people behind the same doors.
+    lockUp(levelRng, this.faces, stage.n);
+
     this.caches = layOutCaches(
       levelRng,
       this.terrain,
@@ -380,6 +450,7 @@ function layOutEnemies(
       active: false,
       homeY: y,
       phase: rng.range(0, Math.PI * 2),
+      drop: rollDrop(rng, difficulty),
     });
   }
 
@@ -460,6 +531,9 @@ function layOutFaces(
       x,
       y: Math.max(CEILING + 40, y),
       state: 'trapped',
+      // Set by lockUp() right after the whole roster is placed, so the draw
+      // does not interleave with face placement.
+      caged: false,
       slot: -1,
       pausedUntil: 0,
       nextTalkAt: 0,
