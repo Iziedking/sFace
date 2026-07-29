@@ -19,6 +19,7 @@ import { atExtraction, extractFollowers, loseFollowers } from './face';
 import { updateFaces } from './face';
 import { damagePlayer, playerCircle, updatePlayer, type PlayerCommand } from './player';
 import { PLAYER_MAX_HEALTH, type RunState } from './state';
+import { earn } from './scrip';
 
 export function step(state: RunState, dt: number, command: PlayerCommand): void {
   if (state.finished) return;
@@ -83,6 +84,10 @@ function resolveCaches(state: RunState): void {
     cache.taken = true;
     state.cachesTaken++;
     state.cacheScore += cacheFace(cache.tier);
+    // Scrip on top of the Face. The Face is the permanent record; this is the
+    // money you can actually use before the run ends.
+    earn(state.purse, cache.scrip);
+    state.cacheScrip += cache.scrip;
     if (cache.tier === 'relic') state.relicTaken = true;
 
     state.emit({

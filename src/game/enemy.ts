@@ -23,6 +23,7 @@ import type { Enemy, RunState } from './state';
 import { ATTACKER_SCORE } from './state';
 import type { RunState as Run } from './state';
 import { CEILING, WORLD_HEIGHT } from './terrain';
+import { earn } from './scrip';
 
 export const ENEMY_RADIUS = 16;
 export const TURRET_RADIUS = 19;
@@ -278,7 +279,15 @@ export function damageEnemy(state: RunState, enemy: Enemy, amount: number): void
   if (enemy.health <= 0) {
     enemy.alive = false;
     state.attackersCleared++;
-    state.emit({ kind: 'kill', x: enemy.x, y: enemy.y });
+    // The drop was decided when the level was laid out, so paying it here
+    // cannot consume a random draw and cannot diverge between two players.
+    earn(state.purse, enemy.drop);
+    state.emit({
+      kind: 'kill',
+      x: enemy.x,
+      y: enemy.y,
+      text: enemy.drop > 0 ? `+${enemy.drop}` : undefined,
+    });
   }
 }
 

@@ -28,6 +28,7 @@
 import type { Rng } from '../core/rng';
 import { CACHES, type CacheTier } from '../data/story';
 import type { Terrain } from './terrain';
+import { cacheScrip } from './scrip';
 import { CEILING, POINT_SPACING } from './terrain';
 
 export interface Cache {
@@ -38,6 +39,11 @@ export interface Cache {
   taken: boolean;
   /** Animation offset so a row of them does not pulse in lockstep. */
   phase: number;
+  /**
+   * Scrip inside, on top of the Face. Drawn here at layout for the same reason
+   * an attacker's drop is: a roll at pickup time depends on pickup order.
+   */
+  scrip: number;
 }
 
 /** Roughly where an unadventurous pilot flies. Caches avoid this band. */
@@ -73,6 +79,7 @@ export function layOutCaches(
     y: terrain.groundAt(trough) - 38,
     taken: false,
     phase: rng.range(0, Math.PI * 2),
+      scrip: cacheScrip(rng, difficulty) * 3,
   });
 
   // Vaults sit in other local troughs, which is where a chart spent its worst
@@ -94,6 +101,7 @@ export function layOutCaches(
       y: terrain.groundAt(pick) - rng.range(46, 78),
       taken: false,
       phase: rng.range(0, Math.PI * 2),
+      scrip: cacheScrip(rng, difficulty) * 2,
     });
   }
 
@@ -135,6 +143,7 @@ export function layOutCaches(
       y,
       taken: false,
       phase: rng.range(0, Math.PI * 2),
+      scrip: cacheScrip(rng, difficulty) * 1,
     });
   }
 
