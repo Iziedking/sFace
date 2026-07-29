@@ -168,6 +168,39 @@ function card(stage: Stage, cleared: number, options: CampaignOptions): HTMLElem
 
     el('div', { class: 'stage__weather' }, ...swatch(stage)),
 
+    /*
+     * The single most important thing about a stage that has it.
+     *
+     * The card lists time, enemies, caches, volley and Face, and a player
+     * reads it to know what is different about flying this one. From stage
+     * four the biggest difference by far is that the level looks back, and
+     * none of those five numbers say so. A stat row that omits the headline
+     * mechanic teaches people the card is not worth reading.
+     */
+    stage.convoy
+      ? el(
+          'div',
+          { class: 'stage__watched' },
+          el('span', { class: 'stage__watchedmark', text: 'DRIVE' }),
+          el('span', {
+            class: 'stage__watchedsay',
+            text: "Fly into the transport to take the wheel. It is heavy, it cannot climb a steep line, and it only moves while you drive it. Hold up to get out. The stage clears when the cargo reaches the pad.",
+          }),
+        )
+      : null,
+
+    stage.sight
+      ? el(
+          'div',
+          { class: 'stage__watched' },
+          el('span', { class: 'stage__watchedmark', text: 'WATCHED' }),
+          el('span', {
+            class: 'stage__watchedsay',
+            text: 'Turrets hold an arc, drifters sweep one. Cross a cone in the open and the level wakes early and shoots faster.',
+          }),
+        )
+      : null,
+
     unlocked && !selected
       ? button(restored ? 'Fly it again' : 'Select', () => options.onSelect(stage.n), 'ghost')
       : null,

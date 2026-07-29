@@ -14,6 +14,7 @@
  */
 
 import { clamp, direction, groundPenetration } from './collision';
+import { updateConvoy } from './convoy';
 import { spawnBullet, BULLET_RADIUS } from './bullet';
 import { fireRateScale, recoilScale } from './consume';
 import type { Weapon } from '../data/weapons';
@@ -54,6 +55,19 @@ export interface PlayerCommand {
 export function updatePlayer(state: RunState, dt: number, command: PlayerCommand): void {
   const player = state.player;
 
+  /*
+   * At the wheel: no flight at all.
+   *
+   * Returning early rather than blending the two is the whole reason driving
+   * feels different. A car that still had thrust, drag and a jetpack would be a
+   * ship with a picture of a car on it, which is exactly the objection that
+   * made the first two versions of this stage fail.
+   */
+  if (state.driving) {
+    drive(state, dt, command);
+    return;
+  }
+
   // The Exchange King is heavy. Carrying him is a real cost, not a label.
   const heavyCount = state.faces.filter(
     (f) => f.state === 'following' && f.quirk === 'heavy',
@@ -82,6 +96,85 @@ export function updatePlayer(state: RunState, dt: number, command: PlayerCommand
   aim(state, command);
   fire(state, dt, command);
   recordTrail(state);
+}
+
+/**
+ * How close you have to be to climb in.
+ *
+ * Generous, because mounting is not the skill being tested and fumbling it
+ * under fire would be a tax on the wrong thing.
+ */
+const MOUNT_REACH = 74;
+
+/** Push given on the way out, so leaving is a hop rather than a fall. */
+const DISMOUNT_LIFT = -300;
+
+/**
+ * How long after climbing out before you can climb back in.
+ *
+ * Without it, getting out is impossible: the dismount clears the flag, the very
+ * next frame finds the player still within reach of the seat they just left,
+ * and puts them straight back in it. The hop alone is not enough, because the
+ * check runs before the player has moved anywhere.
+ */
+const REMOUNT_LOCKOUT = 0.7;
+
+/**
+ * Driving.
+ *
+ * The horizontal axis steers and the vertical axis is the door: hold up and you
+ * climb out. That reuses the stick and the keys the player already has, so
+ * there is no new control to teach, and it maps to the intuition that up means
+ * out of the vehicle and into the air.
+ *
+ * The gun still works from the seat, which is the point: steering and aiming
+ * compete for the same thumb.
+ */
+function drive(state: RunState, dt: number, command: PlayerCommand): void {
+  const player = state.player;
+  const convoy = state.convoy;
+
+  if (!convoy || convoy.health <= 0) {
+    state.driving = false;
+    return;
+  }
+
+  // Out. Checked before the drive so a player bailing does not also lurch the
+  // vehicle a frame's worth in whatever direction they were leaning.
+  if (command.moveY < -0.5) {
+    state.driving = false;
+    state.remountAt = state.time + REMOUNT_LOCKOUT;
+    player.vy = DISMOUNT_LIFT;
+    player.vx = 0;
+    return;
+  }
+
+  updateConvoy(state, dt, command.moveX);
+
+  // Riding, not flying: the seat decides where you are.
+  player.x = convoy.x;
+  player.y = convoy.y - PLAYER_RADIUS - 6;
+  player.vx = 0;
+  player.vy = 0;
+  if (Math.abs(command.moveX) > 0.1) player.facing = command.moveX > 0 ? 1 : -1;
+
+  aim(state, command);
+  fire(state, dt, command);
+  recordTrail(state);
+}
+
+/** Climb in, if there is something to climb into and you are on it. */
+export function tryMount(state: RunState, _dt: number): void {
+  const convoy = state.convoy;
+  if (!convoy || state.driving || convoy.arrived || convoy.health <= 0) return;
+  if (state.time < state.remountAt) return;
+
+  const player = state.player;
+  const near = Math.hypot(player.x - convoy.x, player.y - convoy.y) <= MOUNT_REACH;
+  if (!near) return;
+
+  state.driving = true;
+  state.emit({ kind: 'refill', x: convoy.x, y: convoy.y, text: 'At the wheel' });
 }
 
 /** Keep the ship inside the world and make the ground hurt honestly. */

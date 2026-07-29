@@ -26,6 +26,7 @@ import { stageAt, type Stage } from '../data/campaign';
 import { layOutCaches, type Cache } from './cache';
 import { openPurse, rollDrop, type ScripPurse } from './scrip';
 import { lockUp } from './cell';
+import { makeConvoy, type Convoy } from './convoy';
 import { layOutRefills, type Refill } from './refill';
 import { fallbackRoster, type DailyMission, type RosterEntry } from './mission';
 import { Terrain, EXTRACTION_X, WORLD_HEIGHT, CEILING } from './terrain';
@@ -124,6 +125,13 @@ export interface Face {
   selfExtractX: number;
   /** Run time it was freed, used for the pickup line timing. */
   freedAt: number;
+  /**
+   * Seconds until this follower can take another shot.
+   *
+   * Freed people shoot back. See game/face.ts for why that is a rescue
+   * mechanic rather than a combat one.
+   */
+  fireCooldown: number;
 }
 
 export interface Bullet {
@@ -240,6 +248,37 @@ export class RunState {
   overdriveUntil = -1;
   /** Cells opened this run. Scored, because breaking in is work. */
   cellsOpened = 0;
+  /**
+   * How close the level is to noticing you, 0 to 1. See game/sight.ts.
+   *
+   * Only ever moves on a stage with sight on, so stages one to three carry it
+   * at zero for their whole run and nothing reads it.
+   */
+  alert = 0;
+  /** True on the frame a watcher currently has the player. Drives the HUD. */
+  watched = false;
+  /** Run clock until which the level stays angry. Past means calm. */
+  alertedUntil = -1;
+  /** How many times the alert filled. Shown on the results screen. */
+  alertsRaised = 0;
+  /**
+   * The transport, on a stage that has one. Null everywhere else.
+   *
+   * Nullable rather than always present with a disabled flag, so every reader
+   * has to acknowledge that most stages do not have one and none of them can
+   * accidentally read a dormant convoy's health as meaningful.
+   */
+  readonly convoy: Convoy | null;
+  /**
+   * True while the player is at the wheel rather than flying.
+   *
+   * A mode flag on the run rather than on the player, because almost everything
+   * that reads it cares about the run being in a different shape: the physics,
+   * the camera, the HUD and the transport all branch on it.
+   */
+  driving = false;
+  /** Run clock before which the seat is refused, so getting out is possible. */
+  remountAt = -1;
   /** Nothing about this run will be saved. */
   readonly practice: boolean;
   /** A clipped look at a stage this player has not signed in to fly properly. */
@@ -347,7 +386,15 @@ export class RunState {
       this.extractionX,
       stage.caches,
     );
-    this.refills = layOutRefills(levelRng, this.terrain, () => this.nextId++, this.extractionX);
+    this.convoy = stage.convoy ? makeConvoy(this.terrain) : null;
+
+    this.refills = layOutRefills(
+      levelRng,
+      this.terrain,
+      () => this.nextId++,
+      this.extractionX,
+      stage.refills,
+    );
 
     this.player = {
       x: 120,
@@ -539,6 +586,7 @@ function layOutFaces(
       nextTalkAt: 0,
       selfExtractX: x + (extractionX - x) * rng.range(0.4, 0.65),
       freedAt: 0,
+      fireCooldown: 0,
     });
   }
 
