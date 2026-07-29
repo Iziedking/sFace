@@ -74,12 +74,19 @@ export function renderChrome(root: HTMLElement, options: ChromeOptions): void {
         'div',
         { class: 'chrome__mission' },
         el('span', { class: 'chrome__ticker', text: mission.ticker }),
+        /*
+         * Nothing beside the ticker on a practice mission.
+         *
+         * A practice mission's ticker IS the word PRACTICE, so the old flat
+         * chip printed it a second time and the bar read "PRACTICE PRACTICE".
+         * The state is already stated; saying it twice is not clearer.
+         */
         mission.live
           ? el('span', {
               class: 'chrome__change',
               text: `${mission.changePct.toFixed(1)}%`,
             })
-          : el('span', { class: 'chrome__change chrome__change--flat', text: 'PRACTICE' }),
+          : null,
       )
     : null;
 
