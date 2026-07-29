@@ -22,6 +22,7 @@
  */
 
 import { button, el, mount } from './dom';
+import { walletCta } from './wallet-cta';
 import type { Engager, Signals } from '../net/api';
 
 export interface SignalsOptions {
@@ -35,6 +36,8 @@ export interface SignalsOptions {
   onConnectX: (() => void) | null;
   onUnlock: () => void;
   onBack: () => void;
+  /** Set when the deep read refused for want of a wallet. */
+  needsWallet: boolean;
 }
 
 export function renderSignals(root: HTMLElement, options: SignalsOptions): void {
@@ -46,7 +49,11 @@ export function renderSignals(root: HTMLElement, options: SignalsOptions): void 
       el('p', { class: 'eyebrow', text: 'CT SIGNALS' }),
       el('h1', { text: 'Who actually talks to you' }),
 
-      options.notice ? el('div', { class: 'notice notice--error', text: options.notice }) : null,
+      options.needsWallet
+        ? walletCta({ reason: options.notice ?? 'A deep read is paid for in NIM.' })
+        : options.notice
+          ? el('div', { class: 'notice notice--error', text: options.notice })
+          : null,
 
       !options.handle ? connectPanel(options) : body(options),
 

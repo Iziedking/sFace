@@ -17,10 +17,14 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
-# The server imports nothing from src/, so the client half never enters the
-# image. Checked, not assumed.
+# The server now imports the level builder from src/, so it can rebuild a level
+# from its seed and check a claimed score against what that level actually
+# contains. See server/verify.ts. The client half still never runs here; these
+# are pure simulation modules with no DOM in them, which is enforced by the
+# server tsconfig having no DOM lib.
 COPY tsconfig.server.json ./
 COPY server ./server
+COPY src ./src
 
 # The snapshot lives on a volume. Without this it lands in the working
 # directory and every redeploy silently starts the leaderboard from nothing.
