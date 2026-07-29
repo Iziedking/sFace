@@ -19,6 +19,7 @@ import type { Face, RunState } from './state';
 import { RESCUE_FRACTION } from './state';
 import { CEILING } from './terrain';
 import { isCaged } from './cell';
+import { spawnBullet } from './bullet';
 
 export const FACE_RADIUS = 15;
 
@@ -88,7 +89,87 @@ function tryFree(state: RunState, face: Face): void {
   state.emit({ kind: 'pickupLine', text: face.line, x: face.x, y: face.y });
 }
 
+/**
+ * Freed people shoot back.
+ *
+ * ## Why this is a rescue mechanic and not a combat one
+ *
+ * Before this, a rescued person was a number you were carrying. They slowed you
+ * down if heavy, they were lost if you died, and they paid out at the pad. Every
+ * one of those is a COST, so the optimal line was always "free them last, on the
+ * way to extraction", and the game quietly taught players to ignore the thing it
+ * is named after until the final seconds.
+ *
+ * Giving them a gun inverts that. Freeing somebody early now buys you covering
+ * fire for the rest of the run, so the decision becomes a real trade: carry them
+ * through the dangerous middle and they help, or play safe and go alone. That is
+ * the same shape as every other choice in this game, and it makes the title
+ * describe the strategy rather than just the theme.
+ *
+ * ## Why they are deliberately bad at it
+ *
+ * They are civilians with something they found. A quarter of the damage and a
+ * slow cadence means four or five hits to drop a diver where the player takes
+ * one or two. They thin a crowd and finish something wounded; they do not clear
+ * a level. If a full chain could out-shoot the player, the optimal play would
+ * become "collect everyone, then stop flying", which is a worse game than the
+ * one this is trying to be.
+ *
+ * ## Determinism
+ *
+ * Cadence is drawn from the run stream, in face array order, exactly like enemy
+ * fire. Two players who fly the same path free the same people at the same
+ * moments and get the same covering fire, so a challenge stays settleable.
+ */
+
+/** Damage per escort shot. A quarter of what a sidearm round does. */
+const ESCORT_DAMAGE = 5;
+/** How far they will engage. Shorter than the player's reach, on purpose. */
+const ESCORT_RANGE = 340;
+const ESCORT_BULLET_SPEED = 520;
+
+function escortFire(state: RunState, face: Face, dt: number): void {
+  face.fireCooldown -= dt;
+  if (face.fireCooldown > 0) return;
+
+  // Nearest live, woken attacker in range. Asleep ones are left alone so a
+  // chain does not wake the level early on the player's behalf.
+  let target = null as null | { x: number; y: number };
+  let best = ESCORT_RANGE;
+  for (const enemy of state.enemies) {
+    if (!enemy.alive || !enemy.active) continue;
+    const distance = Math.hypot(enemy.x - face.x, enemy.y - face.y);
+    if (distance < best) {
+      best = distance;
+      target = enemy;
+    }
+  }
+
+  if (!target) return;
+
+  const dx = target.x - face.x;
+  const dy = target.y - face.y;
+  const length = Math.hypot(dx, dy) || 1;
+
+  spawnBullet(state, {
+    x: face.x + (dx / length) * 16,
+    y: face.y + (dy / length) * 16,
+    vx: (dx / length) * ESCORT_BULLET_SPEED,
+    vy: (dy / length) * ESCORT_BULLET_SPEED,
+    life: 1.1,
+    damage: ESCORT_DAMAGE,
+    friendly: true,
+    pierce: 0,
+  });
+
+  // Ragged on purpose. A chain firing in lockstep sounds and looks like one
+  // weapon, which is not what four frightened people with pistols would be.
+  face.fireCooldown = state.runRng.range(0.85, 1.45);
+}
+
 function follow(state: RunState, face: Face, dt: number): void {
+  escortFire(state, face, dt);
+
   // The Last Market Maker can get himself out. His fee is separate.
   if (face.quirk === 'mercenary' && face.x >= face.selfExtractX) {
     face.state = 'extracted';
