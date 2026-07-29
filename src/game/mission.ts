@@ -103,7 +103,22 @@ export interface DailyMission {
   story: MissionStory | null;
 }
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? '';
+/*
+ * Read lazily rather than at module scope.
+ *
+ * import.meta.env only exists under Vite, so evaluating it on import made this
+ * whole module unimportable from Node. That mattered the moment the service
+ * needed to reconstruct a level to check a score against it: state.ts imports
+ * types and the fallback roster from here, so one browser-only constant made
+ * the entire level builder browser-only too.
+ */
+function apiBase(): string {
+  // Typed structurally rather than through vite/client, because the service
+  // typechecks this file too now and its tsconfig has no Vite types. Widening
+  // here keeps one definition working under both projects.
+  const meta = import.meta as ImportMeta & { env?: Record<string, string | undefined> };
+  return meta.env?.VITE_API_BASE ?? '';
+}
 
 export interface MissionLoad {
   mission: DailyMission;
@@ -116,8 +131,20 @@ export interface MissionLoad {
  * the alternative is a judge staring at a spinner.
  */
 export async function loadMission(signal?: AbortSignal): Promise<MissionLoad> {
-  if (!API_BASE) {
-    return { mission: practiceMission(), notice: 'Practice mission. No market data configured.' };
+  /*
+   * No service configured. Fall back silently.
+   *
+   * There used to be a banner here saying so, and it was redundant: a practice
+   * mission already announces itself everywhere it matters. The ticker strip
+   * reads PRACTICE instead of a percentage, the brief says PRACTICE MISSION on
+   * the card, and the score card carries it too. A pink notice on top of that
+   * was the same fact a fourth time, in the loudest possible voice, on the
+   * first screen anybody sees.
+   *
+   * The state is still labelled. It is just no longer shouted.
+   */
+  if (!apiBase()) {
+    return { mission: practiceMission(), notice: null };
   }
 
   try {
@@ -125,7 +152,7 @@ export async function loadMission(signal?: AbortSignal): Promise<MissionLoad> {
     const timer = setTimeout(() => controller.abort(), 5000);
     signal?.addEventListener('abort', () => controller.abort(), { once: true });
 
-    const response = await fetch(`${API_BASE}/mission/today`, {
+    const response = await fetch(`${apiBase()}/mission/today`, {
       signal: controller.signal,
     });
     clearTimeout(timer);

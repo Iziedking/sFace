@@ -25,6 +25,8 @@ import * as profiles from './profiles';
 import * as xauth from './xauth';
 import { attachLive } from './live';
 import { flush, loadSnapshot, scheduleSave } from './store';
+import { verifyClaim } from './attest';
+import { levelFacts, refuse } from './verify';
 
 const PORT = Number(process.env.PORT ?? 8790);
 /** Comma-separated list. Empty means allow any origin, which is fine for a
@@ -148,6 +150,15 @@ const scoreBody = z.object({
   stage: z.number().int().min(1).max(7).optional(),
   stageCleared: z.boolean().optional(),
   avatarUrl: avatarUrl.nullable().optional(),
+
+  /*
+   * The wallet's signature over this exact claim. Optional, because the board
+   * has always accepted unsigned rows and a plain browser has no wallet to
+   * sign with. A row that supplies one gets verified; a row that does not is
+   * stored exactly as before and simply carries no address.
+   */
+  publicKey: z.string().regex(/^[0-9a-fA-F]{64}$/).optional(),
+  signature: z.string().regex(/^[0-9a-fA-F]{128}$/).optional(),
 });
 
 const createBody = z.object({
@@ -263,14 +274,84 @@ app.get('/board/:date', limit(120, 40), (req, res) => {
   res.json(rows);
 });
 
-app.post('/board', limit(20, 10), (req, res) => {
+app.post('/board', limit(20, 10), async (req, res) => {
   const parsed = scoreBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
     return;
   }
 
-  const result = board.submit(parsed.data);
+  const body = parsed.data;
+
+  /*
+   * Verify the signature, if there is one, and derive who signed.
+   *
+   * A bad signature is refused rather than quietly downgraded to an unsigned
+   * row. Silently accepting it would mean a tampered claim still lands on the
+   * board looking ordinary, and the player who sent a genuine one has no way
+   * to tell their wallet failed to bind.
+   *
+   * The address is DERIVED from the public key. There is deliberately no
+   * address field in the request: a client-supplied address is a claim about
+   * a signature, whereas a derived one is the signature's author.
+   */
+  let address: string | null = null;
+  if (body.publicKey && body.signature) {
+    const attested = verifyClaim({
+      claim: {
+        date: body.date,
+        seed: body.seed,
+        stage: body.stage ?? 1,
+        score: body.score,
+      },
+      publicKey: body.publicKey,
+      signature: body.signature,
+    });
+
+    if (!attested) {
+      res.status(422).json({ error: 'That signature does not match the score it was sent with.' });
+      return;
+    }
+    address = attested.address;
+  }
+
+  /*
+   * Check the claim against the level it was supposedly run on.
+   *
+   * The mission comes from the service's own cache, never from the request. A
+   * caller who could supply the terrain could describe a level generous enough
+   * to justify anything they claimed, which would make the whole check a
+   * formality that validates the attacker's own homework.
+   *
+   * Skipped when the seed does not match today's: the service only holds one
+   * day's mission, so it cannot rebuild yesterday's level to check against.
+   * Those rows fall back to the old fixed bounds, which is what they had
+   * before this existed.
+   */
+  const today = await getMission();
+  if (today && today.payload.seed === body.seed) {
+    const facts = levelFacts(today.payload, body.stage ?? 1);
+    const impossible = facts && refuse(
+      {
+        seed: body.seed,
+        stage: body.stage ?? 1,
+        score: body.score,
+        facesExtracted: body.facesExtracted,
+        attackersCleared: body.attackersCleared,
+        cachesTaken: body.cachesTaken ?? 0,
+        duration: body.duration,
+        extracted: body.extracted ?? false,
+      },
+      facts,
+    );
+
+    if (impossible) {
+      res.status(422).json({ error: impossible });
+      return;
+    }
+  }
+
+  const result = board.submit({ ...body, address });
   if (!result.ok) {
     res.status(422).json({ error: result.reason });
     return;

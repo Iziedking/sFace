@@ -20,6 +20,8 @@ export interface BoardEntry {
   id: string;
   name: string;
   score: number;
+  /** Set when a wallet signed for this row. Null when nobody did. */
+  address?: string | null;
   avatarUrl?: string | null;
   clanTag?: string | null;
   /** Lifetime Face, so a row can show a rank badge. Daily rows carry it too. */
@@ -67,6 +69,15 @@ export interface ScoreSubmission {
   /** Which campaign stage this was, and whether it met the objective. */
   stage: number;
   stageCleared: boolean;
+  /**
+   * The wallet's signature over this exact claim, when one was given.
+   *
+   * No address field, deliberately. The service derives the address from the
+   * public key, so there is nowhere for a client to assert an identity it
+   * cannot prove.
+   */
+  publicKey?: string;
+  signature?: string;
 }
 
 export type ChallengeStatus = 'open' | 'resolved' | 'settled';

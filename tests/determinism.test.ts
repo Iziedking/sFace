@@ -20,6 +20,7 @@ import { practiceMission, parseMission, TERRAIN_POINTS } from '../src/game/missi
 import { RunState } from '../src/game/state';
 import { step } from '../src/game/update';
 import type { PlayerCommand } from '../src/game/player';
+import { earn, spend } from '../src/game/scrip';
 
 const IDLE: PlayerCommand = { moveX: 0, moveY: 0, aimX: null, aimY: null, firing: false };
 const FLYING: PlayerCommand = { moveX: 1, moveY: -0.4, aimX: 900, aimY: 400, firing: true };
@@ -206,5 +207,73 @@ describe('mission payload validation', () => {
 
   it('gives every player the same practice mission on the same day', () => {
     expect(practiceMission('2026-07-28')).toEqual(practiceMission('2026-07-28'));
+  });
+});
+
+/**
+ * Scrip is the money you spend inside a run, and a challenge is a bet between
+ * two people who must have had identical opportunities to earn it. If one
+ * player's level pays better than another's on the same seed, the bet is
+ * rigged and nothing on screen would say so.
+ *
+ * This is why every payout is drawn when the level is laid out rather than
+ * rolled when an attacker dies: a roll at death time is consumed in whatever
+ * order the player happens to kill things, so two players who fought the same
+ * level in a different order would finish with different money.
+ */
+describe('scrip is a property of the level, not of the fight', () => {
+  it('pays the same total on one seed regardless of kill order', () => {
+    const mission = practiceMission('2026-07-29');
+
+    const a = new RunState(mission, 'sidearm', 1);
+    const b = new RunState(mission, 'sidearm', 1);
+
+    // Same enemies, same drops, in the same places.
+    expect(a.enemies.map((e) => e.drop)).toEqual(b.enemies.map((e) => e.drop));
+
+    // Kill them in opposite orders and the take must still match.
+    const forward = [...a.enemies];
+    const backward = [...b.enemies].reverse();
+    let takeA = 0;
+    let takeB = 0;
+    for (const enemy of forward) takeA += enemy.drop;
+    for (const enemy of backward) takeB += enemy.drop;
+
+    expect(takeA).toBe(takeB);
+    expect(takeA).toBeGreaterThan(0);
+  });
+
+  it('puts the same scrip in the same caches on one seed', () => {
+    const mission = practiceMission('2026-07-29');
+    const a = new RunState(mission, 'sidearm', 3);
+    const b = new RunState(mission, 'sidearm', 3);
+
+    expect(a.caches.map((c) => `${c.tier}:${c.scrip}`)).toEqual(
+      b.caches.map((c) => `${c.tier}:${c.scrip}`),
+    );
+  });
+
+  it('starts every run empty, so nothing can be carried in', () => {
+    const mission = practiceMission('2026-07-29');
+    const run = new RunState(mission, 'sidearm', 1);
+
+    expect(run.purse.held).toBe(0);
+    expect(run.purse.collected).toBe(0);
+    expect(run.purse.spent).toBe(0);
+    expect(run.purse.ticker).toBe(mission.ticker);
+  });
+
+  it('refuses to spend what is not held', () => {
+    const mission = practiceMission('2026-07-29');
+    const run = new RunState(mission, 'sidearm', 1);
+
+    earn(run.purse, 30);
+    expect(spend(run.purse, 31)).toBe(false);
+    expect(run.purse.held).toBe(30);
+
+    expect(spend(run.purse, 30)).toBe(true);
+    expect(run.purse.held).toBe(0);
+    // The ledger has to balance or the HUD is lying about something.
+    expect(run.purse.collected - run.purse.spent).toBe(run.purse.held);
   });
 });

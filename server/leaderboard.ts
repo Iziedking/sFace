@@ -38,12 +38,23 @@ export interface Entry {
   facesExtracted: number;
   attackersCleared: number;
   at: number;
+  /**
+   * The Nimiq address that signed for this score, when one did.
+   *
+   * Derived on the service from the public key that produced a valid
+   * signature, never accepted from the client. Null for a row posted without
+   * a wallet, which is every row from a plain browser and is fine: the board
+   * has always taken unsigned rows and says which is which.
+   */
+  address?: string | null;
 }
 
 export interface PublicEntry {
   id: string;
   name: string;
   score: number;
+  /** Present only on rows a wallet signed for. Shown as a verified mark. */
+  address?: string | null;
 }
 
 export interface SubmitInput {
@@ -54,6 +65,8 @@ export interface SubmitInput {
   facesExtracted: number;
   attackersCleared: number;
   duration: number;
+  /** Verified address, or null. The route verifies; this module only stores. */
+  address?: string | null;
 }
 
 export type SubmitResult =
@@ -82,6 +95,7 @@ export function submit(input: SubmitInput): SubmitResult {
       facesExtracted: input.facesExtracted,
       attackersCleared: input.attackersCleared,
       at: Date.now(),
+      address: input.address ?? null,
     });
     persist();
   }
@@ -92,7 +106,12 @@ export function submit(input: SubmitInput): SubmitResult {
 export function top(date: string, limit = BOARD_LIMIT): PublicEntry[] {
   return sorted(date)
     .slice(0, limit)
-    .map((entry) => ({ id: entry.id, name: entry.name, score: entry.score }));
+    .map((entry) => ({
+      id: entry.id,
+      name: entry.name,
+      score: entry.score,
+      address: entry.address ?? null,
+    }));
 }
 
 export function rankOf(date: string, deviceId: string): number {
