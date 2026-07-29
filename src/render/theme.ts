@@ -59,11 +59,15 @@ export const MONO =
   'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace';
 
 /**
- * Display face for headlines. A heavy grotesque, falling back through what
- * ships on a phone. No Inter, and nothing that reads as a default.
+ * Display face for headlines and the score card.
+ *
+ * Must stay in step with --display in style.css. The canvas cannot read a CSS
+ * variable, so this is the one place the two are allowed to be written twice,
+ * and changing one without the other means the shared card stops matching the
+ * app it came from.
  */
 export const DISPLAY =
-  '"Archivo Black", "Helvetica Neue", Impact, "Arial Black", system-ui, sans-serif';
+  '"Luckiest Guy", "Archivo Black", Impact, "Arial Black", system-ui, sans-serif';
 
 /**
  * Respect the OS setting. Effects check this and cut particles, shake and

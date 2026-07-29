@@ -16,6 +16,23 @@ export function challengeDeeplink(challengeId: string): string {
   return `nimiqpay://miniapp?url=${encodeURIComponent(target)}`;
 }
 
+/**
+ * Open this app inside Nimiq Pay, on whatever page asked for it.
+ *
+ * Every money path in sFace needs a wallet, and a wallet means Nimiq Pay. In a
+ * plain browser those paths used to end at a sentence, which told the player
+ * what was wrong and nothing about what to do next: they were left holding a
+ * correct explanation and no way to act on it. This is the way out.
+ *
+ * `query` carries the destination through, so somebody who tried to stake on a
+ * challenge lands back on that challenge rather than on the home page having
+ * lost their place.
+ */
+export function openInNimiqPay(query?: string): string {
+  const target = query ? `${APP_ORIGIN}/?${query}` : APP_ORIGIN;
+  return `nimiqpay://miniapp?url=${encodeURIComponent(target)}`;
+}
+
 /** Read the challenge id when we were opened from a link. */
 export function readChallengeId(): string | null {
   const params = new URLSearchParams(window.location.search);

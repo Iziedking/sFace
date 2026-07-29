@@ -33,6 +33,19 @@
     />
     <meta property="og:image" content="/icon-512.png" />
     <meta name="twitter:card" content="summary" />
+    <!--
+      Preloaded, because the wordmark on the very first screen is set in it and
+      a display face that arrives late makes the splash visibly reflow. Only the
+      latin subset: the extended one is for the rare accented handle and can
+      wait until something needs it.
+    -->
+    <link
+      rel="preload"
+      href="/fonts/luckiest-guy-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
