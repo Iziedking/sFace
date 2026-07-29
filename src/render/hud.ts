@@ -20,6 +20,7 @@ import { theme, MONO } from './theme';
 import type { Input, StickView } from '../core/input';
 import type { RunState } from '../game/state';
 import { PLAYER_MAX_HEALTH } from '../game/state';
+import { CONSUMABLES } from '../data/consumables';
 
 export interface SafeInsets {
   top: number;
@@ -86,6 +87,19 @@ export class Hud {
     this.drawTicker(ctx, state, padX, mid);
     this.drawClock(ctx, state, width, mid);
     this.drawHull(ctx, state, width - padX, mid);
+    /*
+     * The purse sits with the things it buys, not across the strip from them.
+     *
+     * It used to live beside the hull bar on the far right while the slots were
+     * on the far left, so the two halves of one idea were as far apart as the
+     * screen allows and nothing suggested they were related. Money belongs next
+     * to the price tags.
+     */
+    const scripRight = this.drawScrip(ctx, state, padX + 74, mid);
+    // Clear of the ticker block, which owns the left of the strip. The offset
+    // is the ticker's own width plus a gap, measured once rather than guessed:
+    // the ticker is at most five characters of 17px mono.
+    this.drawSlots(ctx, state, scripRight + 14, mid);
     this.drawProgress(ctx, state, width, top + BAR_HEIGHT);
     this.drawCarrying(ctx, state, padX, height - this.insets.bottom - 26);
     this.drawStick(ctx, input);
@@ -160,6 +174,90 @@ export class Hud {
     ctx.fillStyle = theme.inkFaint;
     ctx.font = `600 10px ${MONO}`;
     ctx.fillText('HULL', right, mid - 11);
+  }
+
+  /**
+   * What you have scavenged, in the day's own ticker.
+   *
+   * Sits beside the hull because the two are the same kind of information:
+   * what you have left to spend on staying alive. Denominated in the ticker
+   * rather than in a made-up coin name, because the whole point is that this
+   * is the token that wrecked the day.
+   */
+  private drawScrip(
+    ctx: CanvasRenderingContext2D,
+    state: RunState,
+    left: number,
+    mid: number,
+  ): number {
+    const purse = state.purse;
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = theme.inkFaint;
+    ctx.font = `600 9px ${MONO}`;
+    ctx.fillText(purse.ticker, left, mid - 11);
+
+    // Held, not collected. What is spendable right now is the only number a
+    // player can act on mid-run. Accent rather than paper once there is
+    // something to spend, so the moment it becomes useful is visible.
+    ctx.fillStyle = purse.held > 0 ? theme.accent : theme.inkFaint;
+    ctx.font = `700 18px ${MONO}`;
+    const shown = String(purse.held);
+    ctx.fillText(shown, left, mid + 8);
+
+    // Hand the right edge back, so the slots sit against it rather than at a
+    // guessed offset that drifts the moment the number gets a fourth digit.
+    return left + Math.max(30, ctx.measureText(shown).width);
+  }
+
+  /**
+   * The three things scrip buys, always on screen, never a menu.
+   *
+   * A run is 110 seconds, so a shop you open and close would eat a tenth of it.
+   * These sit in the strip with their price showing: affordable ones are lit,
+   * the rest are dimmed, and the number on the left is the key that buys it.
+   * Nothing to open, nothing to close, nothing to learn beyond "1 is a bomb".
+   */
+  private drawSlots(
+    ctx: CanvasRenderingContext2D,
+    state: RunState,
+    left: number,
+    mid: number,
+  ): void {
+    const held = state.purse.held;
+    const boxW = 62;
+    const gap = 6;
+
+    CONSUMABLES.forEach((item, index) => {
+      const x = left + index * (boxW + gap);
+      const affordable = held >= item.cost;
+
+      ctx.globalAlpha = affordable ? 1 : 0.34;
+
+      ctx.strokeStyle = theme.canvas;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.roundRect(x, mid - 12, boxW, 26, 5);
+      ctx.stroke();
+
+      // The key that buys it, in its own corner, so the binding never has to
+      // be explained anywhere else.
+      ctx.textAlign = 'left';
+      ctx.fillStyle = theme.inkFaint;
+      ctx.font = `700 9px ${MONO}`;
+      ctx.fillText(String(index + 1), x + 5, mid - 3);
+
+      ctx.textAlign = 'center';
+      ctx.fillStyle = theme.canvas;
+      ctx.font = `700 10px ${MONO}`;
+      ctx.fillText(item.label, x + boxW / 2 + 4, mid - 2);
+
+      ctx.fillStyle = affordable ? theme.accent : theme.inkFaint;
+      ctx.font = `600 10px ${MONO}`;
+      ctx.fillText(String(item.cost), x + boxW / 2 + 4, mid + 10);
+    });
+
+    ctx.globalAlpha = 1;
   }
 
   /**

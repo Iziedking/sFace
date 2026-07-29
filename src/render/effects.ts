@@ -61,6 +61,17 @@ export class Effects {
             this.burst(event.x, event.y, 16, theme.ink, 220);
             camera.shake(7);
           }
+          /*
+           * The payout, said out loud.
+           *
+           * This was the whole bug: the drop was credited correctly and
+           * nothing on screen ever mentioned it, so a player watched a number
+           * in the corner move for reasons they could not connect to anything
+           * they did. Money you cannot see arriving is money you do not know
+           * you have. Shown even under reduced motion, because it is
+           * information rather than decoration.
+           */
+          if (event.text) this.say(event.x, event.y, event.text, theme.accentDeep);
           break;
         case 'freed':
           if (!quiet) this.burst(event.x, event.y, 14, theme.rescue, 180);
