@@ -24,13 +24,22 @@ import { ATTACKER_SCORE } from './state';
 import type { RunState as Run } from './state';
 import { CEILING, WORLD_HEIGHT } from './terrain';
 import { earn } from './scrip';
+import { ALERT_FIRE_SCALE, alerted } from './sight';
 
 export const ENEMY_RADIUS = 16;
 export const TURRET_RADIUS = 19;
 export const DIVER_CONTACT_DAMAGE = 18;
 
-/** How far ahead of the player an enemy wakes up. Roughly one screen. */
-const ACTIVATION_RANGE = 780;
+/**
+ * How far ahead of the player an enemy wakes up. Roughly one screen.
+ *
+ * Must stay comfortably LARGER than SIGHT_RANGE. A watcher only draws its cone
+ * once awake, so if it could see further than it wakes, the first thing a
+ * player would know about it is the alert going off, spotted by something that
+ * was not on screen. Stealth you cannot see coming is not stealth, it is a
+ * dice roll. Pinned by a test in tests/sight.test.ts.
+ */
+export const ACTIVATION_RANGE = 780;
 /** Past this far behind, stop spending cycles on it. */
 const ABANDON_RANGE = 900;
 
@@ -94,13 +103,38 @@ export function radiusOf(enemy: Enemy): number {
 export function updateEnemies(state: RunState, dt: number): void {
   const player = state.player;
   // Extreme fear means faster, angrier attackers. The market sets the tempo.
-  const aggression = 0.7 + state.mission.difficulty * 0.16;
+  /*
+   * A woken level shoots faster.
+   *
+   * Applied to the shared aggression rather than to each kind, so being caught
+   * costs the same everywhere and there is one number to reason about. Divided
+   * rather than multiplied because the scale is a reload TIME multiplier: a
+   * smaller number means a shorter wait.
+   */
+  const aggression =
+    (0.7 + state.mission.difficulty * 0.16) / (alerted(state) ? ALERT_FIRE_SCALE : 1);
 
   for (const enemy of state.enemies) {
     if (!enemy.alive) continue;
 
     if (!enemy.active) {
-      if (enemy.x - player.x < ACTIVATION_RANGE) enemy.active = true;
+      /*
+       * The transport wakes attackers too.
+       *
+       * This was the bug that made stage five a progress bar. Waking was keyed
+       * to the player alone, so a convoy that got ahead sailed straight past a
+       * line of dormant attackers who never woke, never fired, and never
+       * threatened the one thing the stage is about. It reached the pad
+       * untouched and waited. An escort you cannot endanger is not a mission.
+       */
+      const convoy = state.convoy;
+      const nearConvoy =
+        convoy !== null &&
+        !convoy.arrived &&
+        convoy.health > 0 &&
+        enemy.x - convoy.x < ACTIVATION_RANGE;
+
+      if (enemy.x - player.x < ACTIVATION_RANGE || nearConvoy) enemy.active = true;
       else continue;
     }
 

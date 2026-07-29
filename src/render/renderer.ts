@@ -26,6 +26,8 @@ import type { Squad } from '../game/squad';
 import { POINT_SPACING, WORLD_HEIGHT, CEILING } from '../game/terrain';
 import { BULLET_RADIUS } from '../game/bullet';
 import { CELL_RADIUS, isCaged } from '../game/cell';
+import { SIGHT_RANGE, gaze, sees, watches } from '../game/sight';
+import { CONVOY_MAX_HEALTH, CONVOY_RADIUS } from '../game/convoy';
 import { MAX_SPEED } from '../game/player';
 
 /**
@@ -99,9 +101,12 @@ export class Renderer {
     this.drawWeather(state, camera);
     this.drawTerrain(state, camera);
     this.drawExtraction(state, camera);
+    this.drawConvoy(state, camera);
     this.drawRefills(state, camera);
     this.drawCaches(state, camera);
     this.drawFaces(state, camera);
+    // Under the attackers, so a cone never sits on top of the thing casting it.
+    this.drawSight(state, camera);
     this.drawEnemies(state, camera);
     this.drawBullets(state, camera);
     if (squad) this.drawSquad(squad, camera, state.time);
@@ -624,6 +629,98 @@ private drawExtraction(state: RunState, camera: Camera): void {
       ctx.lineTo(bx, bottom);
     }
     ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
+   * What the level can see.
+   *
+   * Drawn as a filled wedge under everything that matters, in ink at very low
+   * alpha rather than in the danger colour. A red cone would read as a hazard
+   * to be avoided at all costs; this is a place you often have to cross, and
+   * the question is whether you cross it quickly or stop inside it.
+   *
+   * A cone that currently HAS the player fills harder, which is the only
+   * feedback that says "this specific one is the problem" when three overlap.
+   *
+   * Geometry comes from sight.ts, never recomputed here, so what is drawn and
+   * what is tested are the same arc. The alternative is a cone that lies.
+   */
+  private drawSight(state: RunState, camera: Camera): void {
+    if (!state.stage.sight) return;
+
+    const ctx = this.ctx;
+    const half = 0.44;
+
+    ctx.save();
+    for (const enemy of state.enemies) {
+      if (!enemy.alive || !enemy.active || !watches(enemy)) continue;
+      if (!camera.visibleX(enemy.x, SIGHT_RANGE)) continue;
+
+      const heading = gaze(enemy, state.time);
+      const onMe = sees(enemy, state.terrain, state.time, state.player.x, state.player.y);
+
+      ctx.beginPath();
+      ctx.moveTo(enemy.x, enemy.y);
+      ctx.arc(enemy.x, enemy.y, SIGHT_RANGE, heading - half, heading + half);
+      ctx.closePath();
+
+      ctx.globalAlpha = onMe ? 0.16 : 0.055;
+      ctx.fillStyle = onMe ? theme.danger : theme.ink;
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /**
+   * The transport.
+   *
+   * Drawn as a heavy slab on wheels rather than as a character, because it is
+   * cargo and not a person: nothing about it should suggest it can be rescued
+   * or that it will get itself out. It carries its own health bar because it
+   * is the thing the stage is actually about, and reading that from the top of
+   * the screen while flying beside it is a glance the player should not have
+   * to make.
+   */
+  private drawConvoy(state: RunState, camera: Camera): void {
+    const convoy = state.convoy;
+    if (!convoy || !camera.visibleX(convoy.x, 120)) return;
+    if (convoy.health <= 0) return;
+
+    const ctx = this.ctx;
+    const w = CONVOY_RADIUS * 2.2;
+    const h = CONVOY_RADIUS * 1.25;
+    const x = convoy.x - w / 2;
+    const y = convoy.y - h / 2;
+
+    ctx.save();
+
+    // Body.
+    ctx.fillStyle = theme.accentDeep;
+    ctx.strokeStyle = theme.ink;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, 4);
+    ctx.fill();
+    ctx.stroke();
+
+    // Wheels, so it reads as ground-bound at a glance.
+    ctx.fillStyle = theme.ink;
+    for (const wx of [x + w * 0.24, x + w * 0.76]) {
+      ctx.beginPath();
+      ctx.arc(wx, y + h, h * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Its own hull, above it, in the colour the rest of the game uses for
+    // damage so it needs no legend.
+    const fraction = Math.max(0, convoy.health / CONVOY_MAX_HEALTH);
+    const barW = w;
+    ctx.fillStyle = 'rgba(20, 17, 14, 0.2)';
+    ctx.fillRect(x, y - 12, barW, 5);
+    ctx.fillStyle = fraction > 0.35 ? theme.rescue : theme.danger;
+    ctx.fillRect(x, y - 12, barW * fraction, 5);
+
     ctx.restore();
   }
 

@@ -110,6 +110,32 @@ export interface Stage {
   /** Fear-and-Greed difficulty is clamped up to at least this. */
   minDifficulty: number;
   /** How many caches the level lays out. */
+  /**
+   * Hull refills laid along the route.
+   *
+   * Was a flat six on every stage, which meant 192 hull whether you faced 18
+   * attackers or 48 and made stage one nearly impossible to lose. Scaled with
+   * the opposition now: lean early, where flying well should be enough, and
+   * generous late, where the sky is genuinely crowded.
+   */
+  /**
+   * Does this stage watch you?
+   *
+   * Off for one to three, which stay a pure shooting problem and are the right
+   * first hour of the game. On from four, where the question becomes whether
+   * you can get past a watcher rather than whether you can hit it. See
+   * game/sight.ts.
+   */
+  /**
+   * Does a transport crawl this stage, and must it survive?
+   *
+   * Stage five only. It changes what clearing means: the stage is cleared by
+   * the cargo arriving rather than by the player arriving, which takes the
+   * pacing away from the player entirely. See game/convoy.ts.
+   */
+  convoy: boolean;
+  sight: boolean;
+  refills: number;
   caches: number;
   /** Incoming rounds per turret volley, at the start and at the end. */
   volley: [number, number];
@@ -144,6 +170,9 @@ export const STAGES: readonly Stage[] = [
     density: 0.7,
     minDifficulty: 1,
     caches: 5,
+    refills: 3,
+    sight: false,
+    convoy: false,
     volley: [1, 1],
     span: 0.45,
     bounty: 1,
@@ -166,6 +195,9 @@ export const STAGES: readonly Stage[] = [
     density: 0.9,
     minDifficulty: 2,
     caches: 7,
+    refills: 3,
+    sight: false,
+    convoy: false,
     volley: [1, 2],
     span: 0.6,
     bounty: 1.15,
@@ -191,6 +223,9 @@ export const STAGES: readonly Stage[] = [
     density: 1.25,
     minDifficulty: 3,
     caches: 8,
+    refills: 4,
+    sight: false,
+    convoy: false,
     volley: [1, 2],
     span: 0.7,
     bounty: 1.3,
@@ -213,6 +248,9 @@ export const STAGES: readonly Stage[] = [
     density: 1.4,
     minDifficulty: 3,
     caches: 9,
+    refills: 4,
+    sight: true,
+    convoy: false,
     volley: [2, 2],
     span: 0.8,
     bounty: 1.5,
@@ -235,6 +273,9 @@ export const STAGES: readonly Stage[] = [
     density: 1.55,
     minDifficulty: 4,
     caches: 9,
+    refills: 5,
+    sight: true,
+    convoy: true,
     volley: [2, 3],
     span: 0.85,
     bounty: 1.7,
@@ -257,6 +298,9 @@ export const STAGES: readonly Stage[] = [
     density: 1.8,
     minDifficulty: 4,
     caches: 10,
+    refills: 5,
+    sight: true,
+    convoy: false,
     volley: [2, 3],
     span: 0.92,
     bounty: 2,
@@ -279,6 +323,9 @@ export const STAGES: readonly Stage[] = [
     density: 2,
     minDifficulty: 5,
     caches: 11,
+    refills: 6,
+    sight: true,
+    convoy: false,
     volley: [3, 3],
     span: 1,
     bounty: 2.5,

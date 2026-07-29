@@ -20,6 +20,9 @@ import { updateFaces } from './face';
 import { damagePlayer, playerCircle, updatePlayer, type PlayerCommand } from './player';
 import { PLAYER_MAX_HEALTH, type RunState } from './state';
 import { earn } from './scrip';
+import { updateSight } from './sight';
+import { CONVOY_RADIUS, damageConvoy, updateConvoy } from './convoy';
+import { tryMount } from './player';
 
 export function step(state: RunState, dt: number, command: PlayerCommand): void {
   if (state.finished) return;
@@ -27,6 +30,22 @@ export function step(state: RunState, dt: number, command: PlayerCommand): void 
   state.time += dt;
 
   updatePlayer(state, dt, command);
+  // Before the attackers move, so a watcher that just woke the level does not
+  // also get a free frame of shooting from its new alert state.
+  updateSight(state, dt);
+  /*
+   * Only when nobody is at the wheel.
+   *
+   * updatePlayer already drove it this frame if the player is in it, and this
+   * call passes zero, so running it unconditionally overwrote the driven state
+   * and the HUD read STALLED the entire time somebody was driving.
+   */
+  if (!state.driving) {
+    updateConvoy(state, dt, 0);
+    // Touching it climbs in, the same way touching a person frees them. One
+    // verb for "make contact with the thing" across the whole game.
+    tryMount(state, dt);
+  }
   updateEnemies(state, dt);
   updateFaces(state, dt);
   updateBullets(state, dt);
@@ -140,6 +159,23 @@ function resolveBulletHits(state: RunState): void {
     if (circlesOverlap(shot, player)) {
       damagePlayer(state, bullet.damage);
       bullet.life = 0;
+      continue;
+    }
+
+    /*
+     * The transport is hittable by anything that missed the player.
+     *
+     * Checked second rather than first: a shot that would have hit both should
+     * hurt the person who can dodge, not the thing that cannot. Otherwise a
+     * player flying escort directly over the cargo would act as a shield by
+     * standing still, which is the opposite of the intended pressure.
+     */
+    const convoy = state.convoy;
+    if (convoy && !convoy.arrived && convoy.health > 0) {
+      if (circlesOverlap(shot, { x: convoy.x, y: convoy.y, r: CONVOY_RADIUS })) {
+        damageConvoy(state, bullet.damage);
+        bullet.life = 0;
+      }
     }
   }
 }
@@ -183,6 +219,18 @@ function resolveEnding(state: RunState): void {
   }
 
   if (atExtraction(state)) {
+    /*
+     * On an escort stage, arriving is not finishing.
+     *
+     * The mission is to get the cargo through, so a player who sprints to the
+     * pad and waits has done the easy half. They hold at the pad until the
+     * transport catches up, which is exactly the pressure the stage is for: the
+     * last stretch is the one where the thing you are protecting is furthest
+     * behind you.
+     */
+    const convoy = state.convoy;
+    if (convoy && !convoy.arrived) return;
+
     state.phase = 'extracted';
     extractFollowers(state);
   }

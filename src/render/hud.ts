@@ -21,6 +21,10 @@ import type { Input, StickView } from '../core/input';
 import type { RunState } from '../game/state';
 import { PLAYER_MAX_HEALTH } from '../game/state';
 import { CONSUMABLES } from '../data/consumables';
+import { padLayout, type PadRegion } from '../core/pads';
+import { alerted } from '../game/sight';
+import { CONVOY_MAX_HEALTH } from '../game/convoy';
+import { snapsToDirections, usingPads } from '../core/scheme';
 
 export interface SafeInsets {
   top: number;
@@ -84,7 +88,7 @@ export class Hud {
     ctx.textBaseline = 'middle';
     const mid = top + BAR_HEIGHT / 2;
 
-    this.drawTicker(ctx, state, padX, mid);
+    const tickerRight = this.drawTicker(ctx, state, padX, mid);
     this.drawClock(ctx, state, width, mid);
     this.drawHull(ctx, state, width - padX, mid);
     /*
@@ -95,14 +99,17 @@ export class Hud {
      * screen allows and nothing suggested they were related. Money belongs next
      * to the price tags.
      */
-    const scripRight = this.drawScrip(ctx, state, padX + 74, mid);
+    const scripRight = this.drawScrip(ctx, state, tickerRight + 18, mid);
     // Clear of the ticker block, which owns the left of the strip. The offset
     // is the ticker's own width plus a gap, measured once rather than guessed:
     // the ticker is at most five characters of 17px mono.
     this.drawSlots(ctx, state, scripRight + 14, mid);
+    this.drawCargo(ctx, state, width / 2, mid);
+    this.drawAlert(ctx, state, width, top + BAR_HEIGHT);
     this.drawProgress(ctx, state, width, top + BAR_HEIGHT);
     this.drawCarrying(ctx, state, padX, height - this.insets.bottom - 26);
     this.drawStick(ctx, input);
+    this.drawPads(ctx, state, input, width, height);
 
     ctx.restore();
   }
@@ -113,7 +120,7 @@ export class Hud {
     state: RunState,
     x: number,
     mid: number,
-  ): void {
+  ): number {
     ctx.textAlign = 'left';
     ctx.fillStyle = theme.accent;
     ctx.font = `700 17px ${MONO}`;
@@ -121,11 +128,24 @@ export class Hud {
 
     ctx.fillStyle = state.mission.live ? theme.canvas : theme.inkFaint;
     ctx.font = `500 11px ${MONO}`;
-    ctx.fillText(
-      state.mission.live ? `${state.mission.changePct.toFixed(1)}%` : 'PRACTICE',
-      x,
-      mid + 10,
-    );
+    // Blank on a practice mission: the ticker above already reads PRACTICE, and
+    // printing it twice in a two-line block is just a stutter.
+    const sub = state.mission.live ? `${state.mission.changePct.toFixed(1)}%` : '';
+    if (sub) ctx.fillText(sub, x, mid + 10);
+
+    /*
+     * Hand back the right edge, measured.
+     *
+     * Everything to the right used to start at a fixed offset that assumed a
+     * short ticker. A practice mission's ticker is the word PRACTICE, which is
+     * twice as wide as PUMP, so the scrip block landed on top of it and the
+     * strip read as two overlapping words. Measuring costs nothing and the
+     * guess was only ever right for the tickers we happened to test with.
+     */
+    ctx.font = `700 17px ${MONO}`;
+    const tickerWidth = ctx.measureText(state.mission.ticker).width;
+    ctx.font = `500 11px ${MONO}`;
+    return x + Math.max(tickerWidth, ctx.measureText(sub).width);
   }
 
   /** Centre, mono, big. The clock is the pressure. */
@@ -261,6 +281,92 @@ export class Hud {
   }
 
   /**
+   * Cargo health, centred under the clock.
+   *
+   * Given the middle of the strip because on an escort stage it is the number
+   * that decides the run: a player can finish on one per cent hull and still
+   * clear, and cannot finish at all if this reaches zero. It sits under the
+   * clock rather than beside the hull so the two health bars are never confused
+   * for each other at a glance.
+   */
+  private drawCargo(
+    ctx: CanvasRenderingContext2D,
+    state: RunState,
+    centre: number,
+    mid: number,
+  ): void {
+    const convoy = state.convoy;
+    if (!convoy) return;
+
+    const width = 110;
+    const fraction = Math.max(0, convoy.health / CONVOY_MAX_HEALTH);
+    const left = centre - width / 2;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(244, 237, 224, 0.22)';
+    ctx.fillRect(left, mid + 14, width, 5);
+    ctx.fillStyle = fraction > 0.35 ? theme.rescue : theme.danger;
+    ctx.fillRect(left, mid + 14, width * fraction, 5);
+
+    ctx.textAlign = 'center';
+    ctx.font = `600 9px ${MONO}`;
+    // Named only when it needs attention, so the strip stays quiet otherwise.
+    if (convoy.arrived) {
+      ctx.fillStyle = theme.rescue;
+      ctx.fillText('CARGO THROUGH', centre, mid + 30);
+    } else if (convoy.blocked) {
+      // Why it will not move, said plainly. A vehicle that stops dead against
+      // a slope reads as a bug unless the game admits it is a slope.
+      ctx.fillStyle = theme.danger;
+      ctx.fillText('TOO STEEP', centre, mid + 30);
+    } else if (state.driving) {
+      ctx.fillStyle = theme.accent;
+      ctx.fillText('DRIVING', centre, mid + 30);
+    } else if (convoy.stalled) {
+      ctx.fillStyle = theme.inkFaint;
+      ctx.fillText('CARGO PARKED', centre, mid + 30);
+    } else {
+      ctx.fillStyle = theme.inkFaint;
+      ctx.fillText('CARGO', centre, mid + 30);
+    }
+    ctx.restore();
+  }
+
+  /**
+   * How close the level is to noticing, as a bar under the strip.
+   *
+   * Sits directly above the progress rule so the two read as one instrument.
+   * Absent entirely on a stage without sight rather than shown empty: a meter
+   * that never moves teaches a player to stop looking at that part of the
+   * screen, and stage four needs them looking.
+   */
+  private drawAlert(
+    ctx: CanvasRenderingContext2D,
+    state: RunState,
+    width: number,
+    y: number,
+  ): void {
+    if (!state.stage.sight) return;
+    if (state.alert <= 0) return;
+
+    const angry = alerted(state);
+    ctx.save();
+    ctx.globalAlpha = angry ? 0.95 : 0.7;
+    ctx.fillStyle = angry ? theme.danger : theme.accent;
+    ctx.fillRect(0, y, width * state.alert, 3);
+
+    if (angry) {
+      // Named only once it means something. A label on a half-full meter is
+      // noise; a label on a full one is the reason the level got louder.
+      ctx.textAlign = 'center';
+      ctx.fillStyle = theme.danger;
+      ctx.font = `700 10px ${MONO}`;
+      ctx.fillText('SEEN', width / 2, y + 15);
+    }
+    ctx.restore();
+  }
+
+  /**
    * How much of the chart is behind you, as a rule under the strip. The only
    * way to know how far extraction is without a minimap, and it costs one rect.
    */
@@ -317,9 +423,112 @@ export class Hud {
    * other mid-fight.
    */
   private drawStick(ctx: CanvasRenderingContext2D, input: Input): void {
+    if (usingPads()) return;
     if (input.stick) drawPuck(ctx, input.stick, theme.ink, false);
     if (input.aimStick) drawPuck(ctx, input.aimStick, theme.accent, true);
   }
+
+  /**
+   * The fixed pads, for players who chose them.
+   *
+   * Drawn from the same layout the input layer hit-tests, so a button cannot
+   * be pressed anywhere other than where it appears. See core/pads.ts.
+   *
+   * Deliberately low contrast. These sit on top of the level for the whole run
+   * and a control that shouts is a control that is in the way; they are there
+   * to be found by a thumb, not read.
+   */
+  private drawPads(
+    ctx: CanvasRenderingContext2D,
+    state: RunState,
+    input: Input,
+    width: number,
+    height: number,
+  ): void {
+    if (!usingPads()) return;
+
+    // From the input layer's count, not from the table, so the thing drawn and
+    // the thing hit-tested can never be different numbers.
+    const pads = padLayout(width, height, input.slotCount);
+    ctx.save();
+
+    if (snapsToDirections()) {
+      drawDpad(ctx, pads.move);
+    } else {
+      drawRing(ctx, pads.move);
+    }
+
+    // Fire. The one control that gets the accent, because it is the one you
+    // are looking for in a hurry.
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = theme.accent;
+    ctx.beginPath();
+    ctx.arc(pads.fire.x, pads.fire.y, pads.fire.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.85;
+    ctx.strokeStyle = theme.ink;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // The consumables, priced, and dimmed when they cannot be afforded so the
+    // thumb learns which are live without reading anything.
+    pads.slots.forEach((slot, index) => {
+      const item = CONSUMABLES[index];
+      if (!item) return;
+      const affordable = state.purse.held >= item.cost;
+
+      ctx.globalAlpha = affordable ? 0.55 : 0.22;
+      ctx.fillStyle = theme.canvas;
+      ctx.beginPath();
+      ctx.arc(slot.x, slot.y, slot.r, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.globalAlpha = affordable ? 0.9 : 0.4;
+      ctx.strokeStyle = theme.ink;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      ctx.fillStyle = theme.ink;
+      ctx.textAlign = 'center';
+      ctx.font = `700 9px ${MONO}`;
+      ctx.fillText(item.label, slot.x, slot.y - 1);
+      ctx.font = `600 9px ${MONO}`;
+      ctx.fillText(String(item.cost), slot.x, slot.y + 10);
+    });
+
+    ctx.restore();
+  }
+}
+
+/** The analog ring: an outer bound and a resting centre. */
+function drawRing(ctx: CanvasRenderingContext2D, region: PadRegion): void {
+  ctx.globalAlpha = 0.28;
+  ctx.strokeStyle = theme.ink;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(region.x, region.y, region.r, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.globalAlpha = 0.34;
+  ctx.fillStyle = theme.ink;
+  ctx.beginPath();
+  ctx.arc(region.x, region.y, region.r * 0.3, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/** Four arms, so it reads as on-or-off rather than as a stick. */
+function drawDpad(ctx: CanvasRenderingContext2D, region: PadRegion): void {
+  const arm = region.r * 0.42;
+  const thick = region.r * 0.34;
+
+  ctx.globalAlpha = 0.3;
+  ctx.fillStyle = theme.ink;
+  ctx.beginPath();
+  ctx.roundRect(region.x - thick / 2, region.y - arm - thick / 2, thick, arm * 2 + thick, 6);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.roundRect(region.x - arm - thick / 2, region.y - thick / 2, arm * 2 + thick, thick, 6);
+  ctx.fill();
 }
 
 function drawPuck(
