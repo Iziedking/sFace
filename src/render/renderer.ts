@@ -25,6 +25,7 @@ import type { Enemy, Face, RunState } from '../game/state';
 import type { Squad } from '../game/squad';
 import { POINT_SPACING, WORLD_HEIGHT, CEILING } from '../game/terrain';
 import { BULLET_RADIUS } from '../game/bullet';
+import { CELL_RADIUS, isCaged } from '../game/cell';
 import { MAX_SPEED } from '../game/player';
 
 /**
@@ -568,7 +569,9 @@ private drawExtraction(state: RunState, camera: Camera): void {
       if (face.state === 'extracted' || face.state === 'lost') continue;
       if (!camera.visibleX(face.x, 80)) continue;
 
-      if (face.state === 'trapped') {
+      if (isCaged(face)) {
+        this.drawCell(face.x, face.y);
+      } else if (face.state === 'trapped') {
         // A ring that breathes, so somebody waiting to be pulled out is
         // findable at a glance without an arrow cluttering the HUD.
         ctx.strokeStyle = theme.accent;
@@ -582,6 +585,46 @@ private drawExtraction(state: RunState, camera: Camera): void {
 
       this.drawFaceHuman(state, face);
     }
+  }
+
+  /**
+   * Bars, drawn OVER the person inside them.
+   *
+   * Drawn on top rather than behind on purpose: a cage you can see through
+   * cleanly does not read as shut, and the whole mechanic depends on a player
+   * understanding at a glance that flying into this one will not work. Solid
+   * ink, no pulse, no accent. It is not a thing to approach, it is a thing to
+   * deal with, and the breathing accent ring already means "come and get me".
+   */
+  private drawCell(x: number, y: number): void {
+    const ctx = this.ctx;
+    const r = CELL_RADIUS;
+    const top = y - r + 6;
+    const bottom = y + r - 10;
+
+    ctx.save();
+    ctx.strokeStyle = theme.ink;
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+
+    // Frame.
+    ctx.beginPath();
+    ctx.moveTo(x - r, top);
+    ctx.lineTo(x + r, top);
+    ctx.moveTo(x - r, bottom);
+    ctx.lineTo(x + r, bottom);
+    ctx.stroke();
+
+    // Uprights. Five of them, wide enough apart to read the face behind.
+    ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    for (let i = 0; i <= 4; i++) {
+      const bx = x - r + (i * (r * 2)) / 4;
+      ctx.moveTo(bx, top);
+      ctx.lineTo(bx, bottom);
+    }
+    ctx.stroke();
+    ctx.restore();
   }
 
   private drawFaceHuman(state: RunState, face: Face): void {

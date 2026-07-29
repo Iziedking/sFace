@@ -18,6 +18,7 @@ import { threatNear } from './enemy';
 import type { Face, RunState } from './state';
 import { RESCUE_FRACTION } from './state';
 import { CEILING } from './terrain';
+import { isCaged } from './cell';
 
 export const FACE_RADIUS = 15;
 
@@ -55,6 +56,11 @@ export function updateFaces(state: RunState, dt: number): void {
 }
 
 function tryFree(state: RunState, face: Face): void {
+  // Locked up. The door has to come off first, and only a breaching charge
+  // takes it off. Checked before the reach test so no amount of nudging the
+  // bars ever reads as almost working.
+  if (isCaged(face)) return;
+
   const player = state.player;
   const touching = circlesOverlap(
     { x: player.x, y: player.y, r: RESCUE_REACH },
