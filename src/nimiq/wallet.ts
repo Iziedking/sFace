@@ -165,6 +165,42 @@ export async function askDeviceId(): Promise<string | null> {
   }
 }
 
+/**
+ * Ask the wallet to sign a score claim.
+ *
+ * The one place this codebase asks the wallet to prove identity rather than to
+ * move money. What comes back is a public key and a signature; the address is
+ * never sent, because the service derives it from the key and a client-supplied
+ * address would be a claim about the signature rather than its author.
+ *
+ * Returns null on every failure, including the user declining. Refusing to sign
+ * must cost a player nothing: the run still posts, it simply posts unsigned,
+ * which is exactly what a plain browser has always done.
+ */
+export async function signClaim(message: string): Promise<SignedClaim | null> {
+  const nimiq = await getProvider();
+  if (!nimiq) return null;
+
+  try {
+    const result = await nimiq.sign(message);
+    // The provider resolves with an error envelope rather than throwing, so a
+    // resolved promise is not on its own a success. See isProviderError.
+    if (isProviderError(result)) return null;
+
+    const { publicKey, signature } = result;
+    if (typeof publicKey !== 'string' || typeof signature !== 'string') return null;
+
+    return { publicKey, signature };
+  } catch {
+    return null;
+  }
+}
+
+export interface SignedClaim {
+  publicKey: string;
+  signature: string;
+}
+
 /** True when the wallet has caught up enough to be asked about money. */
 export async function inConsensus(): Promise<boolean> {
   const nimiq = await getProvider();
