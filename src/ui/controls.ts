@@ -6,9 +6,23 @@
  * thrust and does not know that the ground is a real chart has learned the
  * least interesting thing on the screen.
  *
- * So the order is: what this is, then what you do, then how it pays, then the
- * keys. Anyone who only wanted the keys scrolls past three short blocks;
- * anyone who wanted to know why they should care gets told.
+ * ## Why chapters rather than a stack of blocks
+ *
+ * The second version had the right words in a flat stack of headed lists, and
+ * a flat stack reads as reference material: you scan it for the one line you
+ * came for and leave. This is not reference material. It is the only place the
+ * game explains that the ground is a real chart, that the currency is the token
+ * that crashed, and that somebody is behind bars, and those are arguments
+ * rather than lookups.
+ *
+ * So it is numbered chapters that arrive one after another. The number is a
+ * promise that there is an end, which is what makes a long explanation
+ * readable at all, and the stagger gives the eye somewhere to go next.
+ *
+ * Motion is one property, one direction, once. It is cut entirely under
+ * prefers-reduced-motion, and nothing depends on it: the page is complete and
+ * correct with every animation disabled, because a player who cannot use motion
+ * still needs the rules.
  *
  * Still off the critical path. Onboarding under sixty seconds is a judging
  * criterion and a tutorial nobody asked for is the usual way to lose it, so
@@ -20,6 +34,7 @@
  */
 
 import { button, el, mount } from './dom';
+import { reducedMotion } from '../render/theme';
 
 export interface ControlsOptions {
   onBack: () => void;
@@ -38,110 +53,214 @@ interface Row {
   what: string;
 }
 
+interface Chapter {
+  title: string;
+  /** One line under the title, in the voice of the game rather than a manual. */
+  lead: string;
+  rows: Row[];
+}
+
 const TOUCH: Row[] = [
   { key: 'Left thumb', what: 'Anywhere on the left half. Drag to fly.' },
   { key: 'Right thumb', what: 'Anywhere on the right half. Drag to aim, and it fires while held.' },
+  { key: 'Tap a slot', what: 'The four boxes in the top strip. One tap buys and uses.' },
   { key: 'Pause', what: 'The button at the top, clear of both thumbs.' },
-  { key: 'Fly into someone', what: 'Frees them. They follow you out.' },
 ];
 
 const DESKTOP: Row[] = [
   { key: 'W A S D', what: 'Fly. Arrow keys work too.' },
   { key: 'Mouse', what: 'Aim. No need to hold a button.' },
   { key: 'Click or Space', what: 'Fire.' },
+  { key: '1 2 3 4', what: 'Buy and use a charge, bomb, patch or boost. No menu, no pause.' },
   { key: 'Esc', what: 'Pause, and resume again. There is a button on screen too.' },
-  { key: 'Fly into someone', what: 'Frees them. They follow you out.' },
 ];
 
-/** What the game is. Three sentences, no marketing. */
-const PREMISE: Row[] = [
+const CHAPTERS: Chapter[] = [
   {
-    key: 'The ground is real',
-    what: "Every day the worst performer in the top 100 becomes the level. Its actual 24 hour chart is the terrain you fly, pulled at midnight UTC.",
+    title: 'None of this is invented',
+    lead: 'The level is a screenshot of a bad day, and you have to fly it.',
+    rows: [
+      {
+        key: 'The ground is a chart',
+        what: "Every day the worst performer in the top 100 becomes the level. Its actual 24 hour chart is the terrain, pulled at midnight UTC.",
+      },
+      {
+        key: 'The people are real',
+        what: 'The five in the wreck are the accounts crypto X genuinely argued about today, with their real handles and real pictures.',
+      },
+      {
+        key: 'The market sets the odds',
+        what: "Fear and Greed decides how crowded the sky is. The chart's own volatility decides where the attackers sit.",
+      },
+    ],
   },
   {
-    key: 'So are the people',
-    what: 'The five accounts in the wreck are the ones crypto X was genuinely arguing about today, read once a day and named on the brief.',
+    title: 'Get them out',
+    lead: 'Flying is easy. Leaving with everyone is the hard part.',
+    rows: [
+      {
+        key: 'Fly into someone',
+        what: 'That frees them, and they fall in behind you in a line that follows where you flew.',
+      },
+      {
+        key: 'Reach extraction',
+        what: 'The pad at the end of the day. Everyone still behind you gets out with you.',
+      },
+      {
+        key: 'Go down and they go too',
+        what: 'Everyone aboard is lost. Face you already took from caches is safe.',
+      },
+    ],
   },
   {
-    key: 'The market sets the odds',
-    what: 'The Fear and Greed index decides how crowded the sky is, and the chart’s own volatility decides where the attackers sit.',
-  },
-];
-
-/** What you are actually trying to do. */
-const AIM: Row[] = [
-  {
-    key: 'Get people out',
-    what: 'Fly into someone to free them, then reach the extraction pad with them still behind you.',
-  },
-  {
-    key: 'Take back Face',
-    what: 'Face is the unit: reputation with a value still attached. Caches hold it, and it is what ranks you.',
-  },
-  {
-    key: 'Clear the campaign',
-    what: 'Seven stages, each restoring one piece of what 2026 cost. Clearing one opens the next.',
+    title: 'Some of them are locked up',
+    lead: 'From stage two, the worst day belongs to somebody behind bars.',
+    rows: [
+      {
+        key: 'A cell ignores you',
+        what: 'Flying into it does nothing at all. Bars mean deal with this; the breathing orange ring means come and get me.',
+      },
+      {
+        key: 'Set a charge',
+        what: 'Stand next to the cell and press 1. The door comes off. It cannot be done from safety.',
+      },
+      {
+        key: 'The door is not the rescue',
+        what: 'Once it is open they are trapped in the ordinary way, and you still have to fly in and pick them up.',
+      },
+    ],
   },
   {
-    key: 'Come back tomorrow',
-    what: 'The stage stays. The level, the cast and the three contracts change every day with the market.',
+    title: 'The token that wrecked the day is the money',
+    lead: 'You are scavenging the thing that did this.',
+    rows: [
+      {
+        key: 'It is the real ticker',
+        what: "On a PUMP day you collect PUMP, off cleared attackers and out of caches. The HUD counts it in the day's own symbol.",
+      },
+      {
+        key: 'Spend it in the run',
+        what: 'Four slots in the top strip: a charge to open a cell, a bomb, a hull patch, a fire rate boost. One press, no menu.',
+      },
+      {
+        key: 'Everything is a trade',
+        what: 'A bomb wakes the next stretch early. A boost pushes you harder as it fires faster. Nothing here is a free upgrade.',
+      },
+      {
+        key: 'It expires tonight',
+        what: 'Scrip dies with the run and the ticker changes tomorrow. Nobody accumulates an advantage, and none of it is for sale.',
+      },
+    ],
   },
-];
-
-const RULES: Row[] = [
-  { key: 'Freeing someone', what: 'Pays a quarter of their Face straight away.' },
-  { key: 'Reaching extraction', what: 'Pays the rest, for everyone still with you.' },
-  { key: 'Going down', what: 'Loses everyone aboard. Caches you already took are safe.' },
-  { key: 'Caches', what: 'Never on the easy line. The relic sits at the lowest point of the day.' },
+  {
+    title: 'What you are climbing',
+    lead: 'The day resets. The ladder does not.',
+    rows: [
+      {
+        key: 'Face is the record',
+        what: 'Reputation with a value still attached. It ranks you all time, and it unlocks the weapon rack.',
+      },
+      {
+        key: 'Seven stages',
+        what: 'Each one restores a piece of what 2026 cost. Clearing one opens the next, and it stays cleared.',
+      },
+      {
+        key: 'The mission changes daily',
+        what: 'Same stage, new level, new cast, three new contracts drawn from the day. Consistency is the only way up the board.',
+      },
+    ],
+  },
+  {
+    title: 'Why a bet on this is fair',
+    lead: 'The one rule everything else is built to protect.',
+    rows: [
+      {
+        key: 'Identical levels',
+        what: 'Two people on the same day fly a byte for byte identical level. Same terrain, same attackers, same places, same faces.',
+      },
+      {
+        key: 'Nothing is for sale',
+        what: 'Weapons trade rather than upgrade, and scrip cannot be bought. No advantage in this game has a price in real money.',
+      },
+      {
+        key: 'You pay each other',
+        what: 'A challenge settles wallet to wallet in Nimiq Pay. sFace never holds funds, and cannot: there is no pot.',
+      },
+    ],
+  },
 ];
 
 export function renderControls(root: HTMLElement, options: ControlsOptions): void {
+  const quiet = reducedMotion();
   const first = touchFirst() ? TOUCH : DESKTOP;
   const second = touchFirst() ? DESKTOP : TOUCH;
+
+  const chapters = CHAPTERS.map((chapter, index) => renderChapter(chapter, index, quiet));
+
+  chapters.push(
+    renderChapter(
+      {
+        title: touchFirst() ? 'On a phone' : 'On a keyboard',
+        lead: 'Both always work. This is just the one you are holding.',
+        rows: first,
+      },
+      CHAPTERS.length,
+      quiet,
+    ),
+    renderChapter(
+      {
+        title: touchFirst() ? 'On a keyboard' : 'On a phone',
+        lead: 'The same game, the other way round.',
+        rows: second,
+      },
+      CHAPTERS.length + 1,
+      quiet,
+    ),
+  );
 
   mount(
     root,
     el(
       'div',
-      { class: 'screen screen--split' },
+      { class: 'screen guide' },
+
       el(
         'div',
-        { class: 'col' },
+        { class: 'guide__top' },
         el('p', { class: 'eyebrow', text: 'How to play' }),
-        el('h1', { text: 'sFace' }),
+        el('h1', { text: "Crypto's down. Somebody has to save face." }),
         el('p', {
-          class: 'quiet',
-          text: 'A rescue shooter where the market builds the level. Crypto lost face in 2026. You go in and get it back.',
+          class: 'guide__lead',
+          text: 'A rescue shooter where the market builds the level. Eight short chapters, about a minute to read, and then you know the whole game.',
         }),
-        block('What this is', PREMISE),
-        block('What you are aiming at', AIM),
       ),
-      el(
-        'div',
-        { class: 'col' },
-        block('What pays', RULES),
-        block(touchFirst() ? 'On a phone' : 'On a keyboard', first),
-        block(touchFirst() ? 'On a keyboard' : 'On a phone', second),
-        el('p', {
-          class: 'quiet',
-          text: 'Everyone flies the identical level, and the guns trade rather than upgrade, so staking NIM on a score is a fair bet rather than a gamble.',
-        }),
-        el('div', { class: 'actions' }, button('Got it', options.onBack)),
-      ),
+
+      el('div', { class: 'guide__chapters' }, ...chapters),
+
+      el('div', { class: 'actions' }, button('Got it', options.onBack)),
     ),
   );
 }
 
-function block(title: string, rows: Row[]): HTMLElement {
-  return el(
-    'div',
-    {},
-    el('p', { class: 'stat__label', text: title.toUpperCase() }),
+function renderChapter(chapter: Chapter, index: number, quiet: boolean): HTMLElement {
+  const node = el(
+    'section',
+    { class: 'chapter' },
+    el(
+      'div',
+      { class: 'chapter__head' },
+      el('span', { class: 'chapter__n', text: String(index + 1).padStart(2, '0') }),
+      el(
+        'div',
+        {},
+        el('h2', { class: 'chapter__title', text: chapter.title }),
+        el('p', { class: 'chapter__lead', text: chapter.lead }),
+      ),
+    ),
     el(
       'div',
       { class: 'keys' },
-      ...rows.map((r) =>
+      ...chapter.rows.map((r) =>
         el(
           'div',
           { class: 'keys__row' },
@@ -151,4 +270,18 @@ function block(title: string, rows: Row[]): HTMLElement {
       ),
     ),
   );
+
+  if (!quiet) {
+    /*
+     * Staggered by index rather than by a scroll observer.
+     *
+     * The list is short and fixed, so an observer would be machinery bought for
+     * nothing, and it has a failure mode this does not: if it never fires, the
+     * chapters stay invisible and the page is empty. A delay cannot fail open.
+     */
+    node.classList.add('chapter--enter');
+    node.style.animationDelay = `${Math.min(index * 70, 560)}ms`;
+  }
+
+  return node;
 }

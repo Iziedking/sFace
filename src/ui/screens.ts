@@ -21,6 +21,7 @@ import { progressOf, type Profile } from '../net/profile';
 import { rankFor } from '../data/story';
 import { deck, type DeckPanel } from './deck';
 import { footer } from './footer';
+import { walletCta } from './wallet-cta';
 import { STAGES, type Stage } from '../data/campaign';
 import type { Contract } from '../data/contracts';
 
@@ -474,6 +475,12 @@ export interface ResultsOptions {
   onReplay: () => void;
   onChallenge: () => void;
   onShare: () => void;
+  /** True when this run was practice, so none of it was kept. */
+  practice: boolean;
+  /** Set when a money path refused for want of a wallet. Carries the door. */
+  needsWallet: boolean;
+  /** Null when X connect is not configured on this deployment. */
+  onConnectX: (() => void) | null;
   onBoard: () => void;
 }
 
@@ -646,8 +653,33 @@ export function renderResults(root: HTMLElement, options: ResultsOptions): void 
         el(
           'div',
           { class: 'actions' },
-          options.postError
-            ? el('div', { class: 'notice notice--error', text: options.postError })
+          options.needsWallet
+            ? walletCta({ reason: options.postError ?? 'This needs a Nimiq wallet.' })
+            : options.postError
+              ? el('div', { class: 'notice notice--error', text: options.postError })
+              : null,
+
+          /*
+           * The practice bill, presented after a run they enjoyed rather than
+           * before one they had not started. Nothing was taken from them: the
+           * gate said this run would not be kept, and it was not. This is the
+           * offer to make the next one count.
+           */
+          options.practice
+            ? el(
+                'div',
+                { class: 'notice notice--practice' },
+                el('p', {
+                  class: 'notice__lead',
+                  text: `${state.score.toLocaleString()} points, and none of it saved.`,
+                }),
+                el('p', {
+                  text: 'That was practice. Sign in with X to play the daily mission, take a rank, earn Face and fly with a clan.',
+                }),
+                options.onConnectX
+                  ? el('div', { class: 'actions' }, button('Sign in with X', options.onConnectX, 'x'))
+                  : null,
+              )
             : null,
           options.nextStage
             ? button(`Start Stage ${options.nextStage.n}`, options.onNextStage)

@@ -13,6 +13,10 @@
 
 import { button, el, mount } from './dom';
 import { STAGES, stageUnlocked, type Stage } from '../data/campaign';
+import { RunState } from '../game/state';
+
+/** Kept in one place so the card and the run can never disagree. */
+const TASTER_SECONDS = RunState.TASTER_SECONDS;
 
 export interface CampaignOptions {
   /** Highest stage cleared, 0 to 7. */
@@ -21,6 +25,18 @@ export interface CampaignOptions {
   selected: number;
   onSelect: (n: number) => void;
   onBack: () => void;
+  /**
+   * Flying without an account.
+   *
+   * Every stage opens, because the point of practice is to SEE the game rather
+   * than be told about it. Stage one is the full run, replayable forever. The
+   * rest are tasters on a clock, and running out of time inside stage six with
+   * three people still behind bars is a better argument for signing in than
+   * any sentence we could write.
+   */
+  practice: boolean;
+  /** Null when X connect is not configured on this deployment. */
+  onConnectX: (() => void) | null;
 }
 
 export function renderCampaign(root: HTMLElement, options: CampaignOptions): void {
@@ -71,7 +87,10 @@ function progressBar(cleared: number): HTMLElement {
 }
 
 function card(stage: Stage, cleared: number, options: CampaignOptions): HTMLElement {
-  const unlocked = stageUnlocked(stage.n, cleared);
+  // In practice nothing is locked: it is all open, and later stages are simply
+  // short. A padlock would hide exactly what we want a stranger to see.
+  const unlocked = options.practice || stageUnlocked(stage.n, cleared);
+  const taster = options.practice && stage.n > 1;
   const restored = stage.n <= cleared;
   const selected = stage.n === options.selected && unlocked;
 
@@ -96,7 +115,9 @@ function card(stage: Stage, cleared: number, options: CampaignOptions): HTMLElem
       ),
       restored
         ? el('span', { class: 'stage__badge', text: 'RESTORED' })
-        : unlocked
+        : taster
+          ? el('span', { class: 'stage__badge stage__badge--taster', text: 'TASTER 45s' })
+          : unlocked
           ? null
           : el('span', { class: 'stage__badge stage__badge--locked', text: 'LOCKED' }),
     ),
@@ -130,7 +151,10 @@ function card(stage: Stage, cleared: number, options: CampaignOptions): HTMLElem
     el(
       'div',
       { class: 'stage__numbers' },
-      figure('TIME', `${stage.seconds}s`),
+      // The clock a practice player will actually get, not the one the stage
+      // has. Advertising 110s and handing over 45 is a small lie, and a small
+      // lie on the card that sells the sign-in is a bad place to put one.
+      figure('TIME', taster ? `${TASTER_SECONDS}s` : `${stage.seconds}s`),
       figure('ENEMIES', `×${stage.density.toFixed(2).replace(/0$/, '')}`),
       figure('CACHES', String(stage.caches)),
       figure(

@@ -36,6 +36,7 @@ import { initialSteps, renderLoading, type LoadStep } from './ui/loading';
 import { renderChallenge } from './ui/challenge';
 import { renderIntro, introSeen } from './ui/intro';
 import { renderControls } from './ui/controls';
+import { renderGate } from './ui/gate';
 import { renderPause, renderRunOverlay } from './ui/pause';
 import { renderLoadout } from './ui/loadout';
 import { renderClan } from './ui/clan';
@@ -104,11 +105,15 @@ import { el, button } from './ui/dom';
 import { connect, askDeviceId, hostLanguage, isTestnet, type WalletSession } from './nimiq/wallet';
 import { settle } from './nimiq/payments';
 import { challengeDeeplink, clanDeeplink, readChallengeId, readClanTag } from './nimiq/deeplink';
+import { buy } from './game/consume';
+import { CONSUMABLES } from './data/consumables';
+import { signClaim } from './nimiq/wallet';
 
 type Screen =
   | 'loading'
   | 'splash'
   | 'intro'
+  | 'gate'
   | 'controls'
   | 'loadout'
   | 'clan'
@@ -161,6 +166,23 @@ class App {
   private me: XProfile | null = connectedX();
   /** False until the service confirms X connect is configured here. */
   private xAvailable = false;
+  /**
+   * True while flying a run that will never be saved.
+   *
+   * Set by the practice button on the gate and cleared the moment a real run
+   * starts, so it can never leak into a signed-in player's submission. Every
+   * persistence path checks it rather than checking for an X handle, because
+   * "this run does not count" is a property of the run and not of the person.
+   */
+  private practice = false;
+  /**
+   * True when the last refusal was "you need a wallet" rather than an error.
+   *
+   * Kept separate from the notice text so the UI can offer the deeplink out
+   * instead of matching on a sentence, which would break the moment the copy
+   * is reworded or translated.
+   */
+  private needsWallet = false;
 
   /** The pilot's record. Rendered from the local mirror before the fetch lands. */
   private profile: Profile | null = localProfile();
@@ -626,9 +648,75 @@ class App {
     });
   }
 
+  /**
+   * Must this visitor sign in with X before the main flow opens?
+   *
+   * Only on the public web, and only when X connect is actually configured. A
+   * deployment without X credentials must never lock anybody out of a game it
+   * cannot let them into, which is why xAvailable is part of the test rather
+   * than an assumption.
+   *
+   * Inside Nimiq Pay this is always false: the wallet is the identity there
+   * and X is an upgrade offered on the home page, so gating would be asking
+   * the same person to prove themselves twice.
+   */
+  private gated(): boolean {
+    if (this.session?.available) return false;
+    if (this.me) return false;
+    return this.xAvailable;
+  }
+
+  /**
+   * Wrap a destination that only means something with a name attached.
+   *
+   * A leaderboard, a clan, a campaign record and CT Signals are all answers to
+   * "who are you", so for somebody flying practice they would be four empty
+   * rooms. Sending them back to the door with a reason is more honest than
+   * showing a rank of nothing, and far more honest than hiding the tiles, which
+   * would misrepresent how much game is actually here.
+   *
+   * The Dispatch is deliberately NOT wrapped. It is the one screen that is
+   * worth reading with no account at all, and it is the best argument the app
+   * has for why an X account belongs here.
+   */
+  private needsName(what: string, go: () => void): () => void {
+    return () => {
+      if (this.practice && this.gated()) {
+        this.notice = `${what} needs to know who you are. Sign in with X.`;
+        this.showGate();
+        return;
+      }
+      go();
+    };
+  }
+
+  /** The front door. Sign in with X, or fly a run that does not count. */
+  private showGate(): void {
+    this.ui.className = '';
+    this.screen = 'gate';
+
+    renderGate(this.ui, {
+      notice: this.notice,
+      onConnectX: this.xAvailable ? () => void this.doConnectX() : null,
+      onPractice: () => {
+        this.practice = true;
+        void this.cross(() => this.showBrief());
+      },
+    });
+    this.notice = null;
+  }
+
   private showBrief(): void {
     const mission = this.mission;
     if (!mission) return;
+
+    // The gate stands in front of the home page, not in front of the game, so
+    // it is enforced here where every route home converges rather than at each
+    // of the dozen call sites that lead back.
+    if (this.gated() && !this.practice) {
+      this.showGate();
+      return;
+    }
 
     this.ui.className = '';
 
@@ -653,13 +741,15 @@ class App {
       weaponName: this.weapon().name,
       onLoadout: () => void this.cross(() => this.showLoadout()),
       clanTag: this.profile?.clanTag ?? null,
-      onClan: () => void this.cross(() => this.openClan()),
+      onClan: this.needsName('Clans', () => void this.cross(() => this.openClan())),
       stage: stageAt(this.activeStage()),
       stagesCleared: this.cleared(),
       contracts: this.todaysContracts(),
+      // Deliberately NOT gated. The campaign is where a practice player picks
+      // which stage to taste, so locking it would hide the reason to sign in.
       onCampaign: () => void this.cross(() => this.showCampaign()),
       onDispatch: () => void this.cross(() => this.showDispatch()),
-      onSignals: () => void this.cross(() => this.openSignals()),
+      onSignals: this.needsName('CT Signals', () => void this.cross(() => this.openSignals())),
       fullscreen: isFullscreen(),
       onFullscreen: fullscreenAvailable()
         ? () => void toggleFullscreen()
@@ -671,7 +761,7 @@ class App {
       },
       onReplayIntro: () => this.playIntro(),
       onStart: () => this.startRun(),
-      onBoard: () => void this.showBoard(),
+      onBoard: this.needsName('The leaderboard', () => void this.showBoard()),
       onConnectX: this.xAvailable ? () => void this.doConnectX() : null,
     });
   }
@@ -720,6 +810,10 @@ class App {
    * things it is a resolution to.
    */
   private activeStage(): number {
+    // Practice opens every stage as a taster, so the campaign's unlock rule
+    // does not apply and must not quietly drag the choice back to stage one.
+    if (this.practice) return Math.max(1, Math.min(STAGES.length, this.stage));
+
     const cleared = this.cleared();
     return stageUnlocked(this.stage, cleared) ? this.stage : Math.min(STAGES.length, cleared + 1);
   }
@@ -773,6 +867,7 @@ class App {
       onConnectX: this.xAvailable ? () => void this.doConnectX() : null,
       onUnlock: () => void this.unlockDeepRead(),
       onBack: () => this.showBrief(),
+      needsWallet: this.needsWallet,
     });
   }
 
@@ -816,6 +911,7 @@ class App {
 
     if (!this.session?.available) {
       this.signalsNotice = t('challengeNoWallet');
+      this.needsWallet = true;
       this.paintSignals();
       return;
     }
@@ -861,6 +957,8 @@ class App {
     renderCampaign(this.ui, {
       cleared: this.cleared(),
       selected: this.activeStage(),
+      practice: this.practice,
+      onConnectX: this.xAvailable ? () => void this.doConnectX() : null,
       onSelect: (n) => {
         this.stage = n;
         audio.play('ui');
@@ -1088,6 +1186,8 @@ class App {
     }
 
     this.me = profile;
+    // They have a name now, so nothing needs to be thrown away any more.
+    this.practice = false;
     this.notice = null;
     // Decode it now so the first frame of the run already has a head on it.
     this.renderer.preload(profile.avatarUrl);
@@ -1123,7 +1223,7 @@ class App {
     // The weapon is decided here, once, rather than read every frame. A gun
     // that could change mid-run would make the recorded trace disagree with
     // the run that produced it.
-    this.run = new RunState(mission, this.weapon().id, this.activeStage());
+    this.run = new RunState(mission, this.weapon().id, this.activeStage(), this.practice);
     this.lastHealth = this.run.player.health;
     this.effects.clear();
     this.input.reset();
@@ -1194,6 +1294,20 @@ class App {
     // Paint the results immediately, then fill in rank and challenge state as
     // the network answers. A good run should never wait on a leaderboard.
     this.showResults();
+
+    /*
+     * A practice run leaves no trace anywhere.
+     *
+     * The gate promises "nothing is saved" before the run rather than after,
+     * so this is the line that has to make it true. Every persistence path is
+     * skipped here at the one place they all pass through, rather than each
+     * being taught about practice separately: a new path added later is then
+     * off by default instead of quietly saving.
+     */
+    if (this.practice) {
+      this.showResults();
+      return;
+    }
 
     await this.submitScore(run);
     await this.submitGhost(run);
@@ -1266,6 +1380,9 @@ class App {
       onChallenge: () => void this.createChallenge(),
       onShare: () => void this.share(),
       onBoard: () => void this.showBoard(),
+      practice: this.practice,
+      needsWallet: this.needsWallet,
+      onConnectX: this.xAvailable ? () => void this.doConnectX() : null,
     });
   }
 
@@ -1337,6 +1454,21 @@ class App {
       if (deviceId && upgradeTo(deviceId)) this.pilot = deviceId;
     }
 
+    /*
+     * Ask the wallet to sign the claim, when there is a wallet to ask.
+     *
+     * After the run and before the post, so the player is signing a number
+     * they can already see rather than authorising something abstract. A
+     * refusal costs nothing: the run posts unsigned, exactly as it always did
+     * in a browser.
+     */
+    let claim: { publicKey: string; signature: string } | null = null;
+    if (this.session?.available && !this.practice) {
+      claim = await signClaim(
+        `sface:${run.mission.date}:${run.mission.seed}:s${run.stage.n}:${run.score}`,
+      );
+    }
+
     // Captured before the post, so a tier crossed by this run can be detected
     // by comparing against where the pilot stood a moment ago.
     const faceBefore = this.profile?.lifetimeFace ?? 0;
@@ -1358,6 +1490,9 @@ class App {
       duration: run.time,
       stage: run.stage.n,
       stageCleared: this.stageCleared,
+      // Spread rather than two optional fields, so a null claim sends nothing
+      // at all instead of two undefined keys the schema would have to tolerate.
+      ...(claim ?? {}),
     });
 
     if (result.ok) {
@@ -1395,6 +1530,7 @@ class App {
 
     if (!apiConfigured()) {
       this.postError = 'Challenges need the service. Playing solo for now.';
+      this.needsWallet = false;
       this.showResults();
       return;
     }
@@ -1403,6 +1539,7 @@ class App {
     // an identifier cannot stand in for. Say so before creating a dead bet.
     if (!this.session?.address) {
       this.postError = t('challengeNoWallet');
+      this.needsWallet = true;
       this.showResults();
       return;
     }
@@ -1601,6 +1738,33 @@ class App {
     if (!run) return;
 
     if (this.screen === 'run' && !run.finished && !this.paused) {
+      // Purchases resolve before the step, so a bomb bought this frame clears
+      // the attacker that would otherwise have hit you during it.
+      for (const slot of this.input.takeBuys()) {
+        const item = CONSUMABLES[slot];
+        if (!item) continue;
+        const result = buy(run, item.id);
+        if (result === 'broke') {
+          run.emit({
+            kind: 'lost',
+            x: run.player.x,
+            y: run.player.y,
+            text: `${item.cost} ${run.purse.ticker}`,
+          });
+        } else if (result === 'nothing-to-open') {
+          // Nothing was charged for. Say why, or a refused charge reads as a
+          // dead key rather than as being in the wrong place.
+          run.emit({
+            kind: 'lost',
+            x: run.player.x,
+            y: run.player.y,
+            text: 'No cell in reach',
+          });
+        } else if (result === 'bought') {
+          audio.play('cache');
+        }
+      }
+
       const firedAt = run.player.lastFiredAt;
       step(run, dt, this.command());
       // One blip per round that actually left the gun. Playing it while the
