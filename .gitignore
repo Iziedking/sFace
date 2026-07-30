@@ -36,3 +36,17 @@ PLAN-V2.md
 
 # v3 planning. Private, like the other plans.
 PLAN-V3.md
+
+# Deploy keys, and anything else shaped like a private key.
+#
+# A key was generated into this directory during CI setup and sat here untracked
+# while `git add -A` ran several times. It was never committed, but only because
+# of timing. A private key in a public repository is the worst single mistake
+# available here, so the pattern is broad on purpose: it catches openssh keys,
+# PEM files and the usual id_* names regardless of what anyone remembers to do.
+sface-deploy
+sface-deploy.pub
+*.pem
+*.key
+id_ed25519*
+id_rsa*
