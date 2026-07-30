@@ -64,6 +64,37 @@ export function readClanTag(): string | null {
  * The deeplink goes in the url slot so tapping it in the post opens Nimiq Pay.
  */
 export function shareToX(text: string, challengeId: string): string {
-  const url = challengeDeeplink(challengeId);
+  // https, not the scheme. See shareableLink: X will not linkify nimiqpay://
+  // and the post goes out looking broken.
+  const url = challengeShareLink(challengeId);
   return `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
+}
+
+/**
+ * The same destinations as plain https, for anything that leaves the app.
+ *
+ * A nimiqpay:// URL is right for a button on our own page, where the OS holds
+ * the scheme and the tap came from someone already here. It is wrong for a
+ * post. X linkifies http and https and nothing else, so an invite went out as
+ * dead text with the middle of it arbitrarily highlighted, and the one thing a
+ * growth loop cannot afford is a link that looks broken to everybody who has
+ * not already installed the wallet.
+ *
+ * Sharing the https link instead costs nothing and gains the handoff: the page
+ * it opens knows the invite, knows whether it is inside Nimiq Pay, and can put
+ * the wallet in front of the person itself rather than relying on a URL scheme
+ * to have done it. The pitch happens where we control it.
+ */
+export function shareableLink(query: string): string {
+  return `${APP_ORIGIN}/?${query}`;
+}
+
+/** A clan invite, as something a stranger can actually tap. */
+export function clanShareLink(tag: string): string {
+  return shareableLink(`clan=${encodeURIComponent(tag)}`);
+}
+
+/** A challenge, likewise. */
+export function challengeShareLink(challengeId: string): string {
+  return shareableLink(`c=${encodeURIComponent(challengeId)}`);
 }

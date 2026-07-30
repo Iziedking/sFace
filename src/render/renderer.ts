@@ -19,6 +19,7 @@
 
 import { NODE_REACH } from '../game/node';
 import { theme, MONO, DISPLAY } from './theme';
+import { touchCapable } from '../core/scheme';
 import { AvatarCache, drawHuman, type Role } from './characters';
 import type { Camera } from './camera';
 import type { Effects } from './effects';
@@ -968,7 +969,7 @@ private drawExtraction(state: RunState, camera: Camera): void {
     const label = !afford
       ? `NEED ${charge.cost} ${state.purse.ticker}`
       : inReach
-        ? 'PRESS 1 TO BLOW THE DOOR'
+        ? breachPrompt(charge.label)
         : 'GET CLOSER';
 
     const ctx = this.ctx;
@@ -1013,7 +1014,14 @@ private drawExtraction(state: RunState, camera: Camera): void {
      */
     if (!state.driving) {
       const near = Math.hypot(state.player.x - car.x, state.player.y - car.y) <= CAR_REACH;
-      if (near) this.drawTag(car.x, car.y - CAR_RADIUS - 16, 'PRESS E TO DRIVE', true);
+      if (near) {
+        this.drawTag(
+          car.x,
+          car.y - CAR_RADIUS - 16,
+          touchCapable() ? 'TAP E TO DRIVE' : 'PRESS E TO DRIVE',
+          true,
+        );
+      }
     }
   }
 
@@ -1610,3 +1618,16 @@ function clampTilt(value: number): number {
 }
 
 export { DISPLAY };
+
+/**
+ * Name the control the player actually has in front of them.
+ *
+ * A phone has no number row, so "PRESS 1" was an instruction with nowhere to
+ * carry it out. The charge is the first of the four buys, which on a touch
+ * device is a labelled button on screen rather than a key, so the prompt says
+ * what is written on it. Being told to press something that does not exist
+ * reads as the game being broken, not as the player missing something.
+ */
+function breachPrompt(label: string): string {
+  return touchCapable() ? `TAP ${label} TO BLOW THE DOOR` : 'PRESS 1 TO BLOW THE DOOR';
+}

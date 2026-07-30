@@ -114,7 +114,7 @@ import {
 import { el, button } from './ui/dom';
 import { connect, askDeviceId, hostLanguage, isTestnet, type WalletSession } from './nimiq/wallet';
 import { settle } from './nimiq/payments';
-import { challengeDeeplink, clanDeeplink, readChallengeId, readClanTag } from './nimiq/deeplink';
+import { challengeShareLink, clanShareLink, readChallengeId, readClanTag } from './nimiq/deeplink';
 import { buy } from './game/consume';
 import { CONSUMABLES } from './data/consumables';
 import { signClaim } from './nimiq/wallet';
@@ -1433,7 +1433,7 @@ class App {
       face > 0
         ? `Clan ${tag} has pulled ${face.toLocaleString()} Face out of the Collapse. Come and fly with us.`
         : `Starting clan ${tag} in sFace. Come and fly with us.`,
-      clanDeeplink(tag),
+      clanShareLink(tag),
     );
   }
 
@@ -2109,7 +2109,7 @@ class App {
     const challenge = this.challenge;
     if (!challenge) return;
 
-    const link = challengeDeeplink(challenge.id);
+    const link = challengeShareLink(challenge.id);
 
     // A challenge can be shared before this device has finished a run, in
     // which case there is no card and no score to put on one.
