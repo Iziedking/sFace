@@ -2164,13 +2164,35 @@ class App {
        * this is the only place that can see both the run and the controls. Both
        * of those then read the one answer.
        */
-      this.input.useVisible = Boolean(
+      /*
+       * Is there anything to use, and therefore anything to draw and tap?
+       *
+       * Two answers now: a car within reach on a city stage, or a gate in front
+       * of you on the last one whose numbers you never went and got. Computed
+       * here because this is the only place that can see both the run and the
+       * controls, and both the input layer and the renderer read the one answer.
+       */
+      const atCar = Boolean(
         run.city &&
           run.car &&
           (run.driving
             ? carStopped(run)
             : Math.hypot(run.player.x - run.car.x, run.player.y - run.car.y) <= CAR_REACH),
       );
+
+      const gate =
+        run.openGateId === null
+          ? null
+          : (run.gates.find((g) => g.id === run.openGateId) ?? null);
+      const canBuyRead = Boolean(
+        gate &&
+          gate.options.some((id) => {
+            const ally = run.allies.find((a) => a.id === id);
+            return ally !== undefined && !ally.known;
+          }),
+      );
+
+      this.input.useVisible = atCar || canBuyRead;
 
       // Hand the use press to the simulation, which decides what it means.
       if (this.input.takeUse()) run.useRequested = true;

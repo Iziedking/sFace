@@ -9,7 +9,7 @@
  */
 
 import { atCore } from './rings';
-import { followAllies, known, updateAllies } from './ally';
+import { buyRead, followAllies, known, READ_COST, updateAllies } from './ally';
 import { updateNodes } from './node';
 import { updateBullets, BULLET_RADIUS } from './bullet';
 import { cacheFace, cacheReach } from './cache';
@@ -50,6 +50,36 @@ export function step(state: RunState, dt: number, command: PlayerCommand): void 
     state.useRequested = false;
     if (state.driving) leaveCar(state);
     else tryEnterCar(state);
+  }
+
+  /*
+   * The same key buys a read at a gate.
+   *
+   * One input, two meanings, decided by where you are standing, exactly as the
+   * four slots already answer a question in one place and buy a bomb in another.
+   * The ring city has no cars, so there is nothing here for it to collide with,
+   * and a player who has learned that E is "do the thing in front of me" is
+   * right again.
+   */
+  if (state.rings && state.useRequested) {
+    state.useRequested = false;
+    const outcome = buyRead(state);
+    if (outcome === 'broke') {
+      state.emit({
+        kind: 'lost',
+        x: state.player.x,
+        y: state.player.y,
+        text: `${READ_COST} ${state.purse.ticker}`,
+      });
+    } else if (outcome === 'nothing') {
+      // Refusing silently reads as a dead key rather than as already knowing.
+      state.emit({
+        kind: 'lost',
+        x: state.player.x,
+        y: state.player.y,
+        text: 'You already know these',
+      });
+    }
   }
 
   if (!state.driving) {

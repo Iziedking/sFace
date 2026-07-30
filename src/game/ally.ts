@@ -54,6 +54,7 @@
 import type { Rng } from '../core/rng';
 import type { Survivor } from './mission';
 import { ringAt } from './rings';
+import { spend } from './scrip';
 import type { RunState } from './state';
 
 export interface Ally {
@@ -365,6 +366,74 @@ export function updateAllies(state: RunState): void {
     player.x = limit;
     if (player.vx > 0) player.vx = 0;
   }
+}
+
+/**
+ * What a read costs, in the day's own scrip.
+ *
+ * ## Why this exists
+ *
+ * A gate can be answered three ways, and all three should be real:
+ *
+ *   1. You went to the projects and learned their numbers. Free, costs time.
+ *   2. You follow crypto closely enough to already know how the majors moved
+ *      today. Free, costs nothing, and works without the game doing anything:
+ *      the gate shows real tickers and asks about real moves, so somebody who
+ *      reads the market answers straight off. That it works at all is quietly
+ *      the most interesting thing on this stage.
+ *   3. You flew past them and are now standing at a wall you cannot open. This
+ *      is what that costs.
+ *
+ * ## Why scrip and not NIM
+ *
+ * Scrip is earned inside the run and cannot be bought, which is the rule the
+ * whole challenge system rests on: no advantage is purchasable with money, so
+ * two people staking on one seed are playing the same game. Selling this for NIM
+ * would make the fairest thing in the project the one thing you could buy your
+ * way past.
+ *
+ * Priced above a bomb, because skipping a journey across two rings is worth more
+ * than clearing a room, and high enough that it is a decision rather than a
+ * habit.
+ */
+export const READ_COST = 160;
+
+/**
+ * Buy the numbers for the gate in front of you.
+ *
+ * Only ever reveals the options THIS gate is asking about. Revealing everything
+ * would make one purchase end the stage, and the point is to buy your way out of
+ * one mistake rather than out of the whole thing.
+ */
+export function buyRead(state: RunState): 'bought' | 'broke' | 'nothing' | 'none' {
+  if (state.openGateId === null) return 'none';
+
+  const gate = state.gates.find((g) => g.id === state.openGateId);
+  if (!gate || gate.open) return 'none';
+
+  const unknown = gate.options
+    .map((id) => state.allies.find((a) => a.id === id))
+    .filter((ally): ally is Ally => ally !== undefined && !ally.known);
+
+  // Nothing to buy. Saying so is better than taking the scrip for no change.
+  if (unknown.length === 0) return 'nothing';
+
+  if (!spend(state.purse, READ_COST)) return 'broke';
+
+  for (const ally of unknown) {
+    ally.known = true;
+    ally.learnedAt = state.time;
+    ally.slot = known(state.allies);
+  }
+
+  state.emit({
+    kind: 'cache',
+    x: state.player.x,
+    y: state.player.y,
+    text: `Read: ${unknown.map((a) => a.ticker).join(', ')}`,
+  });
+
+  return 'bought';
 }
 
 export type GateResult = 'open' | 'wrong' | 'none';

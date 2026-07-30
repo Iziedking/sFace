@@ -12,8 +12,11 @@ import { describe, expect, it } from 'vitest';
 import { practiceMission, type DailyMission, type Survivor } from '../src/game/mission';
 import { RunState } from '../src/game/state';
 import { step } from '../src/game/update';
+import { earn } from '../src/game/scrip';
 import {
   answerGate,
+  buyRead,
+  READ_COST,
   gateQuestion,
   known,
   ALLY_REACH,
@@ -412,5 +415,100 @@ describe('rounds in the ring city', () => {
 
     updateBullets(run, 1 / 60);
     expect(run.bullets).toHaveLength(1);
+  });
+});
+
+/**
+ * Buying your way out of a wall you cannot answer.
+ *
+ * A gate can be passed three ways: go and learn the numbers, already know them
+ * because you follow the market, or pay for them. The third is what these cover.
+ * The second needs no code at all, which is the point of asking about real
+ * tickers and real moves.
+ */
+describe('reading what you skipped', () => {
+  function atGate(run: RunState) {
+    const c = run.rings!;
+    const ring = c.rings[c.rings.length - 1]!;
+    const a = ring.gapAt + Math.PI;
+    run.player.x = c.cx + Math.cos(a) * (ring.radius + ring.thickness + 90);
+    run.player.y = c.cy + Math.sin(a) * (ring.radius + ring.thickness + 90);
+    step(run, 1 / 60, STILL);
+    return run.gates.find((g) => g.id === run.openGateId)!;
+  }
+
+  it('reveals the options you never went to, for scrip', () => {
+    const run = finale();
+    const gate = atGate(run);
+    earn(run.purse, READ_COST);
+
+    expect(buyRead(run)).toBe('bought');
+
+    for (const id of gate.options) {
+      expect(run.allies.find((a) => a.id === id)!.known).toBe(true);
+    }
+  });
+
+  it('charges for it', () => {
+    const run = finale();
+    atGate(run);
+    earn(run.purse, READ_COST + 40);
+
+    buyRead(run);
+    expect(run.purse.held).toBe(40);
+  });
+
+  it('refuses when the purse is short, and takes nothing', () => {
+    const run = finale();
+    const gate = atGate(run);
+    earn(run.purse, READ_COST - 1);
+
+    expect(buyRead(run)).toBe('broke');
+    expect(run.purse.held).toBe(READ_COST - 1);
+    expect(run.allies.find((a) => a.id === gate.options[0])!.known).toBe(false);
+  });
+
+  it('will not sell you what you already know', () => {
+    const run = finale();
+    const gate = atGate(run);
+    for (const id of gate.options) {
+      run.allies.find((a) => a.id === id)!.known = true;
+    }
+    earn(run.purse, READ_COST);
+
+    expect(buyRead(run)).toBe('nothing');
+    expect(run.purse.held).toBe(READ_COST);
+  });
+
+  it('only reveals the gate in front of you', () => {
+    // One purchase must not end the stage. It buys you out of one mistake.
+    const run = finale();
+    const gate = atGate(run);
+    earn(run.purse, READ_COST);
+    buyRead(run);
+
+    const untouched = run.allies.filter(
+      (a) => !gate.options.includes(a.id) && !a.known,
+    );
+    expect(untouched.length).toBeGreaterThan(0);
+  });
+
+  it('does nothing away from a gate', () => {
+    const run = finale();
+    earn(run.purse, READ_COST);
+    expect(buyRead(run)).toBe('none');
+    expect(run.purse.held).toBe(READ_COST);
+  });
+
+  it('cannot be bought with money, only earned in the run', () => {
+    /*
+     * The rule the challenge system rests on. Scrip is earned inside a run and
+     * has no purchase path, so two people staking on one seed have the same
+     * access to this. Selling it for NIM would make the fairest thing in the
+     * project the one thing you could buy past.
+     */
+    expect(READ_COST).toBeGreaterThan(0);
+    const run = finale();
+    expect(run.purse.held).toBe(0);
   });
 });

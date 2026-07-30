@@ -24,7 +24,7 @@ import { CONSUMABLES } from '../data/consumables';
 import { padLayout, type PadRegion } from '../core/pads';
 import { alerted } from '../game/sight';
 import { assistTier } from '../game/assist';
-import { gateQuestion } from '../game/ally';
+import { gateQuestion, READ_COST } from '../game/ally';
 import { CONVOY_MAX_HEALTH } from '../game/convoy';
 import { isCaged } from '../game/cell';
 import { snapsToDirections, usingPads } from '../core/scheme';
@@ -562,7 +562,12 @@ export class Hud {
     const x = (width - cardW) / 2;
     const rowH = 34;
     const headH = 34;
-    const cardH = headH + gate.options.length * rowH + 10;
+    // Room for the price line when there is one to show.
+    const unknownCount = gate.options.filter((id) => {
+      const ally = state.allies.find((a) => a.id === id);
+      return ally !== undefined && !ally.known;
+    }).length;
+    const cardH = headH + gate.options.length * rowH + (unknownCount > 0 ? 26 : 10);
     const y = top + 48;
 
     ctx.save();
@@ -589,6 +594,31 @@ export class Hud {
     ctx.fillStyle = gate.missed > 0 ? theme.danger : theme.inkFaint;
     ctx.font = `600 10px ${MONO}`;
     ctx.fillText(gate.missed > 0 ? 'WRONG ONCE' : 'WRONG WAKES THEM', x + cardW - 14, y + 21);
+
+    /*
+     * The price of a read, when there is anything left to buy.
+     *
+     * Printed on the panel rather than left to be discovered, because a player
+     * standing at a wall they cannot answer needs to know there is a way out of
+     * it that is not guessing. Only shown when it would actually do something:
+     * offering to sell somebody what they already know is worse than silence.
+     */
+    const unknown = gate.options.filter((id) => {
+      const ally = state.allies.find((a) => a.id === id);
+      return ally !== undefined && !ally.known;
+    }).length;
+
+    if (unknown > 0) {
+      const affordable = state.purse.held >= READ_COST;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = affordable ? theme.accent : theme.inkFaint;
+      ctx.font = `700 10px ${MONO}`;
+      ctx.fillText(
+        `E  READ THE ${unknown === 1 ? 'ONE' : String(unknown)} YOU SKIPPED   ${READ_COST} ${state.purse.ticker}`,
+        x + cardW / 2,
+        y + cardH - 9,
+      );
+    }
 
     gate.options.forEach((id, index) => {
       const ally = state.allies.find((a) => a.id === id);
