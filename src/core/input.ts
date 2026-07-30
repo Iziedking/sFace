@@ -34,7 +34,7 @@ const MOUSE_AIM_TTL_MS = 1200;
 /** Shared empty result, so a quiet frame allocates nothing. */
 const EMPTY_BUYS: number[] = [];
 
-import { hit, padLayout, padVector, useRegion, type PadLayout } from './pads';
+import { hit, padLayout, padVector, slotStrip, useRegion, type PadLayout } from './pads';
 import { snapsToDirections, usingPads } from './scheme';
 
 export class Input {
@@ -228,18 +228,54 @@ export class Input {
       }
     }
 
+    /*
+     * Consumables, on either scheme.
+     *
+     * The pads branch below has its own slot check because its buttons sit on
+     * the arc off the fire pad. This one is for the floating scheme, where the
+     * row across the bottom centre is the only way a thumb reaches a consumable
+     * at all.
+     */
+    if (!usingPads()) {
+      const strip = slotStrip(
+        this.canvas.clientWidth,
+        this.canvas.clientHeight,
+        this.slotCount,
+      );
+      for (let i = 0; i < strip.length; i++) {
+        if (hit(strip[i]!, point.x, point.y)) {
+          this.press(i);
+          return;
+        }
+      }
+    }
+
     if (usingPads() && this.onPadDown(event, point)) return;
 
     const leftHalf = point.x < this.canvas.clientWidth / 2;
 
-    if (leftHalf && this.movePointer === null) {
+    /*
+     * A press on the left always takes the stick, even if one is already held.
+     *
+     * This used to require movePointer to be null, which is only ever true if
+     * every pointerup arrived. Inside the Nimiq WebView they do not: sliding a
+     * thumb near the edge hands the gesture to the app shell, our pointerup
+     * never fires, and movePointer stays pinned to a finger that is no longer
+     * on the glass. From then on the stick is dead for the rest of the run and
+     * nothing looks broken, which is exactly how it was reported: the analog
+     * stops responding and the fire button carries on working.
+     *
+     * The newest finger on the left is the one steering. There is no case where
+     * honouring an older one is more correct.
+     */
+    if (leftHalf) {
       this.movePointer = event.pointerId;
       this.stickOrigin = point;
       this.stick = { origin: point, current: point };
       return;
     }
 
-    if (!leftHalf && this.aimPointer === null) {
+    if (!leftHalf) {
       this.aimPointer = event.pointerId;
       this.aimOrigin = point;
       this.aimStick = { origin: point, current: point };
@@ -332,6 +368,31 @@ export class Input {
     }
 
     if (event.pointerId === this.movePointer) {
+      /*
+       * The origin follows the thumb once the thumb outruns it.
+       *
+       * With the origin pinned where the finger first landed, a thumb dragged
+       * past the radius saturates: every further millimetre of travel changes
+       * nothing, and swinging left to right sweeps through a dead arc before
+       * the ship turns, because the vector is measured from a point the hand
+       * left behind. Reported as the analog not going the way the hand goes.
+       *
+       * Dragging the origin along keeps it exactly one radius behind, so the
+       * direction is always the direction of the last radius of travel and the
+       * stick answers immediately however far the thumb has wandered.
+       */
+      const rawX = point.x - this.stickOrigin.x;
+      const rawY = point.y - this.stickOrigin.y;
+      const reach = Math.hypot(rawX, rawY);
+
+      if (reach > STICK_RADIUS) {
+        const pull = (reach - STICK_RADIUS) / reach;
+        this.stickOrigin = {
+          x: this.stickOrigin.x + rawX * pull,
+          y: this.stickOrigin.y + rawY * pull,
+        };
+      }
+
       const dx = point.x - this.stickOrigin.x;
       const dy = point.y - this.stickOrigin.y;
       const distance = Math.hypot(dx, dy);

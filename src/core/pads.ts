@@ -174,3 +174,40 @@ export function padVector(
 
   return { x: ux * scale, y: uy * scale };
 }
+
+/**
+ * Where the consumables go for somebody on the floating-stick scheme.
+ *
+ * The pads scheme has an obvious home for them: an arc off the fire button,
+ * beside a thumb that is already parked. The floating scheme has no such spot,
+ * because it hands the entire left half to movement and the entire right half
+ * to aim, and a button in either one is a button you press by accident in a
+ * fight.
+ *
+ * So they went to the top strip instead, which is where they were found:
+ * drawn, priced, numbered one to four, and completely unpressable on a phone.
+ * The question that came back was how anybody was supposed to use them, and
+ * the honest answer was that on a touch device nobody could.
+ *
+ * A row across the bottom centre is the one region a landscape grip leaves
+ * alone. Both thumbs sit at the corners and the span between them is bridged
+ * by the phone itself, so nothing rests here, and reaching it is a deliberate
+ * short stretch inward rather than a hand leaving the controls.
+ */
+export function slotStrip(width: number, height: number, slotCount: number): PadRegion[] {
+  const regions: PadRegion[] = [];
+  if (slotCount <= 0) return regions;
+
+  // Tighter than the pad arc. This row is read straight across rather than
+  // swept through, and a wider one would start crowding the corners where the
+  // thumbs actually live.
+  const step = SLOT_RADIUS * 2 + 12;
+  const first = width / 2 - ((slotCount - 1) * step) / 2;
+  const y = height - EDGE - SLOT_RADIUS;
+
+  for (let i = 0; i < slotCount; i++) {
+    regions.push({ x: first + i * step, y, r: SLOT_RADIUS });
+  }
+
+  return regions;
+}

@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { hit, padLayout, padVector } from '../src/core/pads';
+import { hit, padLayout, padVector, slotStrip } from '../src/core/pads';
 import { Input } from '../src/core/input';
 import { setScheme } from '../src/core/scheme';
 
@@ -225,5 +225,69 @@ describe('aiming with a thumb', () => {
     } finally {
       restore();
     }
+  });
+});
+
+/**
+ * The consumable row for the floating-stick scheme.
+ *
+ * These four were drawn in the top strip and hit-tested nowhere, so on a phone
+ * they were decoration: visible, priced, numbered, and impossible to press. The
+ * row exists to give them a thumb, and it is only worth anything if it stays
+ * out of the way of the two sticks it sits between.
+ */
+describe('the bottom row of buys', () => {
+  it('centres itself whatever the count', () => {
+    for (const count of [1, 2, 3, 4]) {
+      const strip = slotStrip(PHONE.w, PHONE.h, count);
+      expect(strip).toHaveLength(count);
+
+      const middle = (strip[0]!.x + strip[strip.length - 1]!.x) / 2;
+      expect(middle).toBeCloseTo(PHONE.w / 2, 5);
+    }
+  });
+
+  it('never puts two buttons close enough to catch the wrong one', () => {
+    // The same rule the pad arc has to hold. A thumb aiming for one and taking
+    // its neighbour reads as the game buying something you did not ask for.
+    const strip = slotStrip(PHONE.w, PHONE.h, 4);
+
+    for (let i = 1; i < strip.length; i++) {
+      const gap = strip[i]!.x - strip[i - 1]!.x;
+      expect(gap).toBeGreaterThan(strip[i]!.r * 2);
+    }
+  });
+
+  it('sits clear of both thumbs', () => {
+    /*
+     * The whole reason this band was chosen. In landscape the hands are at the
+     * corners and the middle of the bottom edge is bridged by the phone, so a
+     * button there is reached deliberately and never by accident.
+     */
+    const pads = padLayout(PHONE.w, PHONE.h, 4);
+    const strip = slotStrip(PHONE.w, PHONE.h, 4);
+
+    for (const slot of strip) {
+      expect(Math.hypot(slot.x - pads.move.x, slot.y - pads.move.y)).toBeGreaterThan(
+        slot.r + pads.move.r,
+      );
+      expect(Math.hypot(slot.x - pads.fire.x, slot.y - pads.fire.y)).toBeGreaterThan(
+        slot.r + pads.fire.r,
+      );
+    }
+  });
+
+  it('stays on screen', () => {
+    for (const size of [PHONE, NARROW]) {
+      for (const slot of slotStrip(size.w, size.h, 4)) {
+        expect(slot.x - slot.r).toBeGreaterThan(0);
+        expect(slot.x + slot.r).toBeLessThan(size.w);
+        expect(slot.y + slot.r).toBeLessThan(size.h);
+      }
+    }
+  });
+
+  it('asks for nothing when there is nothing to buy', () => {
+    expect(slotStrip(PHONE.w, PHONE.h, 0)).toHaveLength(0);
   });
 });

@@ -21,13 +21,13 @@ import type { Input, StickView } from '../core/input';
 import type { RunState } from '../game/state';
 import { PLAYER_MAX_HEALTH } from '../game/state';
 import { CONSUMABLES } from '../data/consumables';
-import { padLayout, type PadRegion } from '../core/pads';
+import { padLayout, type PadRegion, slotStrip} from '../core/pads';
 import { alerted } from '../game/sight';
 import { assistTier } from '../game/assist';
 import { gateQuestion, READ_COST } from '../game/ally';
 import { CONVOY_MAX_HEALTH } from '../game/convoy';
 import { isCaged } from '../game/cell';
-import { snapsToDirections, usingPads } from '../core/scheme';
+import { snapsToDirections, touchCapable, usingPads } from '../core/scheme';
 
 export interface SafeInsets {
   top: number;
@@ -109,7 +109,16 @@ export class Hud {
     // The reads take the slots over while you are at a node, so only one of
     // these two ever draws and the numbers under your thumb always mean one
     // thing. See the matching branch in main.ts.
-    if (state.openNodeId === null && state.openGateId === null) {
+    /*
+     * The priced row is for a keyboard, and only for a keyboard.
+     *
+     * On a phone the same four buys are drawn as pucks beside the fire button,
+     * where a thumb can actually reach them. Drawing both put an identical set
+     * of controls at the top of the screen that cannot be pressed while playing,
+     * and the reasonable question that follows is how anybody is meant to use
+     * them. They are not: those are the keyboard's, these are the thumb's.
+     */
+    if (!touchCapable() && state.openNodeId === null && state.openGateId === null) {
       this.drawSlots(ctx, state, scripRight + 14, mid);
     }
     this.drawCargo(ctx, state, width / 2, mid);
@@ -122,9 +131,21 @@ export class Hud {
     if (state.rings) this.drawRingMap(ctx, state, height);
     else if (state.city) this.drawMap(ctx, state, height);
     else this.drawProgress(ctx, state, width, top + BAR_HEIGHT);
-    this.drawCarrying(ctx, state, padX, height - this.insets.bottom - 26);
+    /*
+     * Lifted clear of whichever map is showing.
+     *
+     * Both live in the bottom left, and the pill was landing inside the map's
+     * own frame: the map is 118 tall sitting 12 above the safe area, and the
+     * pill was centred 26 above it, which is squarely on top. Reported as the
+     * carrying strip covering the map, which is the one thing on a city stage
+     * you cannot play without.
+     */
+    const mapHeight = state.rings ? 124 : state.city ? 118 : 0;
+    const mapClearance = mapHeight > 0 ? mapHeight + 24 : 0;
+    this.drawCarrying(ctx, state, padX, height - this.insets.bottom - 26 - mapClearance);
     this.drawStick(ctx, input);
     this.drawPads(ctx, state, input, width, height);
+    this.drawSlotStrip(ctx, state, input, width, height);
 
     ctx.restore();
   }
@@ -995,34 +1016,107 @@ export class Hud {
       return;
     }
 
-    // The consumables, priced, and dimmed when they cannot be afforded so the
-    // thumb learns which are live without reading anything.
-    pads.slots.forEach((slot, index) => {
-      const item = CONSUMABLES[index];
-      if (!item) return;
-      const affordable = state.purse.held >= item.cost;
-
-      ctx.globalAlpha = affordable ? 0.55 : 0.22;
-      ctx.fillStyle = theme.canvas;
-      ctx.beginPath();
-      ctx.arc(slot.x, slot.y, slot.r, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.globalAlpha = affordable ? 0.9 : 0.4;
-      ctx.strokeStyle = theme.ink;
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-
-      ctx.fillStyle = theme.ink;
-      ctx.textAlign = 'center';
-      ctx.font = `700 9px ${MONO}`;
-      ctx.fillText(item.label, slot.x, slot.y - 1);
-      ctx.font = `600 9px ${MONO}`;
-      ctx.fillText(String(item.cost), slot.x, slot.y + 10);
-    });
+    drawBuys(ctx, state, pads.slots);
 
     ctx.restore();
   }
+
+  /**
+   * The same four buys, for the floating-stick scheme.
+   *
+   * Drawn across the bottom centre rather than on an arc, because the floating
+   * scheme has no fire button to hang them off. See slotStrip for why that band
+   * is the only part of a landscape screen a thumb is not already using.
+   */
+  private drawSlotStrip(
+    ctx: CanvasRenderingContext2D,
+    state: RunState,
+    input: Input,
+    width: number,
+    height: number,
+  ): void {
+    if (usingPads() || !touchCapable()) return;
+
+    const regions = slotStrip(width, height, input.slotCount);
+    if (regions.length === 0) return;
+
+    ctx.save();
+
+    // At a node or a gate these become the answers, exactly as the pad arc
+    // does. main.ts reroutes a slot press to the open question either way, so
+    // the only thing that has to change here is what is written on them.
+    const node = state.nodes.find((n) => n.id === state.openNodeId);
+    const reading = state.openNodeId !== null || state.openGateId !== null;
+
+    if (reading) {
+      const count = node?.options.length ?? 0;
+
+      regions.forEach((slot, index) => {
+        if (index >= count) return;
+
+        ctx.globalAlpha = 0.62;
+        ctx.fillStyle = theme.canvas;
+        ctx.beginPath();
+        ctx.arc(slot.x, slot.y, slot.r, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.globalAlpha = 0.95;
+        ctx.strokeStyle = theme.accent;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        ctx.fillStyle = theme.ink;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = `700 18px ${MONO}`;
+        ctx.fillText(String(index + 1), slot.x, slot.y + 1);
+      });
+
+      ctx.restore();
+      return;
+    }
+
+    drawBuys(ctx, state, regions);
+    ctx.restore();
+  }
+}
+
+/**
+ * The consumables, priced, and dimmed when they cannot be afforded so the thumb
+ * learns which are live without reading anything.
+ *
+ * Takes the regions rather than the layout, because the two schemes put these
+ * in different places and the only thing they disagree about is where.
+ */
+function drawBuys(
+  ctx: CanvasRenderingContext2D,
+  state: RunState,
+  regions: readonly PadRegion[],
+): void {
+  regions.forEach((slot, index) => {
+    const item = CONSUMABLES[index];
+    if (!item) return;
+    const affordable = state.purse.held >= item.cost;
+
+    ctx.globalAlpha = affordable ? 0.55 : 0.22;
+    ctx.fillStyle = theme.canvas;
+    ctx.beginPath();
+    ctx.arc(slot.x, slot.y, slot.r, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.globalAlpha = affordable ? 0.9 : 0.4;
+    ctx.strokeStyle = theme.ink;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    ctx.fillStyle = theme.ink;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `700 9px ${MONO}`;
+    ctx.fillText(item.label, slot.x, slot.y - 1);
+    ctx.font = `600 9px ${MONO}`;
+    ctx.fillText(String(item.cost), slot.x, slot.y + 10);
+  });
 }
 
 /** The analog ring: an outer bound and a resting centre. */

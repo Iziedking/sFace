@@ -63,14 +63,17 @@ interface Chapter {
 const TOUCH: Row[] = [
   { key: 'Left thumb', what: 'Anywhere on the left half. Drag to fly or walk.' },
   { key: 'Right thumb', what: 'Anywhere on the right half. Drag to aim, and it fires while held.' },
-  { key: 'Tap a slot', what: 'The four boxes in the top strip. One tap buys and uses.' },
+  {
+    key: 'Tap a buy',
+    what: 'The four round buttons along the bottom middle. One tap buys and uses it, and a dim one is one you cannot afford yet.',
+  },
   {
     key: 'Tap E',
     what: 'Appears beside a car when you are close enough. Tap again, stopped, to get out.',
   },
   {
     key: 'At a panel',
-    what: 'The four slots become the four answers, numbered. Tap the one you believe.',
+    what: 'Those same four buttons become the four answers, numbered. Tap the one you believe.',
   },
   { key: 'Pause', what: 'The button at the top, clear of both thumbs.' },
   {
