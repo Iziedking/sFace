@@ -84,9 +84,18 @@ describe('escalation', () => {
   });
 
   /** The last stage opens at three and stays there. No warm-up. */
-  it('is at full volley from the first second of the last stage', () => {
-    expect(volleyAt(2, 7)).toBe(3);
-    expect(volleyAt(RUN_SECONDS * 2, 7)).toBe(3);
+  it('is at full volley from the first second of the hardest fight', () => {
+    /*
+     * Stage four, not stage seven.
+     *
+     * The finale used to be the heaviest fight in the game and is now the
+     * lightest on purpose: it is decided by reading the market rather than by
+     * clearing a room, and it fields a third of the attackers so they are a
+     * distraction rather than the task. Stage four is where the volley ceiling
+     * actually bites now.
+     */
+    expect(volleyAt(2, 4)).toBe(2);
+    expect(volleyAt(RUN_SECONDS * 2, 4)).toBe(2);
   });
 
   it('never exceeds three', () => {

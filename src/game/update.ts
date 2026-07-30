@@ -8,7 +8,8 @@
  * get a run that reports a death and a payout together.
  */
 
-import { ALLY_REACH, followAllies, reachableX, recruited } from './ally';
+import { atCore } from './rings';
+import { followAllies, known, updateAllies } from './ally';
 import { updateNodes } from './node';
 import { updateBullets, BULLET_RADIUS } from './bullet';
 import { cacheFace, cacheReach } from './cache';
@@ -63,56 +64,12 @@ export function step(state: RunState, dt: number, command: PlayerCommand): void 
   updateBullets(state, dt);
 
   followAllies(state, dt);
-  resolveAllies(state);
+  updateAllies(state);
   resolveBulletHits(state);
   resolveContact(state);
   resolveCaches(state);
   resolveRefills(state);
   resolveEnding(state);
-}
-
-/**
- * Recruiting the projects still standing, and being stopped by the seals.
- *
- * The clamp is applied after the player has moved rather than as a collision,
- * so pressing against a closed seal feels like leaning on a door instead of
- * catching on geometry. Velocity is killed on contact too, or the ship keeps
- * its momentum and springs away the moment the seal opens.
- */
-function resolveAllies(state: RunState): void {
-  if (state.allies.length === 0) return;
-
-  const player = state.player;
-
-  for (const ally of state.allies) {
-    if (ally.recruited) continue;
-    if (!withinRange(player.x, player.y, ally.x, ally.y, ALLY_REACH + PLAYER_RADIUS)) continue;
-
-    ally.recruited = true;
-    ally.joinedAt = state.time;
-    ally.slot = recruited(state.allies);
-    state.lastJoinAt = state.time;
-
-    /*
-     * Named in the event, because the name is the point.
-     *
-     * The whole stage rests on these being real projects a player recognises,
-     * and a generic "ally joined" would throw that away at the one moment it
-     * lands hardest.
-     */
-    state.emit({
-      kind: 'freed',
-      x: ally.x,
-      y: ally.y,
-      text: `${ally.ticker} joins`,
-    });
-  }
-
-  const limit = reachableX(state.seals, state.allies, player.x);
-  if (player.x > limit) {
-    player.x = limit;
-    if (player.vx > 0) player.vx = 0;
-  }
 }
 
 /**
@@ -296,6 +253,20 @@ function resolveEnding(state: RunState): void {
     return;
   }
 
+  /*
+   * On the ring city the way out is the middle, not the right-hand edge.
+   *
+   * Every gate must still be answered to get there, and the walls enforce that
+   * on their own, so arriving at the core IS having done the whole stage.
+   */
+  if (state.rings) {
+    if (atCore(state.rings, state.player.x, state.player.y)) {
+      state.phase = 'extracted';
+      extractFollowers(state);
+    }
+    return;
+  }
+
   if (atExtraction(state)) {
     /*
      * On an escort stage, arriving is not finishing.
@@ -332,7 +303,7 @@ function resolveEnding(state: RunState): void {
      * the pad is the finale of the whole campaign, and arriving at it a project
      * short should not quietly count as freeing crypto.
      */
-    if (state.allies.length > 0 && recruited(state.allies) < state.allies.length) return;
+    if (state.allies.length > 0 && known(state.allies) < state.allies.length) return;
 
     state.phase = 'extracted';
     extractFollowers(state);

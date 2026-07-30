@@ -111,7 +111,10 @@ export class Renderer {
     ctx.save();
     camera.applyTo(ctx);
 
-    if (state.city) {
+    if (state.rings) {
+      // The finale's own world. Nothing from the chart or the grid applies.
+      this.drawRings(state);
+    } else if (state.city) {
       // A city replaces the whole backdrop. Drawing the chart underneath it
       // would put a ground line through a place that has no ground.
       this.drawCity(state, camera);
@@ -1015,6 +1018,116 @@ private drawExtraction(state: RunState, camera: Camera): void {
   }
 
   /**
+   * The ring city.
+   *
+   * Drawn as arcs, which is the whole point: after six stages of straight lines,
+   * a screen full of curves says immediately that this is somewhere else. A
+   * locked ring is a heavy crimson band with one gap in it; an answered one drops
+   * to a thin rule, so the way you came stays legible without competing with the
+   * wall you are working on now.
+   *
+   * The core sits at the middle under a target ring, because it is the only
+   * thing in the game you are flying toward rather than across.
+   */
+  private drawRings(state: RunState): void {
+    const rings = state.rings;
+    if (!rings) return;
+
+    const ctx = this.ctx;
+    const look = state.stage.look;
+
+    ctx.fillStyle = look.ground;
+    ctx.fillRect(0, 0, rings.width, rings.height);
+
+    ctx.save();
+
+    /*
+     * Faint spokes from the core.
+     *
+     * A ring world with nothing between the rings gives the eye no way to judge
+     * how far round you have travelled, so circling a wall feels like standing
+     * still. These are the only thing on screen that says which way is which.
+     */
+    ctx.globalAlpha = 0.14;
+    ctx.strokeStyle = theme.ink;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    const outer = rings.rings[rings.rings.length - 1]?.radius ?? rings.coreRadius;
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      ctx.moveTo(rings.cx + Math.cos(a) * rings.coreRadius, rings.cy + Math.sin(a) * rings.coreRadius);
+      ctx.lineTo(rings.cx + Math.cos(a) * (outer + 240), rings.cy + Math.sin(a) * (outer + 240));
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    for (const ring of rings.rings) {
+      if (ring.locked) {
+        /*
+         * The wall, as two arcs with the gap between them.
+         *
+         * Drawn from the far side of the gap round to the near side, so the
+         * opening is a real hole in the stroke rather than something painted
+         * over it. That matters because the gap is what the player is hunting.
+         */
+        ctx.strokeStyle = theme.danger;
+        ctx.lineWidth = ring.thickness;
+        ctx.globalAlpha = 0.85;
+        ctx.beginPath();
+        ctx.arc(
+          rings.cx,
+          rings.cy,
+          ring.radius,
+          ring.gapAt + ring.gapHalf,
+          ring.gapAt - ring.gapHalf + Math.PI * 2,
+        );
+        ctx.stroke();
+
+        // Ink edge, so it reads as built rather than as a coloured band.
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = theme.ink;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(rings.cx, rings.cy, ring.radius + ring.thickness / 2, ring.gapAt + ring.gapHalf, ring.gapAt - ring.gapHalf + Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(rings.cx, rings.cy, ring.radius - ring.thickness / 2, ring.gapAt + ring.gapHalf, ring.gapAt - ring.gapHalf + Math.PI * 2);
+        ctx.stroke();
+      } else {
+        // Answered. A thin rule: still there, no longer in the way.
+        ctx.globalAlpha = 0.5;
+        ctx.strokeStyle = theme.accent;
+        ctx.lineWidth = 3;
+        ctx.setLineDash([18, 14]);
+        ctx.beginPath();
+        ctx.arc(rings.cx, rings.cy, ring.radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // The core: what the whole campaign has been walking toward.
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = theme.accent;
+    ctx.beginPath();
+    ctx.arc(rings.cx, rings.cy, rings.coreRadius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = theme.ink;
+    ctx.lineWidth = 5;
+    ctx.stroke();
+
+    ctx.fillStyle = theme.ink;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `700 46px ${DISPLAY}`;
+    ctx.fillText('SAVE', rings.cx, rings.cy - 24);
+    ctx.fillText('FACE', rings.cx, rings.cy + 24);
+
+    ctx.restore();
+  }
+
+  /**
    * Window rows on a downtown building.
    *
    * Stepped on a fixed pitch and clipped to the block, so a wide squat building
@@ -1109,54 +1222,48 @@ private drawExtraction(state: RunState, camera: Camera): void {
   }
 
   /**
-   * The seals: what stops the last stage being a sprint.
+   * The gates: what makes the last stage a question rather than a corridor.
    *
-   * Drawn as a full-height barrier rather than a gate with a frame, because it
-   * has to read as impassable from any altitude. A closed one carries the count
-   * it is waiting for, so the answer to "why can I not get through" is written
-   * on the thing refusing to let you.
+   * A full-height barrier, so it reads as impassable from any altitude. The
+   * question itself is drawn by the HUD, in the strip, because it is text to be
+   * read rather than scenery to be flown past.
    */
   private drawSeals(state: RunState, camera: Camera): void {
-    if (state.seals.length === 0) return;
+    if (state.gates.length === 0) return;
 
     const ctx = this.ctx;
-    const have = state.allies.filter((a) => a.recruited).length;
 
-    for (const seal of state.seals) {
-      if (seal.open) continue;
-      if (!camera.visibleX(seal.x, 120)) continue;
+    for (const gate of state.gates) {
+      if (gate.open) continue;
+      if (!camera.visibleX(gate.x, 120)) continue;
 
       ctx.save();
 
-      // The barrier itself. Hatched rather than solid so the level behind it
-      // stays visible: you are meant to want what is on the other side.
+      // Hatched rather than solid: the level behind it stays visible, because
+      // wanting what is on the other side is what makes answering worth it.
       ctx.globalAlpha = 0.5;
       ctx.strokeStyle = theme.danger;
       ctx.lineWidth = 6;
       ctx.setLineDash([22, 16]);
       ctx.beginPath();
-      ctx.moveTo(seal.x, CEILING);
-      ctx.lineTo(seal.x, WORLD_HEIGHT);
+      ctx.moveTo(gate.x, CEILING);
+      ctx.lineTo(gate.x, WORLD_HEIGHT);
       ctx.stroke();
       ctx.setLineDash([]);
 
       ctx.globalAlpha = 1;
-      const label = `${have} / ${seal.needs}`;
       const y = state.player.y;
 
       ctx.fillStyle = theme.danger;
       ctx.beginPath();
-      ctx.roundRect(seal.x - 42, y - 44, 84, 30, 5);
+      ctx.roundRect(gate.x - 46, y - 46, 92, 28, 5);
       ctx.fill();
 
       ctx.fillStyle = theme.canvas;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.font = `700 15px ${MONO}`;
-      ctx.fillText(label, seal.x, y - 29);
-
-      ctx.font = `700 9px ${MONO}`;
-      ctx.fillText('SEALED', seal.x, y - 54);
+      ctx.font = `700 10px ${MONO}`;
+      ctx.fillText(gate.missed > 0 ? 'STILL SHUT' : 'SEALED', gate.x, y - 32);
 
       ctx.restore();
     }
@@ -1180,8 +1287,8 @@ private drawExtraction(state: RunState, camera: Camera): void {
       ctx.save();
       ctx.translate(ally.x, ally.y);
 
-      if (ally.recruited) {
-        // Smaller and quieter once they are with you. They are following, not
+      if (ally.known) {
+        // Smaller and quieter once you have its intel. It is following, not
         // asking to be found, and five full-size plates in a chain would drown
         // out the cast the stage is actually about.
         ctx.globalAlpha = 0.85;
@@ -1208,16 +1315,24 @@ private drawExtraction(state: RunState, camera: Camera): void {
       ctx.fillText(ally.ticker, 0, -4);
 
       /*
-       * Its own day, under the ticker.
+       * The figures appear only once the intel has been taken.
        *
-       * Real, and often the opposite sign to the wreck you are standing in,
-       * which is the entire argument the last stage is making: these are the
-       * ones that were still up while today's coin fell apart.
+       * This is the whole stage in one rule. A gate asks which of four is the
+       * largest, or which held up best, and shows nothing but tickers. If the
+       * numbers were readable from across the level the question would answer
+       * itself and the detour would be pointless. Reaching a project is how you
+       * learn them, and remembering them is how you get through the door.
        */
-      const up = ally.changePct >= 0;
-      ctx.fillStyle = up ? theme.accent : theme.danger;
-      ctx.font = `700 10px ${MONO}`;
-      ctx.fillText(`${up ? '+' : ''}${ally.changePct.toFixed(1)}%`, 0, 10);
+      if (ally.known) {
+        const up = ally.changePct >= 0;
+        ctx.fillStyle = up ? theme.accent : theme.danger;
+        ctx.font = `700 10px ${MONO}`;
+        ctx.fillText(`no.${ally.rank}  ${up ? '+' : ''}${ally.changePct.toFixed(1)}%`, 0, 10);
+      } else {
+        ctx.fillStyle = theme.inkFaint;
+        ctx.font = `700 9px ${MONO}`;
+        ctx.fillText('GO AND ASK', 0, 10);
+      }
 
       ctx.restore();
     }

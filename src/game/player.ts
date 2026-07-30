@@ -17,6 +17,7 @@ import { steerAim } from './assist';
 import { clamp, direction, groundPenetration } from './collision';
 import { updateConvoy } from './convoy';
 import { resolve as resolveCity } from './city';
+import { resolve as resolveRings } from './rings';
 import { driveCar } from './car';
 import { spawnBullet, BULLET_RADIUS } from './bullet';
 import { fireRateScale, recoilScale } from './consume';
@@ -87,6 +88,18 @@ export function updatePlayer(state: RunState, dt: number, command: PlayerCommand
     return;
   }
 
+  /*
+   * The ring city flies the same way a street does, and collides differently.
+   *
+   * Same top-down glide, because a world with no ground line has no reason for
+   * gravity whichever shape it is. What changes is what stops you: rings rather
+   * than boxes, pushed out radially. See game/rings.ts.
+   */
+  if (state.rings) {
+    flyRings(state, dt, command);
+    return;
+  }
+
   // The Exchange King is heavy. Carrying him is a real cost, not a label.
   const heavyCount = state.faces.filter(
     (f) => f.state === 'following' && f.quirk === 'heavy',
@@ -126,6 +139,60 @@ export function updatePlayer(state: RunState, dt: number, command: PlayerCommand
  * for no reason would be a second control scheme to learn rather than a second
  * place to be.
  */
+/**
+ * Flying the ring city.
+ *
+ * Deliberately a touch faster than the street, because the finale is a long
+ * circling stage and a wall you have to fly a quarter of the way around is a
+ * wall you should not be crawling past.
+ */
+function flyRings(state: RunState, dt: number, command: PlayerCommand): void {
+  const player = state.player;
+  const rings = state.rings;
+  if (!rings) return;
+
+  player.vx += command.moveX * CITY_THRUST * 1.15 * dt;
+  player.vy += command.moveY * CITY_THRUST * 1.15 * dt;
+
+  const damping = Math.pow(DRAG_PER_SECOND, dt);
+  player.vx *= damping;
+  player.vy *= damping;
+
+  const top = CITY_MAX_SPEED * 1.2;
+  const speed = Math.hypot(player.vx, player.vy);
+  if (speed > top) {
+    player.vx = (player.vx / speed) * top;
+    player.vy = (player.vy / speed) * top;
+  }
+
+  player.x += player.vx * dt;
+  player.y += player.vy * dt;
+
+  const pushed = resolveRings(rings, player.x, player.y, PLAYER_RADIUS);
+  if (pushed.hit) {
+    /*
+     * Kill only the speed into the wall.
+     *
+     * A ring is curved, so the useful direction along it is the tangent. Zeroing
+     * the whole velocity would stop you dead every time you brushed a wall while
+     * circling it, which is most of this stage.
+     */
+    const nx = (player.x - rings.cx) / (Math.hypot(player.x - rings.cx, player.y - rings.cy) || 1);
+    const ny = (player.y - rings.cy) / (Math.hypot(player.x - rings.cx, player.y - rings.cy) || 1);
+    const into = player.vx * nx + player.vy * ny;
+    player.vx -= nx * into;
+    player.vy -= ny * into;
+
+    player.x = pushed.x;
+    player.y = pushed.y;
+  }
+
+  player.x = Math.max(20, Math.min(rings.width - 20, player.x));
+  player.y = Math.max(20, Math.min(rings.height - 20, player.y));
+
+  player.facing = player.vx >= 0 ? 1 : -1;
+}
+
 function walkCity(state: RunState, dt: number, command: PlayerCommand): void {
   const player = state.player;
   const city = state.city;

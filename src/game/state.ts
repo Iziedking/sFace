@@ -28,10 +28,11 @@ import { openPurse, rollDrop, type ScripPurse } from './scrip';
 import { lockUp } from './cell';
 import { makeConvoy, type Convoy } from './convoy';
 import { buildCity, openSpot, roomSpot, type City } from './city';
+import { buildRingCity, spotOutside, type RingCity } from './rings';
 import { makeCar, type Car } from './car';
 import { layOutNodes, type StoryNode } from './node';
 import { BASELINE_ASSIST, type AssistLevel } from './assist';
-import { layOutAllies, layOutSeals, type Ally, type Seal } from './ally';
+import { layOutAllies, layOutGates, type Ally, type Gate } from './ally';
 import { layOutRefills, REFILL_REACH, type Refill } from './refill';
 import { fallbackRoster, type DailyMission, type RosterEntry } from './mission';
 import { Terrain, EXTRACTION_X, WORLD_HEIGHT, CEILING } from './terrain';
@@ -307,6 +308,13 @@ export class RunState {
    * column, and the parts of the game that assume a ground line branch on it.
    */
   readonly city: City | null;
+  /**
+   * The ring city, on the finale. Null everywhere else.
+   *
+   * A third world shape beside the heightmap and the block grid, so everything
+   * that asks "what am I standing in" has three answers rather than two.
+   */
+  readonly rings: RingCity | null;
   /** The car, in a city. Null on a chart run, which has the transport instead. */
   readonly car: Car | null;
   readonly convoy: Convoy | null;
@@ -349,9 +357,13 @@ export class RunState {
    * through sealed regions rather than another lap of the chart.
    */
   readonly allies: Ally[];
-  readonly seals: Seal[];
-  /** Run clock of the last recruitment, so the HUD can call it out. */
-  lastJoinAt = -1;
+  readonly gates: Gate[];
+  /** Id of the gate whose question is up, or null. Set by proximity. */
+  openGateId: number | null = null;
+  /** Gates solved. The stage's actual objective. */
+  gatesOpened = 0;
+  /** Gates answered wrong. Shown on the results screen, because it is the skill. */
+  gatesMissed = 0;
   /** Id of the node whose question is up, or null. Set by proximity. */
   openNodeId: number | null = null;
   /** Reads landed. The stage's actual objective. */
@@ -502,6 +514,19 @@ export class RunState {
      * city and a chart run made from one seed are two projections of one day.
      */
     this.city = stage.city ? buildCity(levelRng, mission.terrain) : null;
+    /*
+     * Built before anything is placed, because on the finale everything is
+     * placed relative to a ring rather than to a ground line.
+     */
+    /*
+     * One wall per GATE, not per project.
+     *
+     * The first project is met in the open field before any wall, because a gate
+     * asking about one project is not a question. Building a ring per project
+     * left the outermost wall with no gate attached to it, which made the stage
+     * unwinnable: nothing could ever unlock it.
+     */
+    this.rings = stage.rings ? buildRingCity(levelRng, Math.max(1, stage.allies - 1)) : null;
     // Parked a little way from the start, so the first decision of the run is
     // whether to walk to it at all rather than being handed it for free.
     this.car = this.city ? makeCar(this.city.startX + 260, this.city.startY - 120) : null;
@@ -522,10 +547,44 @@ export class RunState {
             () => this.nextId++,
           )
         : [];
-    this.seals =
+    this.gates =
       this.allies.length > 0
-        ? layOutSeals(this.allies, this.extractionX, () => this.nextId++)
+        ? layOutGates(levelRng, this.allies, this.extractionX, () => this.nextId++)
         : [];
+
+    /*
+     * On the ring city, everything sits on the approach to the wall it belongs
+     * to, outside it, so what you need for a gate is always on the side you are
+     * standing on. Ring 0 is innermost, so the list is walked backwards: the
+     * first project you meet guards the outermost wall.
+     */
+    if (this.rings) {
+      const rings = this.rings;
+      /*
+       * Outermost first, one per band, working in.
+       *
+       * The last one lands inside the innermost wall, in the band around the
+       * core, so the final thing you learn is the one standing next to what you
+       * came for.
+       */
+      this.allies.forEach((ally, index) => {
+        const spot = spotOutside(rings, levelRng, rings.rings.length - 1 - index);
+        ally.x = spot.x;
+        ally.y = spot.y;
+      });
+
+      for (const enemy of this.enemies) {
+        const spot = spotOutside(rings, levelRng, levelRng.int(0, rings.rings.length - 1));
+        enemy.x = spot.x;
+        enemy.y = spot.y;
+        enemy.homeY = enemy.y;
+      }
+      for (const face of this.faces) {
+        const spot = spotOutside(rings, levelRng, levelRng.int(0, rings.rings.length - 1));
+        face.x = spot.x;
+        face.y = spot.y;
+      }
+    }
 
     this.refills = layOutRefills(
       levelRng,

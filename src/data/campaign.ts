@@ -160,10 +160,17 @@ export interface Stage {
    * game/city.ts for why a heightmap cannot express a place.
    */
   /**
-   * How many projects join you on this stage, and therefore how many seals bar
+   * How many projects join you on this stage, and therefore how many gates bar
    * the way. Zero on every stage but the last.
    */
   allies: number;
+  /**
+   * The ring city. Only the finale, and it is a third world shape.
+   *
+   * Not the grid of stages five and six: concentric walls around a core, worked
+   * inward rather than crossed. See game/rings.ts.
+   */
+  rings: boolean;
   /**
    * How many story nodes this stage plants. Zero on every stage but six.
    *
@@ -215,6 +222,7 @@ export const STAGES: readonly Stage[] = [
     city: false,
     nodes: 0,
     allies: 0,
+    rings: false,
     volley: [1, 1],
     span: 0.45,
     bounty: 1,
@@ -243,6 +251,7 @@ export const STAGES: readonly Stage[] = [
     city: false,
     nodes: 0,
     allies: 0,
+    rings: false,
     volley: [1, 2],
     span: 0.6,
     bounty: 1.15,
@@ -274,6 +283,7 @@ export const STAGES: readonly Stage[] = [
     city: false,
     nodes: 0,
     allies: 0,
+    rings: false,
     volley: [1, 2],
     span: 0.7,
     bounty: 1.3,
@@ -302,6 +312,7 @@ export const STAGES: readonly Stage[] = [
     city: false,
     nodes: 0,
     allies: 0,
+    rings: false,
     volley: [2, 2],
     span: 0.8,
     bounty: 1.5,
@@ -330,6 +341,7 @@ export const STAGES: readonly Stage[] = [
     city: true,
     nodes: 0,
     allies: 0,
+    rings: false,
     volley: [2, 3],
     span: 0.85,
     bounty: 1.7,
@@ -366,6 +378,7 @@ export const STAGES: readonly Stage[] = [
     city: true,
     nodes: 4,
     allies: 0,
+    rings: false,
     volley: [2, 3],
     span: 0.92,
     bounty: 2,
@@ -402,13 +415,22 @@ export const STAGES: readonly Stage[] = [
     name: 'Save Face',
     restores: 'The season itself',
     brief:
-      'This is the one everything else was for. The road out is sealed into regions and nothing you carry will open them. What opens them is the projects that were here before this cycle and will be here after it, still holding while today falls apart. Find each one. Take them with you. Walk the whole wreck and get the doors open.',
-    objective: 'Recruit every project, then reach the pad.',
-    // The longest run in the game, by a distance. Five regions have to be
-    // crossed on foot, and a clock that fits stage six would make it a sprint
-    // past the thing the stage is about.
+      'This is the one everything else was for. The road out is sealed into regions and no weapon opens a gate. Each gate asks a question about the projects that were here before this cycle and will be here after it. Go and find them. Learn where each one sits and how it is holding up while today falls apart. Then answer, and walk out.',
+    objective: 'Learn every project, answer every gate.',
+    // The longest run in the game, by a distance. Five rings have to be circled
+    // and read, and a clock that fits stage six would make it a sprint past the
+    // thing the stage is about.
     seconds: 180,
-    density: 2,
+    /*
+     * A fraction of what the stage used to field.
+     *
+     * The finale is decided by working out what is going on, not by clearing a
+     * room. Attackers are still here because a completely empty world has no
+     * pressure in it at all, but there are few enough that they are something
+     * pulling at your attention rather than something you have to solve. It is
+     * possible to reach the core without firing.
+     */
+    density: 0.35,
     minDifficulty: 5,
     caches: 11,
     refills: 6,
@@ -417,6 +439,7 @@ export const STAGES: readonly Stage[] = [
     city: false,
     nodes: 0,
     allies: 5,
+    rings: true,
     volley: [3, 3],
     span: 1,
     bounty: 2.5,
@@ -424,7 +447,7 @@ export const STAGES: readonly Stage[] = [
     look: { sky: '#e9cdba', ground: '#b8917a', hatch: 11, weather: 'ember', density: 1 },
     tease: {
       scene: 'The whole day, end to end, with the ones that outlasted it waiting in it.',
-      threat: 'Sealed regions, everything awake, and no way through without all five.',
+      threat: 'Gates that ask instead of shoot. Fly past a project and you cannot answer.',
     },
     clear: (r) => r.survived && r.extracted >= 5 && r.relic && r.caches >= 8,
   },

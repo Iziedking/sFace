@@ -1,49 +1,59 @@
 /**
- * Stage seven: the projects that outlasted everything, and the doors they open.
+ * Stage seven: what you know, not what you shot.
  *
- * ## What the last stage is for
+ * ## The verb
  *
- * Every stage before this one is a rescue from a single bad day. This one is the
- * reason the rescues mattered. The season did not end on its own, and getting it
- * back means crossing the whole wreck with the only things that never went away:
- * the projects still standing at the top after every cycle that buried something
- * else.
+ * Every other stage is decided by flying, aiming, hiding or driving. This one is
+ * decided by paying attention. The way out is sealed into regions and no weapon
+ * opens a gate; a gate opens when you can answer what it asks, and you can only
+ * answer it if you went and learned something first.
  *
- * So the run is a march rather than a lap. It is the longest stage in the game
- * and it is sealed into regions, and you do not get through a seal by shooting
- * it. You get through it by having found whoever knows the way.
+ * So the loop is gather, then apply:
  *
- * ## The loop
+ *   1. Reach a project. It hands you its intel: where it sits by size, and how it
+ *      is holding up today. Reaching it is the only way to learn that.
+ *   2. The gate at the end of the region asks a question about the projects
+ *      behind you, showing only their tickers.
+ *   3. Answer it from what you gathered. Right, and the gate opens. Wrong, and it
+ *      costs you time and everything nearby wakes up.
  *
- * Each region holds one ally and ends in a seal.
+ * A player who flew past a project can still reach the gate. They simply cannot
+ * answer it, which is the point: the stage is not gated on reflexes, it is gated
+ * on having looked.
  *
- *   1. Find the ally. They are a real project, named and ranked off the same
- *      market call that picks the day's wreck.
- *   2. Reach them and they join. From then on they follow you and shoot back.
- *   3. Their read on the day is what opens the seal at the end of the region.
+ * ## Why the numbers are hidden until collected
  *
- * Miss one and the seal ahead does not move, so the stage is not survivable by
- * rushing. It has to be walked.
+ * The gate shows four tickers and nothing else. If it printed their figures the
+ * question would answer itself and the whole stage would collapse back into
+ * flying to a door. Hiding them is what turns the earlier detour into the thing
+ * that pays off later.
  *
- * ## Where the names come from, and what they are allowed to say
+ * ## How this differs from stage six
  *
- * The allies are the top projects by market cap on the day you play, taken from
- * the market rows the mission already carries. Not a hand-picked list of what
- * anybody thinks deserves to be there, and never a model's opinion.
+ * Stage six is a single read: four real posts in front of you, pick the one that
+ * explains today. Everything needed is on screen at the moment you decide.
  *
- * What each one contributes is equally constrained: its rank and its own 24 hour
- * move, both real numbers from that same source. On a day the wreck is down
- * sixteen per cent and the largest project is up two, the game is showing you a
- * true thing about the market rather than a line somebody wrote.
+ * Stage seven is a chain. Nothing needed to answer a gate is on screen when you
+ * answer it. It was on screen minutes earlier, somewhere else, and you either
+ * went and got it or you did not.
+ *
+ * ## Nothing here is invented
+ *
+ * The projects are the largest by market capitalisation on the day you play, off
+ * the same market call that picks the day's wreck. The facts asked about are
+ * their real rank and their real 24 hour move. There is no model opinion in any
+ * of it, and every question has an answer that can be checked against the market.
  *
  * ## Determinism
  *
- * Positions and pairings come from the level stream at construction. Two players
- * on one seed meet the same allies in the same places behind the same seals.
+ * Placement, question type and option order all come from the level stream at
+ * construction. Two players on one seed get the same questions in the same
+ * regions with the answer in the same slot.
  */
 
 import type { Rng } from '../core/rng';
 import type { Survivor } from './mission';
+import { ringAt } from './rings';
 import type { RunState } from './state';
 
 export interface Ally {
@@ -57,36 +67,85 @@ export interface Ally {
   changePct: number;
   x: number;
   y: number;
-  recruited: boolean;
-  /** Run time it joined, so the renderer can play the moment. */
-  joinedAt: number;
-  /** Position in the follow chain once recruited. */
+  /**
+   * True once the player has reached it and taken its intel.
+   *
+   * Named `known` rather than `recruited` on purpose. What you get is not a
+   * follower, it is a fact, and every gate downstream is asking whether you
+   * bothered to go and learn it.
+   */
+  known: boolean;
+  /** Run time it was reached, so the renderer can play the moment. */
+  learnedAt: number;
+  /** Position in the follow chain once known. */
   slot: number;
 }
 
-export interface Seal {
+/**
+ * What a gate can ask about.
+ *
+ * Both are about TODAY, and that is the whole point. An earlier version asked
+ * which project was the largest, which anybody who has heard of Bitcoin answers
+ * without collecting anything: it is general knowledge, not intel, and a gate
+ * you can pass by already knowing the industry is a gate that does not test
+ * whether you went and looked.
+ *
+ * Both questions here turn on the day's own numbers, which are not knowable from
+ * outside the run and change every morning.
+ */
+export type GateAsk = 'strongest' | 'weakest';
+
+export interface Gate {
   id: number;
   /** Where it stands across the level. */
   x: number;
-  /** How many allies must be with you to pass. */
-  needs: number;
+  /** Ally ids it is asking about, in the order shown. */
+  options: number[];
+  /** Index into options. Set once at construction. */
+  answer: number;
+  ask: GateAsk;
+  /**
+   * Which ring this gate unlocks, innermost first. -1 when the stage has none.
+   *
+   * On the ring city a gate is not a place, it is a wall: answering it opens the
+   * whole circumference rather than one point on it, so `x` is meaningless there
+   * and this is what the world reads.
+   */
+  ring: number;
   open: boolean;
+  /** How many times this one was answered wrong. Shown, because it stings. */
+  missed: number;
 }
 
-/** How close you have to get for a project to join you. */
+/** How close you have to get to take a project's intel. */
 export const ALLY_REACH = 46;
 
-/** How far a closed seal pushes you back. Wide enough that you cannot clip it. */
-export const SEAL_HALF_WIDTH = 26;
+/** How far a closed gate holds you back. Wide enough that you cannot clip it. */
+export const GATE_HALF_WIDTH = 26;
+
+/** How close you must be for a gate to put its question up. */
+export const GATE_REACH = 210;
 
 /**
- * A fallback cast for the days the market call gave us nothing.
+ * What a wrong answer costs.
  *
- * Deliberately generic. Putting invented tickers here would be inventing
- * projects, and putting a hardcoded list of real ones would be asserting that
- * these are the projects that lasted, which is the judgement the live data is
- * there to make. On a fallback day the stage is played against unnamed holdouts
- * rather than against a claim nobody checked.
+ * Time and noise, the same currency stage six uses, because a hidden score
+ * penalty teaches nothing and this stage is entirely about learning. Longer than
+ * stage six's, since a gate can be retried on the spot and a cost you can simply
+ * wait out is not a cost.
+ */
+export const GATE_ALARM_SECONDS = 7;
+/** How far a wrong answer carries. */
+export const GATE_ALARM_RADIUS = 1_200;
+/** Banked per gate solved. Worth more than an attacker, because it is harder. */
+export const GATE_SCORE = 500;
+
+/**
+ * A fallback cast for days the market call gave us nothing.
+ *
+ * Deliberately generic. Inventing tickers would be inventing projects, and
+ * hardcoding real ones would assert that these are the projects that lasted,
+ * which is the judgement the live data exists to make.
  */
 const UNNAMED = ['THE HOLDOUTS', 'STILL LISTED', 'NEVER DELISTED', 'THE REMAINDER'];
 
@@ -101,11 +160,8 @@ export function layOutAllies(
   const allies: Ally[] = [];
 
   /*
-   * Spread across the run rather than clustered.
-   *
-   * Each one sits in its own region, a little before the seal it opens, so the
-   * order you meet them in is the order the seals need them. Jittered inside
-   * that band so the stage does not read as a row of pickups on a grid.
+   * One per region, spread across the run. Jittered inside its band so the
+   * stage does not read as a row of pickups on a grid.
    */
   const band = extractionX / (count + 1);
 
@@ -120,10 +176,9 @@ export function layOutAllies(
       rank: survivor?.rank ?? i + 1,
       changePct: survivor?.changePct ?? 0,
       x,
-      // Above the chart, where a rescue can reach without touching the ground.
       y: groundAt(x) - rng.range(120, 260),
-      recruited: false,
-      joinedAt: -1,
+      known: false,
+      learnedAt: -1,
       slot: 0,
     });
   }
@@ -132,70 +187,244 @@ export function layOutAllies(
 }
 
 /**
- * One seal after each ally, and none before the first.
+ * A gate after each region, asking about the projects behind it.
  *
- * A seal at the very start would refuse a player who has had no chance to meet
- * anybody, which reads as the stage being broken rather than as being locked.
+ * The first gate is skipped. A question about one project has one option and no
+ * question in it, and a gate before anything could have been learned would be a
+ * wall nobody could have prepared for.
  */
-export function layOutSeals(allies: Ally[], extractionX: number, nextId: () => number): Seal[] {
-  return allies.map((ally, index) => ({
-    id: nextId(),
-    // Between this ally and the next, so it is passed with them in tow.
-    x: Math.round(Math.min(extractionX - 200, ally.x + (extractionX / (allies.length + 1)) * 0.55)),
-    needs: index + 1,
-    open: false,
-  }));
+export function layOutGates(
+  rng: Rng,
+  allies: Ally[],
+  extractionX: number,
+  nextId: () => number,
+): Gate[] {
+  const gates: Gate[] = [];
+  const band = extractionX / (allies.length + 1);
+
+  for (let i = 1; i < allies.length; i++) {
+    /*
+     * Only projects the player could already have reached.
+     *
+     * Asking about one further down the level would make the gate unanswerable
+     * by anybody playing it in order, which is not difficulty, it is a bug with
+     * a story attached.
+     */
+    const behind = allies.slice(0, i + 1);
+
+    // Alternate the two questions so a player cannot learn one answer shape and
+    // stop reading, and draw from the stream so the order is fixed per seed.
+    const ask: GateAsk = rng.chance(0.5) ? 'strongest' : 'weakest';
+
+    /*
+     * Four options, always including the correct one.
+     *
+     * Shuffled by index so the answer is not learnable as a position. Where
+     * fewer than four projects are behind the gate, every one of them is shown
+     * and the question is simply narrower.
+     */
+    const pool = behind.slice(-Math.min(4, behind.length));
+    const order = pool.map((_, index) => index);
+    for (let j = order.length - 1; j > 0; j--) {
+      const k = rng.int(0, j);
+      const a = order[j]!;
+      const b = order[k]!;
+      order[j] = b;
+      order[k] = a;
+    }
+
+    const options = order.map((index) => pool[index]!);
+    const answer = winnerOf(options, ask);
+
+    gates.push({
+      id: nextId(),
+      x: Math.round(Math.min(extractionX - 200, allies[i]!.x + band * 0.55)),
+      /*
+       * Gate 0 guards the outermost wall, because that is the first one a player
+       * meets. The rings are numbered inward, so the index is flipped.
+       */
+      ring: allies.length - 1 - i,
+      options: options.map((a) => a.id),
+      answer,
+      ask,
+      open: false,
+      missed: 0,
+    });
+  }
+
+  return gates;
 }
 
-/** How many allies are currently with the player. */
-export function recruited(allies: Ally[]): number {
-  return allies.filter((a) => a.recruited).length;
+/** Which of these wins the question, on the day's own moves. */
+function winnerOf(options: Ally[], ask: GateAsk): number {
+  let best = 0;
+  for (let i = 1; i < options.length; i++) {
+    const a = options[i]!;
+    const b = options[best]!;
+    const better = ask === 'strongest' ? a.changePct > b.changePct : a.changePct < b.changePct;
+    if (better) best = i;
+  }
+  return best;
+}
+
+/** The question, in words, for the panel. */
+export function gateQuestion(gate: Gate, wreckTicker: string): string {
+  return gate.ask === 'strongest'
+    ? `WHICH HELD UP BEST WHILE ${wreckTicker} FELL?`
+    : `WHICH ONE WENT DOWN WITH ${wreckTicker}?`;
+}
+
+/** How many projects the player has learned about. */
+export function known(allies: Ally[]): number {
+  return allies.filter((a) => a.known).length;
 }
 
 /**
- * The first seal ahead of this x that will not let the player through.
+ * The first closed gate ahead of this x.
  *
- * Returns null when the way is clear. Only seals AHEAD count: one already
- * crossed must never spring shut behind somebody, which would strand them in a
- * region with nothing to collect.
+ * Only gates AHEAD count: one already passed must never spring shut behind
+ * somebody, which would strand them in a region with nothing left to do.
  */
-export function blockingSeal(seals: Seal[], allies: Ally[], x: number): Seal | null {
-  const have = recruited(allies);
-
-  for (const seal of seals) {
-    if (seal.open) continue;
-    if (have >= seal.needs) {
-      seal.open = true;
-      continue;
-    }
-    if (seal.x >= x) return seal;
+export function blockingGate(gates: Gate[], x: number): Gate | null {
+  for (const gate of gates) {
+    if (gate.open) continue;
+    if (gate.x >= x) return gate;
   }
-
   return null;
 }
 
 /**
- * How far right the player may travel, given what they are carrying.
+ * How far right the player may travel.
  *
- * Positive infinity when nothing blocks them. Expressed as a limit rather than
- * as a collision so the caller can clamp movement smoothly, which reads as
- * pressing against something rather than as being snagged on it.
+ * A limit rather than a collision, so the caller can clamp movement smoothly and
+ * pressing against a gate reads as leaning on a door instead of snagging on it.
  */
-export function reachableX(seals: Seal[], allies: Ally[], x: number): number {
-  const seal = blockingSeal(seals, allies, x);
-  return seal === null ? Number.POSITIVE_INFINITY : seal.x - SEAL_HALF_WIDTH;
+export function reachableX(gates: Gate[], x: number): number {
+  const gate = blockingGate(gates, x);
+  return gate === null ? Number.POSITIVE_INFINITY : gate.x - GATE_HALF_WIDTH;
 }
 
 /**
- * Recruited projects trail the ship, the way freed people do.
+ * Take a project's intel, and open whatever gate is asking.
+ *
+ * Called every step. Proximity is the only requirement: there is nothing to
+ * press, because the act is going there rather than performing an input.
+ */
+export function updateAllies(state: RunState): void {
+  if (state.allies.length === 0) return;
+
+  const player = state.player;
+
+  for (const ally of state.allies) {
+    if (ally.known) continue;
+    if (Math.hypot(player.x - ally.x, player.y - ally.y) > ALLY_REACH + 17) continue;
+
+    ally.known = true;
+    ally.learnedAt = state.time;
+    ally.slot = known(state.allies);
+
+    /*
+     * The intel is stated out loud when taken.
+     *
+     * It is the entire reward for the detour, and a player who reaches a project
+     * and is told nothing has no way to know they were supposed to remember
+     * something.
+     */
+    const move = `${ally.changePct >= 0 ? '+' : ''}${ally.changePct.toFixed(1)}%`;
+    state.emit({
+      kind: 'freed',
+      x: ally.x,
+      y: ally.y,
+      text: `${ally.ticker}: no.${ally.rank}, ${move} today`,
+    });
+  }
+
+  /*
+   * On the ring city a gate belongs to a wall rather than to a point.
+   *
+   * The question comes up when you are in the band outside its ring, which is
+   * the whole approach to that wall, so it is there while you circle looking for
+   * the gap rather than only at one spot on it. The wall itself does the
+   * blocking, in the movement code, because a ring is not a line across the
+   * level.
+   */
+  const rings = state.rings;
+  if (rings) {
+    const standing = ringAt(rings, player.x, player.y);
+    const gate = state.gates.find((g) => !g.open && g.ring === standing) ?? null;
+    state.openGateId = gate?.id ?? null;
+    return;
+  }
+
+  const gate = blockingGate(state.gates, player.x);
+  state.openGateId =
+    gate !== null && Math.abs(gate.x - player.x) <= GATE_REACH ? gate.id : null;
+
+  const limit = reachableX(state.gates, player.x);
+  if (player.x > limit) {
+    player.x = limit;
+    if (player.vx > 0) player.vx = 0;
+  }
+}
+
+export type GateResult = 'open' | 'wrong' | 'none';
+
+/**
+ * Answer the gate in front of you.
+ *
+ * Both outcomes close the question, so a wrong answer cannot be brute forced by
+ * cycling the other three while standing still. Backing off and coming back is
+ * the retry, and the alarm is what makes that cost something.
+ */
+export function answerGate(state: RunState, choice: number): GateResult {
+  if (state.openGateId === null) return 'none';
+
+  const gate = state.gates.find((g) => g.id === state.openGateId);
+  if (!gate || gate.open) return 'none';
+  if (choice < 0 || choice >= gate.options.length) return 'none';
+
+  state.openGateId = null;
+
+  if (choice === gate.answer) {
+    gate.open = true;
+    state.gatesOpened++;
+    // On the ring city, opening a gate opens the wall itself.
+    const ring = state.rings?.rings[gate.ring];
+    if (ring) ring.locked = false;
+    state.nodeScore += GATE_SCORE;
+    state.emit({ kind: 'read', x: gate.x, y: state.player.y, text: 'The way opens' });
+    return 'open';
+  }
+
+  gate.missed++;
+  state.gatesMissed++;
+  state.nodeAlarmUntil = state.time + GATE_ALARM_SECONDS;
+
+  /*
+   * Wake everything nearby. Both flags are set: notice alone decays before they
+   * arrive, and alertUntil alone lets them forget the moment line of sight
+   * breaks, which is exactly the escape a wrong answer should not buy.
+   */
+  for (const enemy of state.enemies) {
+    if (!enemy.alive) continue;
+    if (Math.abs(enemy.x - gate.x) > GATE_ALARM_RADIUS) continue;
+    enemy.active = true;
+    enemy.notice = 1;
+    enemy.alertUntil = Math.max(enemy.alertUntil, state.time + GATE_ALARM_SECONDS);
+  }
+
+  state.emit({ kind: 'misread', x: gate.x, y: state.player.y, text: 'Wrong. It holds.' });
+  return 'wrong';
+}
+
+/**
+ * Known projects trail the ship.
  *
  * Reuses the player's own position trail rather than pathfinding: the chain is
- * already there for the rescue cast, it reads correctly at speed, and one
- * follow behaviour means the two never drift apart in feel.
- *
- * They sit further back than a rescued person. The cast is who you are saving
- * and belongs close; these are who is coming with you, and the gap is what
- * separates the two at a glance.
+ * already there for the rescue cast, it reads correctly at speed, and one follow
+ * behaviour means the two never drift apart in feel. They sit further back than
+ * a rescued person, which is what separates who you are saving from who is
+ * coming with you.
  */
 export function followAllies(state: RunState, dt: number): void {
   if (state.allies.length === 0) return;
@@ -204,9 +433,8 @@ export function followAllies(state: RunState, dt: number): void {
   const trail = state.trail;
 
   for (const ally of state.allies) {
-    if (!ally.recruited) continue;
+    if (!ally.known) continue;
 
-    // Deeper into the trail for each one, so they string out in join order.
     const back = Math.min(trail.length - 1, 12 + ally.slot * 9);
     const target = trail[trail.length - 1 - back] ?? state.player;
 

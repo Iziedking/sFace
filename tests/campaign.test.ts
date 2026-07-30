@@ -43,7 +43,6 @@ describe('the arc', () => {
       const prev = STAGES[i - 1]!;
       const next = STAGES[i]!;
 
-      expect(next.density).toBeGreaterThan(prev.density);
       expect(next.span).toBeGreaterThan(prev.span);
       expect(next.bounty).toBeGreaterThan(prev.bounty);
       expect(next.minDifficulty).toBeGreaterThanOrEqual(prev.minDifficulty);
@@ -64,6 +63,17 @@ describe('the arc', () => {
        * held to its own floor below.
        */
       if (next.n < 7) expect(next.seconds).toBeLessThanOrEqual(prev.seconds);
+
+      /*
+       * Attacker density climbs for six stages, and the finale drops it hard.
+       *
+       * Same exception as the clock, for the same reason. Six stages share a
+       * shape where more attackers is more difficulty. The finale is decided by
+       * working out what is going on, and a crowded arena there would not make
+       * that harder, it would drown it: the reading is the stage, and shooting
+       * is a distraction pulling you off it.
+       */
+      if (next.n < 7) expect(next.density).toBeGreaterThan(prev.density);
     }
   });
 
@@ -305,7 +315,9 @@ describe('runners', () => {
    * climbs and drops rather than sliding through a hill.
    */
   it('rides the chart exactly once it is running', () => {
-    const run = new RunState(mission(), 'sidearm', 7);
+    // Stage four, the last chart run with a real crowd on it. The finale is a
+    // ring city with almost nothing in it, so it has no chart to ride.
+    const run = new RunState(mission(), 'sidearm', 4);
     const runners = run.enemies.filter((e) => e.kind === 'runner');
     expect(runners.length).toBeGreaterThan(0);
 

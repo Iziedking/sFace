@@ -24,6 +24,7 @@ import { CONSUMABLES } from '../data/consumables';
 import { padLayout, type PadRegion } from '../core/pads';
 import { alerted } from '../game/sight';
 import { assistTier } from '../game/assist';
+import { gateQuestion } from '../game/ally';
 import { CONVOY_MAX_HEALTH } from '../game/convoy';
 import { isCaged } from '../game/cell';
 import { snapsToDirections, usingPads } from '../core/scheme';
@@ -108,12 +109,15 @@ export class Hud {
     // The reads take the slots over while you are at a node, so only one of
     // these two ever draws and the numbers under your thumb always mean one
     // thing. See the matching branch in main.ts.
-    if (state.openNodeId === null) this.drawSlots(ctx, state, scripRight + 14, mid);
+    if (state.openNodeId === null && state.openGateId === null) {
+      this.drawSlots(ctx, state, scripRight + 14, mid);
+    }
     this.drawCargo(ctx, state, width / 2, mid);
     this.drawAlert(ctx, state, width, top + BAR_HEIGHT);
     this.drawReadTally(ctx, state, padX, top + BAR_HEIGHT + 16);
     this.drawAssistMark(ctx, state, width - padX, top + BAR_HEIGHT + 16);
     this.drawRead(ctx, state, width, top + BAR_HEIGHT);
+    this.drawGate(ctx, state, width, top + BAR_HEIGHT);
     // A city has no progress along a line, so it gets a map instead.
     if (state.city) this.drawMap(ctx, state, height);
     else this.drawProgress(ctx, state, width, top + BAR_HEIGHT);
@@ -534,6 +538,96 @@ export class Hud {
   }
 
   /**
+   * The gate's question, when you are standing at one.
+   *
+   * Same shape and same position as stage six's read panel, because it is the
+   * same act: a question in the strip, answered with the four numbered slots.
+   * Two visually different question panels would teach a player nothing twice.
+   *
+   * Only the tickers are printed. What each one is worth was learned out in the
+   * level, and printing it here would answer the question for them.
+   */
+  private drawGate(
+    ctx: CanvasRenderingContext2D,
+    state: RunState,
+    width: number,
+    top: number,
+  ): void {
+    if (state.openGateId === null) return;
+    const gate = state.gates.find((g) => g.id === state.openGateId);
+    if (!gate) return;
+
+    const cardW = Math.min(width - 24, 620);
+    const x = (width - cardW) / 2;
+    const rowH = 34;
+    const headH = 34;
+    const cardH = headH + gate.options.length * rowH + 10;
+    const y = top + 48;
+
+    ctx.save();
+
+    ctx.fillStyle = theme.ink;
+    ctx.globalAlpha = 0.93;
+    ctx.beginPath();
+    ctx.roundRect(x, y, cardW, cardH, 10);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    ctx.strokeStyle = theme.accent;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(x, y, cardW, cardH, 10);
+    ctx.stroke();
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = theme.accent;
+    ctx.font = `700 12px ${MONO}`;
+    ctx.fillText(gateQuestion(gate, state.mission.ticker), x + 14, y + 21);
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = gate.missed > 0 ? theme.danger : theme.inkFaint;
+    ctx.font = `600 10px ${MONO}`;
+    ctx.fillText(gate.missed > 0 ? 'WRONG ONCE' : 'WRONG WAKES THEM', x + cardW - 14, y + 21);
+
+    gate.options.forEach((id, index) => {
+      const ally = state.allies.find((a) => a.id === id);
+      if (!ally) return;
+      const rowY = y + headH + index * rowH;
+
+      ctx.strokeStyle = theme.accent;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.roundRect(x + 12, rowY + 5, 22, 22, 5);
+      ctx.stroke();
+
+      ctx.textAlign = 'center';
+      ctx.fillStyle = theme.accent;
+      ctx.font = `700 12px ${MONO}`;
+      ctx.fillText(String(index + 1), x + 23, rowY + 17);
+
+      ctx.textAlign = 'left';
+      ctx.fillStyle = theme.canvas;
+      ctx.font = `700 13px ${MONO}`;
+      ctx.fillText(ally.ticker, x + 44, rowY + 17);
+
+      /*
+       * A mark for the ones whose intel you never took.
+       *
+       * Not the answer, just an admission that you cannot know. It turns a blind
+       * guess into a visible consequence of having flown past something.
+       */
+      if (!ally.known) {
+        ctx.textAlign = 'right';
+        ctx.fillStyle = theme.inkFaint;
+        ctx.font = `600 10px ${MONO}`;
+        ctx.fillText('never asked', x + cardW - 16, rowY + 17);
+      }
+    });
+
+    ctx.restore();
+  }
+
+  /**
    * The city, small, in the corner.
    *
    * A chart run needs no map: there is one direction and a bar under the strip
@@ -756,7 +850,7 @@ export class Hud {
      * drift out of step, and the answer buttons land under the thumb that is
      * already there instead of at the top of the screen.
      */
-    const reading = state.openNodeId !== null;
+    const reading = state.openNodeId !== null || state.openGateId !== null;
     if (reading) {
       const node = state.nodes.find((n) => n.id === state.openNodeId);
       const count = node?.options.length ?? 0;

@@ -118,6 +118,7 @@ import { signClaim } from './nimiq/wallet';
 import { renderSettings } from './ui/settings';
 import { CAR_REACH, carStopped } from './game/car';
 import { answerNode } from './game/node';
+import { answerGate } from './game/ally';
 
 type Screen =
   | 'loading'
@@ -1958,11 +1959,21 @@ class App {
        * do is always what is drawn under your thumb.
        */
       const reading = run.openNodeId !== null;
+      const atGate = run.openGateId !== null;
 
       for (const slot of this.input.takeBuys()) {
         if (reading) {
           const outcome = answerNode(run, slot);
           if (outcome === 'captured') audio.play('relic');
+          else if (outcome === 'wrong') audio.play('down');
+          continue;
+        }
+
+        // The same four inputs answer the last stage's gates. One act, one set
+        // of buttons, decided by what is in front of you.
+        if (atGate) {
+          const outcome = answerGate(run, slot);
+          if (outcome === 'open') audio.play('relic');
           else if (outcome === 'wrong') audio.play('down');
           continue;
         }

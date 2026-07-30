@@ -13,6 +13,7 @@ import type { Bullet, RunState } from './state';
 import { hitsGround } from './collision';
 import { WORLD_HEIGHT, WORLD_WIDTH, CEILING } from './terrain';
 import { solidAt } from './city';
+import { solidAt as solidInRings } from './rings';
 
 /*
  * The player's own speed and damage used to live here as two constants. They
@@ -50,14 +51,41 @@ export function updateBullets(state: RunState, dt: number): void {
     bullet.life -= dt;
 
     /*
-     * The bounds depend on which world this is.
+     * The bounds depend on which world this is, and there are three of them.
      *
-     * A city is four thousand units tall and the chart world is nine hundred
-     * and sixty, so culling a city against the chart's ceiling destroyed every
-     * bullet the moment it spawned. Nothing could shoot anything down there,
-     * player included, and the symptom was a city where attackers walked around
-     * and no shot ever connected.
+     * This has now bitten twice, identically. The chart world is nine hundred
+     * and sixty tall, the block city is four thousand, and the ring city is
+     * nearly six thousand across. A world that falls through to another world's
+     * bounds has every round culled on the frame it is fired.
+     *
+     * The symptom is unmistakable once you know it: attackers can shoot you and
+     * your own shots do nothing, because their rounds reach you within a frame
+     * while yours never travel at all. Any world added after this one needs its
+     * own branch here BEFORE it ships, not after somebody reports it.
      */
+    const rings = state.rings;
+
+    if (rings) {
+      if (
+        bullet.x < -40 ||
+        bullet.x > rings.width + 40 ||
+        bullet.y < -40 ||
+        bullet.y > rings.height + 40
+      ) {
+        bullet.life = 0;
+        continue;
+      }
+
+      // Ring walls stop rounds, the same way buildings do. A wall you can shoot
+      // through is not cover, and this stage is built on walls making you go
+      // around them.
+      if (solidInRings(rings, bullet.x, bullet.y)) {
+        bullet.life = 0;
+        state.emit({ kind: 'hit', x: bullet.x, y: bullet.y });
+      }
+      continue;
+    }
+
     const city = state.city;
 
     if (city) {
