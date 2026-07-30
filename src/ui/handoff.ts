@@ -25,6 +25,12 @@ export interface HandoffOptions {
 }
 
 /** What the wallet has that a tab does not. Concrete, not adjectives. */
+/**
+ * What an account unlocks, and what still needs a wallet.
+ *
+ * Split deliberately. The first three come with an X account and follow it
+ * everywhere; only the last needs a key rather than a name.
+ */
 const WAITING: Array<[string, string]> = [
   ['Face that builds up', 'Every run banks rank. Rank opens stages, weapons and a steadier gun.'],
   ['The daily board', 'Your handle against everyone who flew the same chart today.'],
@@ -77,16 +83,21 @@ export function renderHandoff(root: HTMLElement, options: HandoffOptions): void 
       ),
 
       /*
-       * The existing wallet call to action, not a second one.
+       * Nimiq Pay, and only Nimiq Pay.
        *
-       * It already carries the deep link, the QR fallback for somebody on a
-       * laptop, and the store links for a person who has no wallet yet. Building
-       * a rival version here would mean two components drifting apart on the one
-       * screen where getting into Nimiq Pay matters most.
+       * A connected X account does end the preview, because identity is what
+       * carries somebody's record and refusing to let them use it would be
+       * refusing them their own progress. That is deliberately NOT sold here.
+       *
+       * This screen exists to say where the game lives, and every line of it
+       * that pointed somewhere else made the wallet look like one option among
+       * several rather than the thing sFace was built for. The behaviour is
+       * generous; the pitch is singular.
        */
       walletCta({
         head: 'THE FULL RUN',
-        reason: 'The full clock, the board, clans and challenges are all in Nimiq Pay.',
+        reason:
+          'The full clock, the board, clans, and challenges you can stake against a friend on the same seed are all in Nimiq Pay.',
       }),
 
       el(

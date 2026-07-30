@@ -134,6 +134,22 @@ the game.
   <p><em>Phone first. Both thumbs, a fixed-pad option in settings, and a guide written for a thumb.</em></p>
 </div>
 
+## MAIN and TEST
+
+A chip in the top right says which network the app is on, because it changes what
+every NIM figure on screen is worth. Mainnet is the default and always will be:
+an app that quietly starts on a test chain will eventually take somebody's real
+intent and put it somewhere it does not count.
+
+| | |
+|---|---|
+| **MAIN** | Real NIM. Scores go to the daily board, challenges settle for money that counts, and CT Signals reads live X. |
+| **TEST** | The same game, played for nothing. NIM has no value, scores are verified but kept off the mainnet board, and CT Signals is off because it reads live X. Settings links the Nimiq faucet. |
+
+Testnet also never triggers a metered X call. Declaring it can only ever make the
+service spend less or keep a row off the board, never unlock anything, which is
+why the client is allowed to declare it at all.
+
 ## How it is built
 
 **Client.** TypeScript, Vite, canvas 2D. No game engine and no framework. Every

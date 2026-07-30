@@ -4547,3 +4547,14 @@ body.is-fullscreen .foot,
     font-size: clamp(30px, 8vw, 60px);
   }
 }
+
+/* The handoff's primary action. X ends the preview; the wallet is for staking. */
+.handoff__cta {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.handoff__cta .button {
+  width: 100%;
+}

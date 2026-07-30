@@ -137,6 +137,87 @@ export function record(run: RunRecord): Profile {
   return updated;
 }
 
+/**
+ * Fold one profile into another and retire the first.
+ *
+ * ## Why this exists
+ *
+ * A record used to be keyed on the device it was earned on, so the same person
+ * on a phone and a laptop was two players with two piles of Face. Identity is
+ * the X account, and progress should follow it, so a client that signs in tells
+ * us which device record belongs to which account and this joins them.
+ *
+ * ## Merge, never overwrite
+ *
+ * The obvious implementation replaces one with the other, and it is wrong in a
+ * case that will absolutely happen: somebody plays anonymously on their phone,
+ * plays anonymously on their laptop, then signs in on both. A replace means
+ * whichever they signed into second silently destroys the first. So totals are
+ * summed and bests are taken, which is correct however many devices arrive and
+ * in whatever order.
+ *
+ * ## Idempotent
+ *
+ * The source is deleted once folded in, so a client that retries, or signs in
+ * twice, cannot count the same runs again. That matters because sign-in is a
+ * page redirect and redirects get repeated.
+ */
+export function merge(fromId: string, intoId: string): Profile | null {
+  if (fromId === intoId) return profiles.get(intoId) ?? null;
+
+  const from = profiles.get(fromId);
+  if (!from) {
+    // Nothing to fold in. Not an error: the usual case is somebody signing in
+    // on a device that has never finished a run.
+    return profiles.get(intoId) ?? null;
+  }
+
+  const into = profiles.get(intoId);
+
+  if (!into) {
+    /*
+     * The account has no record yet, so the device's becomes it.
+     *
+     * Re-keyed rather than copied field by field, which keeps firstSeen honest:
+     * the account has been playing since that device started, not since the
+     * moment it signed in.
+     */
+    const moved: Profile = { ...from, id: intoId };
+    profiles.set(intoId, moved);
+    profiles.delete(fromId);
+    persist();
+    return moved;
+  }
+
+  const merged: Profile = {
+    ...into,
+    // Totals add. Two devices are two sets of runs by one person.
+    lifetimeFace: into.lifetimeFace + from.lifetimeFace,
+    runs: into.runs + from.runs,
+    rescued: into.rescued + from.rescued,
+    caches: into.caches + from.caches,
+    relics: into.relics + from.relics,
+    extractions: into.extractions + from.extractions,
+    // Bests take the better. A personal best is a personal best wherever it
+    // happened.
+    bestScore: Math.max(into.bestScore, from.bestScore),
+    stagesCleared: Math.max(into.stagesCleared, from.stagesCleared),
+    // The account keeps its own name and picture, which came from X and are
+    // more authoritative than a generated callsign.
+    avatarUrl: into.avatarUrl ?? from.avatarUrl,
+    // A clan already joined on the account wins; otherwise inherit the device's,
+    // so somebody who joined one before signing in does not lose it.
+    clanTag: into.clanTag ?? from.clanTag,
+    firstSeen: Math.min(into.firstSeen, from.firstSeen),
+    lastSeen: Math.max(into.lastSeen, from.lastSeen),
+  };
+
+  profiles.set(intoId, merged);
+  profiles.delete(fromId);
+  persist();
+  return merged;
+}
+
 /** Set or clear a pilot's clan. Used by the clan endpoints. */
 export function setClan(id: string, clanTag: string | null): Profile | null {
   const profile = profiles.get(id);

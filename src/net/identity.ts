@@ -116,3 +116,49 @@ function write(key: string, value: string): void {
 export function pilotName(id: string = pilotId()): string {
   return `Pilot ${id.slice(0, 4).toUpperCase()}`;
 }
+
+/**
+ * The key a connected account's progress hangs off.
+ *
+ * ## Why derive one rather than add a field
+ *
+ * Every route, schema and store in this project keys a player on a 64 character
+ * hex string. Deriving the account's key into that same shape means the board,
+ * clans, ghosts, challenges and the verifier all keep working with no change at
+ * all: they simply see a different id for the same person. The alternative was
+ * threading an optional account field through every one of them, which is a lot
+ * of surface for no gain.
+ *
+ * ## Why the handle
+ *
+ * It is what X gives us and what the game shows everywhere. A handle can be
+ * changed by its owner, and if that happens the player starts a fresh record,
+ * which is a rare and recoverable outcome rather than a wrong one. Nothing here
+ * is a secret: this is a namespace, not a credential, and it is never used to
+ * authorise anything.
+ *
+ * Lowercased first, because X handles are case insensitive and the same person
+ * typing a different case must not become a different player.
+ */
+export async function accountKey(handle: string): Promise<string | null> {
+  const clean = handle.replace(/^@/, '').trim().toLowerCase();
+  if (!clean) return null;
+
+  try {
+    const bytes = new TextEncoder().encode(`sface:x:${clean}`);
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    return [...new Uint8Array(digest)]
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join('');
+  } catch {
+    /*
+     * No SubtleCrypto, which happens on an insecure origin.
+     *
+     * Falling back to the device id rather than to a weaker hash: a same-device
+     * record is the behaviour this replaced and is merely no better, while a
+     * hand-rolled hash risks two people colliding onto one record, which is
+     * worse than anything it would fix.
+     */
+    return null;
+  }
+}

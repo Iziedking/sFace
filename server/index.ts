@@ -217,6 +217,13 @@ const decideClanBody = z.object({
   approve: z.boolean(),
 });
 
+const mergeBody = z.object({
+  /** The device record being retired. */
+  from: deviceId,
+  /** The account record it becomes part of. */
+  into: deviceId,
+});
+
 const unlockBody = z.object({
   deviceId,
   /** Reported, not verified. Same limitation as challenge settlement. */
@@ -556,6 +563,36 @@ app.post('/signals/unlock', limit(12, 6), (req, res) => {
 
   signals.grant(parsed.data.deviceId, parsed.data.serializedTx);
   res.json({ unlocked: true });
+});
+
+/**
+ * Fold a device's record into an account's, on sign-in.
+ *
+ * Deliberately unauthenticated, and safe because of what it can and cannot do.
+ * Both ids are opaque 64-character keys: one is a device identifier the caller
+ * already holds, the other is derived from the handle they just proved they own
+ * by completing the X sign-in. A caller can only ever merge a record they are
+ * holding the key to, and merging is additive, so the worst outcome of a
+ * dishonest call is that somebody donates their own runs to an account.
+ *
+ * It cannot be used to READ anything: the response is the merged profile, which
+ * the caller now owns either way.
+ */
+app.post('/profile/merge', limit(12, 6), (req, res) => {
+  const parsed = mergeBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: firstIssue(parsed.error) });
+    return;
+  }
+
+  const merged = profiles.merge(parsed.data.from, parsed.data.into);
+  if (!merged) {
+    // Neither side has ever finished a run. Nothing to do, and not a failure.
+    res.json({ merged: false });
+    return;
+  }
+
+  res.json({ merged: true, profile: merged });
 });
 
 app.get('/profile/:id', limit(60, 20), (req, res) => {

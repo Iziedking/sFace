@@ -149,12 +149,48 @@ export function setNetwork(next: NetworkId): void {
 
   current = next;
 
+  /*
+   * Mark this as an in-app reload, so the app comes back where it was.
+   *
+   * Switching network reloads the page, and a reload boots the app from the
+   * beginning: loader, opening, story. That is right for somebody arriving and
+   * wrong for somebody who just tapped a toggle, who gets sent back to the front
+   * of a game they were already inside. The flag below is what tells boot the
+   * difference.
+   */
+  try {
+    window.sessionStorage.setItem(RESUME_KEY, 'home');
+  } catch {
+    // Storage refused. The reload still works, it just replays the opening.
+  }
+
   // Drop any network parameter on the way out, or the URL would immediately
   // override the choice that was just made.
   const url = new URL(window.location.href);
   url.searchParams.delete('network');
   url.searchParams.delete('net');
   window.location.replace(url.toString());
+}
+
+const RESUME_KEY = 'sface.resume';
+
+/**
+ * Did this page load come from something the player did inside the app?
+ *
+ * Reading it clears it, so it only ever applies to the one load it was set for.
+ * Anything that reloads as part of an in-app action should set it, and the
+ * opening is skipped when it is present: the story is for somebody arriving,
+ * not for somebody who flipped a switch.
+ */
+export function takeInAppReload(): boolean {
+  try {
+    const found = window.sessionStorage.getItem(RESUME_KEY);
+    if (found === null) return false;
+    window.sessionStorage.removeItem(RESUME_KEY);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Header name the service reads. Exported so both halves cannot disagree. */

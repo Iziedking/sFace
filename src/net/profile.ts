@@ -13,6 +13,8 @@
 
 import { rankFor, type RankProgress } from '../data/story';
 
+import { networkHeaders } from '../core/network';
+
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
 const STORAGE_KEY = 'sface.profile';
 
@@ -144,4 +146,28 @@ function count(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0
     ? Math.floor(value)
     : 0;
+}
+
+/**
+ * Fold a device's record into the connected account's.
+ *
+ * Never rejects and never blocks anything: a failed merge leaves both records
+ * where they were, which is exactly the state before accounts carried progress.
+ */
+export async function mergeProfile(from: string, into: string): Promise<boolean> {
+  if (!API_BASE || from === into) return false;
+
+  try {
+    const response = await fetch(`${API_BASE}/profile/merge`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...networkHeaders() },
+      body: JSON.stringify({ from, into }),
+    });
+    if (!response.ok) return false;
+
+    const body = (await response.json()) as { merged?: boolean };
+    return body.merged === true;
+  } catch {
+    return false;
+  }
 }

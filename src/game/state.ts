@@ -450,9 +450,21 @@ export class RunState {
     this.stage = stage;
     this.practice = practice;
     // Only later stages are clipped. Stage one practice is the full run.
-    this.preview = preview;
-    this.taster = preview || (practice && stage.n > 1);
-    this.seconds = preview
+    /*
+     * Stage one is never clipped, for anybody.
+     *
+     * It is the argument for signing in, and a clipped argument is a weak one.
+     * The front door has always promised the full first stage as many times as
+     * you like, and a preview that cut it made the app contradict its own
+     * headline: somebody arriving cold was shown a handoff screen before they
+     * had finished a single run.
+     *
+     * So the short look applies from stage two, where the point is to SEE what
+     * is up there rather than to finish it.
+     */
+    this.preview = preview && stage.n > 1;
+    this.taster = this.preview || (practice && stage.n > 1);
+    this.seconds = this.preview
       ? Math.min(stage.seconds, RunState.PREVIEW_SECONDS)
       : this.taster
       ? Math.min(stage.seconds, RunState.TASTER_SECONDS)

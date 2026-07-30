@@ -389,8 +389,20 @@ describe('anticipation', () => {
  * stage and that it never quietly becomes the real thing.
  */
 describe('outside the wallet', () => {
-  it('clips every stage to the preview clock', () => {
-    for (let n = 1; n <= STAGES.length; n++) {
+  it('never clips stage one, for anybody', () => {
+    /*
+     * Stage one is the argument for signing in, and a clipped argument is a weak
+     * one. The front door promises the full first stage as many times as you
+     * like, and a preview that cut it made the app contradict its own headline:
+     * a stranger was shown a handoff screen before finishing a single run.
+     */
+    const first = new RunState(practiceMission('2026-07-30'), 'sidearm', 1, false, true);
+    expect(first.preview).toBe(false);
+    expect(first.seconds).toBe(stageAt(1).seconds);
+  });
+
+  it('clips every stage after the first to the preview clock', () => {
+    for (let n = 2; n <= STAGES.length; n++) {
       const preview = new RunState(practiceMission('2026-07-30'), 'sidearm', n, false, true);
       expect(preview.preview).toBe(true);
       expect(preview.seconds).toBeLessThanOrEqual(RunState.PREVIEW_SECONDS);

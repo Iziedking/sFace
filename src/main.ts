@@ -36,6 +36,9 @@ import { renderBoard, renderBrief, renderResults, type BoardTab } from './ui/scr
 import { initialSteps, renderLoading, type LoadStep } from './ui/loading';
 import { renderChallenge } from './ui/challenge';
 import { renderIntro } from './ui/intro';
+import { takeInAppReload } from './core/network';
+import { accountKey } from './net/identity';
+import { mergeProfile } from './net/profile';
 import { renderControls } from './ui/controls';
 import { renderGate } from './ui/gate';
 import { renderPause, renderRunOverlay } from './ui/pause';
@@ -142,6 +145,15 @@ type Screen =
 /** Default stake when a player creates a challenge without picking one. */
 const DEFAULT_STAKE_NIM = 5;
 
+/**
+ * Floor on how long the loading screen is shown.
+ *
+ * Long enough to read the three checks it is reporting. A warm load resolves in
+ * a few hundred milliseconds and without this the screen is a flicker.
+ */
+const MIN_LOADING_MS = 3200;
+
+
 class App {
   private readonly ui: HTMLElement;
   /** The app bar. Lives outside #ui so a screen repaint cannot flicker it. */
@@ -185,7 +197,28 @@ class App {
    * through to the cache on every other load, and returns null when there is
    * neither.
    */
-  private me: XProfile | null = takeRedirectResult() ?? connectedX();
+  /**
+   * The profile carried back in the URL fragment by the X sign-in redirect.
+   *
+   * Read exactly once, here, because takeRedirectResult consumes the fragment.
+   * Anything asking later gets null, which is why both the flag below and `me`
+   * derive from this field rather than calling it again.
+   */
+  private readonly redirected: XProfile | null = takeRedirectResult();
+
+  /** True when this page load is the one returning from signing in with X. */
+  private readonly cameBackFromX: boolean = this.redirected !== null;
+
+  /**
+   * True when this load was caused by something the player did in the app.
+   *
+   * Switching network is the only one today, and it reloads because a live swap
+   * would leave screens holding a mixture of two networks. Read once at
+   * construction, because reading it clears it.
+   */
+  private readonly inAppReload: boolean = takeInAppReload();
+
+  private me: XProfile | null = this.redirected ?? connectedX();
   /** False until the service confirms X connect is configured here. */
   private xAvailable = false;
   /**
@@ -376,6 +409,20 @@ class App {
     // explicit that a mini app must not assume it from the device locale.
     setLanguage(hostLanguage());
     renderLoading(this.ui, this.steps);
+    const bootAt = Date.now();
+
+    /*
+     * Progress belongs to the account, not to the device it was earned on.
+     *
+     * Resolved before anything reads `pilot`, which is every call below: the
+     * board, the profile, ghosts, clans and challenges all hang off it. Getting
+     * this wrong by a few lines would post today's run against the device and
+     * leave the account short.
+     *
+     * A device that has played before is folded in on the way past, so signing
+     * in keeps whatever was earned anonymously rather than starting over.
+     */
+    await this.adoptAccount();
 
     // The wallet probe runs alongside the mission fetch rather than before it.
     // Whichever finishes first, the player is not waiting on the other.
@@ -413,6 +460,23 @@ class App {
     this.loop.start();
 
     /*
+     * Hold the loader for a beat even when everything was already cached.
+     *
+     * On a warm load the mission comes back in under a second and the loading
+     * screen flashes past, which reads as a glitch rather than as a game
+     * starting: three checks tick over faster than the eye resolves them and the
+     * player is somewhere else before they knew they had arrived.
+     *
+     * So it is given a floor. Nothing is being faked, the steps are still real
+     * awaits and a slow connection still takes as long as it takes. This only
+     * stops a fast one from being invisible.
+     */
+    const elapsed = Date.now() - bootAt;
+    if (elapsed < MIN_LOADING_MS) {
+      await new Promise((resolve) => setTimeout(resolve, MIN_LOADING_MS - elapsed));
+    }
+
+    /*
      * The opening plays on every visit, not once ever.
      *
      * It used to be gated on a flag in localStorage, which meant it fired the
@@ -429,16 +493,26 @@ class App {
      * It sits after the loop has started so the chart is alive behind it, and
      * after the mission has loaded so nothing in it is a guess.
      */
-    if (!this.pendingChallengeId) {
+    /*
+     * Except on the load that comes back from X.
+     *
+     * Signing in is a full page redirect, so the app boots again from scratch.
+     * Playing the opening there means somebody who just authorised an account is
+     * made to sit through the pitch a second time and lands on the front door
+     * rather than on the screen they were sent back to.
+     */
+    const returningFromX = this.cameBackFromX;
+
+    if (!this.pendingChallengeId && !returningFromX && !this.inAppReload) {
       this.ui.className = '';
       this.screen = 'intro';
       renderIntro(this.ui, {
         voice: music.on,
         onBegin: () => this.startSound(),
-        // Straight to the home page. The opening already had its own title
-        // beat, so a second brand splash here is a wall between somebody who
-        // just watched the pitch and the button the pitch was arguing for.
-        onDone: () => this.landing(),
+        // The brand beat, then the home page. The splash is the punctuation
+        // between the story ending and the game starting; without it the last
+        // line of the pitch cuts straight to a sign-in button.
+        onDone: () => void this.enter(),
       });
     }
 
@@ -509,6 +583,39 @@ class App {
    * of the day flies alone, and everyone after them flies with whoever came
    * before. No matchmaking, no lobby, no waiting for a second human.
    */
+  /**
+   * Point this session at the connected account's record, and absorb the
+   * device's.
+   *
+   * Silent by design. Nothing in the UI mentions that an account carries
+   * progress, because the pitch is Nimiq Pay and a second story about what X
+   * unlocks would blur it. The behaviour is simply correct.
+   */
+  private async adoptAccount(): Promise<void> {
+    const handle = this.me?.handle;
+    if (!handle) return;
+
+    const key = await accountKey(handle);
+    // No SubtleCrypto here, so the device id stands. Same behaviour as before
+    // accounts carried progress, which is a fine floor.
+    if (!key || key === this.pilot) return;
+
+    const device = this.pilot;
+    this.pilot = key;
+
+    /*
+     * Merge is fire and forget, and idempotent on the service.
+     *
+     * Waiting on it would put a network round trip in front of the loading
+     * screen for something the player never sees, and the service deletes the
+     * source once folded in, so a retry or a second sign-in cannot double count.
+     */
+    void mergeProfile(device, key).then((merged) => {
+      // Repaint the rank chip if the totals just changed under it.
+      if (merged) void this.refreshProfile();
+    });
+  }
+
   private async loadGhosts(): Promise<void> {
     const mission = this.mission;
     if (!mission || !apiConfigured()) return;
@@ -1386,21 +1493,29 @@ class App {
     // that could change mid-run would make the recorded trace disagree with
     // the run that produced it.
     /*
-     * Outside Nimiq Pay every run is a preview.
+     * A preview is for somebody who has told us nothing about themselves.
      *
-     * `session.available` is true only when a live Nimiq provider answered, so
-     * it is the honest test for "is this the Mini App or a browser tab". A tab
-     * gets the day's real chart, its real cast and its real weather for a short
-     * look; the run that counts happens in the wallet.
+     * Identity is the X account. It carries Face, rank, clan and history, and it
+     * carries them across every device and every channel, so a player who has
+     * connected one has a record to add to wherever they are playing. Gating
+     * them behind the wallet would be gating them out of their own progress.
+     *
+     * The wallet is for money: staking a challenge, settling one, and signing a
+     * score so it can be verified. Those paths still route to Nimiq Pay and
+     * always will, because they are the ones that need a key rather than a name.
+     *
+     * So the short look is only for a stranger in a browser tab: no wallet and
+     * no account. Anyone else gets the whole game.
      */
     const inWallet = this.session?.available === true;
+    const knownPlayer = this.me !== null;
 
     this.run = new RunState(
       mission,
       this.weapon().id,
       this.activeStage(),
       this.practice,
-      !inWallet,
+      !inWallet && !knownPlayer,
     );
 
     /*

@@ -155,6 +155,27 @@ export function renderAbout(root: HTMLElement, options: AboutOptions): void {
         }),
       ),
 
+      el('h2', { class: 'doc__section', text: 'MAIN and TEST' }),
+      el('p', {
+        class: 'doc__body doc__body--wide',
+        text: 'The chip in the top right says which network you are on. It changes what the NIM on screen is worth, so it is always visible and always tappable.',
+      }),
+      panels(
+        [
+          {
+            kicker: 'MAIN',
+            title: 'Mainnet, the real thing',
+            body: 'Real NIM. Your scores go to the daily board, challenges settle for money that counts, and CT Signals reads live X. This is the game, and it is what you get unless you deliberately switch.',
+          },
+          {
+            kicker: 'TEST',
+            title: 'Testnet, a rehearsal',
+            body: 'The same game, played for nothing. NIM here has no value, scores stay off the mainnet board, and CT Signals is off because it reads live X. Use it to try staking a challenge without spending anything. Settings links the Nimiq faucet for testnet coins.',
+          },
+        ],
+        'doc__grid doc__grid--two',
+      ),
+
       el(
         'div',
         { class: 'doc__note' },

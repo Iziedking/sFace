@@ -234,3 +234,114 @@ describe('clans', () => {
     expect(detail?.members).toBe(2);
   });
 });
+
+/**
+ * Progress following the account rather than the device.
+ *
+ * A record used to be keyed on the device it was earned on, so the same person
+ * on a phone and a laptop was two players with two piles of Face. These pin the
+ * merge, and in particular the case that a naive implementation gets wrong:
+ * two devices played anonymously, then both sign in as the same account.
+ */
+describe('one player, several devices', () => {
+  /*
+   * Fresh ids per test.
+   *
+   * The profile store is a module-level map that lives for the whole file, so
+   * reusing one account id would let each case inherit the previous one's Face
+   * and turn a real assertion into arithmetic about test order.
+   */
+  let seq = 0;
+  const nextId = (tag: string): string =>
+    `${tag}${String(++seq).padStart(2, '0')}`.padEnd(64, '0');
+
+  let PHONE = '';
+  let LAPTOP = '';
+  let ACCOUNT = '';
+
+  beforeEach(() => {
+    PHONE = nextId('da');
+    LAPTOP = nextId('eb');
+    ACCOUNT = nextId('fc');
+  });
+
+  function play(id: string, name: string, score: number, rescued = 2) {
+    profiles.record({
+      id,
+      name,
+      score,
+      rescued,
+      caches: 1,
+      relics: 0,
+      extracted: true,
+      stage: 1,
+      stageCleared: false,
+      avatarUrl: null,
+    });
+  }
+
+  it('moves a device record onto an account that has none', () => {
+    play(PHONE, 'Phone', 1200);
+
+    const merged = profiles.merge(PHONE, ACCOUNT);
+
+    expect(merged?.lifetimeFace).toBe(1200);
+    // And the device record is gone, so it cannot be counted twice.
+    expect(profiles.get(PHONE)).toBeNull();
+  });
+
+  it('adds a second device rather than replacing the first', () => {
+    /*
+     * The case a replace gets wrong.
+     *
+     * Play anonymously on two devices, then sign in on both. Whichever signed in
+     * second would silently destroy the first one's Face.
+     */
+    play(PHONE, 'Phone', 1000);
+    profiles.merge(PHONE, ACCOUNT);
+
+    play(LAPTOP, 'Laptop', 700);
+    const merged = profiles.merge(LAPTOP, ACCOUNT);
+
+    expect(merged?.lifetimeFace).toBe(1700);
+    expect(merged?.runs).toBe(2);
+  });
+
+  it('keeps the better best rather than the latest', () => {
+    play(PHONE, 'Phone', 5000);
+    profiles.merge(PHONE, ACCOUNT);
+
+    play(LAPTOP, 'Laptop', 900);
+    const merged = profiles.merge(LAPTOP, ACCOUNT);
+
+    expect(merged?.bestScore).toBe(5000);
+  });
+
+  it('cannot count the same device twice', () => {
+    // Sign-in is a page redirect, and redirects get repeated.
+    play(PHONE, 'Phone', 1000);
+    profiles.merge(PHONE, ACCOUNT);
+    const again = profiles.merge(PHONE, ACCOUNT);
+
+    expect(again?.lifetimeFace).toBe(1000);
+  });
+
+  it('does nothing when neither side has ever played', () => {
+    const merged = profiles.merge(nextId('ab'), ACCOUNT);
+    expect(merged).toBeNull();
+  });
+
+  it('refuses to merge a record into itself', () => {
+    play(PHONE, 'Phone', 400);
+    const merged = profiles.merge(PHONE, PHONE);
+    expect(merged?.lifetimeFace).toBe(400);
+  });
+
+  it('keeps a clan joined before signing in', () => {
+    play(PHONE, 'Phone', 300);
+    profiles.setClan(PHONE, 'WOLF');
+
+    const merged = profiles.merge(PHONE, ACCOUNT);
+    expect(merged?.clanTag).toBe('WOLF');
+  });
+});
