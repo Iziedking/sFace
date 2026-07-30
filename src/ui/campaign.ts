@@ -177,14 +177,14 @@ function card(stage: Stage, cleared: number, options: CampaignOptions): HTMLElem
      * none of those five numbers say so. A stat row that omits the headline
      * mechanic teaches people the card is not worth reading.
      */
-    stage.convoy
+    stage.city
       ? el(
           'div',
           { class: 'stage__watched' },
-          el('span', { class: 'stage__watchedmark', text: 'DRIVE' }),
+          el('span', { class: 'stage__watchedmark', text: 'CITY' }),
           el('span', {
             class: 'stage__watchedsay',
-            text: "Fly into the transport to take the wheel. It is heavy, it cannot climb a steep line, and it only moves while you drive it. Hold up to get out. The stage clears when the cargo reaches the pad.",
+            text: "Not a chart run. A city block built from the day's bars, with streets between the buildings and the way out marked somewhere across it. Move in any direction, use the corners for cover, and find the exit.",
           }),
         )
       : null,

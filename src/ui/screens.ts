@@ -512,6 +512,26 @@ export function renderResults(root: HTMLElement, options: ResultsOptions): void 
     ),
   );
 
+  /*
+   * Reads, on the stage that has them, with the misses shown.
+   *
+   * The misses are worth nothing and cost nothing here, which is the point:
+   * the cost was paid during the run, in the street. Printing them anyway is
+   * the only place a player finds out how good their read on the day actually
+   * was, and that is the skill this stage is about.
+   */
+  if (state.nodes.length > 0) {
+    breakdown.insertBefore(
+      row(
+        'Reads',
+        state.nodesMissed > 0
+          ? `${state.nodesCaptured} of ${state.nodes.length} · ${state.nodesMissed} missed`
+          : `${state.nodesCaptured} of ${state.nodes.length}`,
+      ),
+      breakdown.children[2] ?? null,
+    );
+  }
+
   const lostCount = state.faces.filter((f) => f.state === 'lost').length;
 
   mount(

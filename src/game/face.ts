@@ -251,5 +251,22 @@ export function loseFollowers(state: RunState): void {
 }
 
 export function atExtraction(state: RunState): boolean {
+  /*
+   * In a city the way out is a place, not an edge.
+   *
+   * On a chart run "past this x" is the whole test, because the world is a
+   * corridor and there is only one direction that counts as leaving. A city has
+   * no far end: you can be at the same x as the exit and six streets north of
+   * it. So it is a radius around a point, and reaching it is something you have
+   * to navigate to rather than something that happens when you run out of map.
+   */
+  const city = state.city;
+  if (city) {
+    return Math.hypot(state.player.x - city.exitX, state.player.y - city.exitY) <= CITY_EXIT_REACH;
+  }
+
   return state.player.x >= state.extractionX;
 }
+
+/** Matches the ring the renderer draws, so the marker is the trigger. */
+const CITY_EXIT_REACH = 70;

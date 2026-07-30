@@ -8,6 +8,7 @@
  * get a run that reports a death and a payout together.
  */
 
+import { updateNodes } from './node';
 import { updateBullets, BULLET_RADIUS } from './bullet';
 import { cacheFace, cacheReach } from './cache';
 import { REFILL_HEAL, REFILL_REACH } from './refill';
@@ -23,6 +24,7 @@ import { earn } from './scrip';
 import { updateSight } from './sight';
 import { CONVOY_RADIUS, damageConvoy, updateConvoy } from './convoy';
 import { tryMount } from './player';
+import { leaveCar, tryEnterCar } from './car';
 
 export function step(state: RunState, dt: number, command: PlayerCommand): void {
   if (state.finished) return;
@@ -40,12 +42,21 @@ export function step(state: RunState, dt: number, command: PlayerCommand): void 
    * call passes zero, so running it unconditionally overwrote the driven state
    * and the HUD read STALLED the entire time somebody was driving.
    */
+  // A city car is entered by asking, not by touching, so a player walking past
+  // one is not silently put behind the wheel.
+  if (state.city && state.useRequested) {
+    state.useRequested = false;
+    if (state.driving) leaveCar(state);
+    else tryEnterCar(state);
+  }
+
   if (!state.driving) {
     updateConvoy(state, dt, 0);
     // Touching it climbs in, the same way touching a person frees them. One
     // verb for "make contact with the thing" across the whole game.
     tryMount(state, dt);
   }
+  updateNodes(state);
   updateEnemies(state, dt);
   updateFaces(state, dt);
   updateBullets(state, dt);
@@ -133,7 +144,27 @@ function resolveBulletHits(state: RunState): void {
 
     if (bullet.friendly) {
       for (const enemy of state.enemies) {
-        if (!enemy.alive || !enemy.active) continue;
+        /*
+         * Alive is the only requirement. Awake is NOT.
+         *
+         * This used to also demand `enemy.active`, which on a chart run was
+         * invisible: an attacker wakes as soon as you are within eight hundred
+         * units, which is further than any round travels, so everything you
+         * could reach was already awake.
+         *
+         * In a city it made unaware patrols bulletproof. A patrol only becomes
+         * active once it has SENSED you, so anyone you had not been noticed by
+         * absorbed rounds and shrugged. Worse, it made the car look like the
+         * cause: driving senses you from seven hundred and sixty away and
+         * notices in half the time, so climbing in woke the street and suddenly
+         * everything was killable. Reported from a playtest as only being able
+         * to kill them from the car, which is exactly how it behaved.
+         *
+         * A bullet that hits a person hurts them whether or not they were paying
+         * attention. Shooting first is the reward for not being seen, not a
+         * thing the game refuses to let you do.
+         */
+        if (!enemy.alive) continue;
         // Already been through this one. See the note on Bullet.pierced.
         if (bullet.pierced?.includes(enemy.id)) continue;
         if (!circlesOverlap(shot, { x: enemy.x, y: enemy.y, r: radiusOf(enemy) })) continue;
@@ -230,6 +261,21 @@ function resolveEnding(state: RunState): void {
      */
     const convoy = state.convoy;
     if (convoy && !convoy.arrived) return;
+
+    /*
+     * On a reading stage, arriving is not finishing either.
+     *
+     * Without this the stage is stage five with panels on the walls: you could
+     * drive past every node, reach the exit and clear it having read nothing,
+     * which is precisely the "every stage is the same run in a different
+     * colour" complaint the later stages exist to answer. The reads ARE the
+     * mission, so the way out stays shut until they are done.
+     *
+     * Guarded on the list being non-empty rather than on the stage flag, so a
+     * day too quiet to supply four sourced posts leaves the exit open instead
+     * of leaving the stage unfinishable.
+     */
+    if (state.nodes.length > 0 && state.nodesCaptured < state.nodes.length) return;
 
     state.phase = 'extracted';
     extractFollowers(state);

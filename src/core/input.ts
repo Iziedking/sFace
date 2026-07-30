@@ -34,7 +34,7 @@ const MOUSE_AIM_TTL_MS = 1200;
 /** Shared empty result, so a quiet frame allocates nothing. */
 const EMPTY_BUYS: number[] = [];
 
-import { hit, padLayout, padVector, type PadLayout } from './pads';
+import { hit, padLayout, padVector, useRegion, type PadLayout } from './pads';
 import { snapsToDirections, usingPads } from './scheme';
 
 export class Input {
@@ -123,6 +123,7 @@ export class Input {
     this.movePointer = null;
     this.aimPointer = null;
     this.padGrab.clear();
+    this.useRequested = false;
     this.keys.clear();
   }
 
@@ -182,6 +183,16 @@ export class Input {
    */
   slotCount = 0;
 
+  /**
+   * Whether the use button is on screen right now.
+   *
+   * Set by the app each frame from the run state, and read by BOTH the hit test
+   * here and the renderer. One value, two consumers: a button drawn without
+   * being touchable, or touchable without being drawn, is the worst kind of
+   * control bug because nothing about it looks wrong.
+   */
+  useVisible = false;
+
   private onDown = (event: PointerEvent): void => {
     const point = this.local(event);
 
@@ -202,6 +213,21 @@ export class Input {
      * the left, so falling through to the half-screen logic first would have
      * the floating sticks swallow every press before a pad ever saw it.
      */
+    /*
+     * The use button, before anything else and outside the pads branch.
+     *
+     * It has to work on the floating thumb scheme too: without it a phone
+     * player has no way at all to get into or out of a car, whichever controls
+     * they chose.
+     */
+    if (this.useVisible) {
+      const region = useRegion(this.canvas.clientWidth, this.canvas.clientHeight);
+      if (hit(region, point.x, point.y, 12)) {
+        this.use();
+        return;
+      }
+    }
+
     if (usingPads() && this.onPadDown(event, point)) return;
 
     const leftHalf = point.x < this.canvas.clientWidth / 2;
@@ -254,6 +280,10 @@ export class Input {
     if (hit(pads.fire, point.x, point.y)) {
       this.padGrab.set(event.pointerId, 'fire');
       this.firing = true;
+      // Anchor the aim drag at the pad's centre rather than at the touch point,
+      // so the direction the thumb pushes is the direction the gun points no
+      // matter where on the button it landed.
+      this.aimOrigin = { x: pads.fire.x, y: pads.fire.y };
       return true;
     }
 
@@ -270,7 +300,36 @@ export class Input {
       this.move.y = v.y;
       return;
     }
-    if (grabbed === 'fire') return;
+    /*
+     * The fire pad aims as well as fires.
+     *
+     * This used to return here, which made the right pad a button and nothing
+     * else: aimVector was never set from a pad, so on a phone the only aim source
+     * left was the direction of travel. Stand still to take a shot, as you do at
+     * every corner in a city, and movement is zero, so the gun held whatever
+     * heading it last had and would not turn. Reported as shooting pointing one
+     * way and not responding, and that is precisely what it did.
+     *
+     * Press to fire, push to aim, which is what a thumb expects from the right
+     * hand side of a twin-stick game. Below the deadzone the thumb has not chosen
+     * a direction, so the last one holds rather than the gun snapping to jitter.
+     */
+    if (grabbed === 'fire') {
+      const dx = point.x - this.aimOrigin.x;
+      const dy = point.y - this.aimOrigin.y;
+      const distance = Math.hypot(dx, dy);
+
+      if (distance >= STICK_DEADZONE) {
+        this.aimVector = { x: dx / distance, y: dy / distance };
+      }
+
+      const scale = distance > STICK_RADIUS ? STICK_RADIUS / distance : 1;
+      this.aimStick = {
+        origin: this.aimOrigin,
+        current: { x: this.aimOrigin.x + dx * scale, y: this.aimOrigin.y + dy * scale },
+      };
+      return;
+    }
 
     if (event.pointerId === this.movePointer) {
       const dx = point.x - this.stickOrigin.x;
@@ -342,6 +401,9 @@ export class Input {
         this.move.y = 0;
       } else {
         this.firing = false;
+        // The stick graphic goes, the heading stays. Lifting the thumb should
+        // stop the shooting, not spin the gun back to some default.
+        this.aimStick = null;
       }
       return;
     }
@@ -372,6 +434,27 @@ export class Input {
    */
   private readonly bought: number[] = [];
 
+  /**
+   * Set for one drain when the player asked to get in or out of a vehicle.
+   *
+   * Its own input rather than a direction, because in a city every direction is
+   * somewhere you might want to drive and overloading one of them would fight
+   * the steering.
+   */
+  private useRequested = false;
+
+  /** True once, when the use key or button was pressed. */
+  takeUse(): boolean {
+    if (!this.useRequested) return false;
+    this.useRequested = false;
+    return true;
+  }
+
+  /** Raise the use intent, from a key or an on-screen button. */
+  use(): void {
+    this.useRequested = true;
+  }
+
   /** Slots the player asked for this frame. Empties the queue. */
   takeBuys(): number[] {
     if (this.bought.length === 0) return EMPTY_BUYS;
@@ -393,6 +476,12 @@ export class Input {
 
     // 1 to 4 buy the consumable in that slot. Repeat events are ignored so a
     // held key does not drain the purse.
+    // E for enter and exit. Near the movement keys, and not otherwise used.
+    if (!event.repeat && event.code === 'KeyE') {
+      this.use();
+      event.preventDefault();
+    }
+
     if (!event.repeat && event.code.startsWith('Digit')) {
       const slot = Number(event.code.slice(5));
       if (slot >= 1 && slot <= 4) {

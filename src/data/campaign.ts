@@ -75,6 +75,25 @@ export interface StageLook {
   weather: 'clear' | 'dust' | 'ash' | 'static' | 'ember';
   /** How much of it. Zero is none at all. */
   density: number;
+  /**
+   * Paint on the car you drive. Only read on a city stage.
+   *
+   * Per stage rather than one constant, because two city stages sharing a
+   * vehicle made the second one read as a re-skin of the first: same streets,
+   * same car, different wash over the top. The car is the thing on screen the
+   * player's eye is actually on, so it is the cheapest place to buy a sense of
+   * somewhere else.
+   */
+  car?: string;
+  /**
+   * How the buildings are drawn.
+   *
+   * `slabs` is the original: flat masses, a district of warehouses. `towers`
+   * gives them window rows and a marked road surface, which reads as downtown.
+   * The geometry is identical either way, so this changes what a stage looks
+   * like without changing what it plays like or where anything is.
+   */
+  city?: 'slabs' | 'towers';
 }
 
 /**
@@ -133,6 +152,21 @@ export interface Stage {
    * the cargo arriving rather than by the player arriving, which takes the
    * pacing away from the player entirely. See game/convoy.ts.
    */
+  /**
+   * Is this stage a city rather than a chart run?
+   *
+   * A city is a different world representation entirely: solid boxes with
+   * streets between them instead of one ground height per column. See
+   * game/city.ts for why a heightmap cannot express a place.
+   */
+  /**
+   * How many story nodes this stage plants. Zero on every stage but six.
+   *
+   * A node is captured by picking, from four posts that genuinely went out
+   * today, the one the day actually turned on. See game/node.ts.
+   */
+  nodes: number;
+  city: boolean;
   convoy: boolean;
   sight: boolean;
   refills: number;
@@ -173,6 +207,8 @@ export const STAGES: readonly Stage[] = [
     refills: 3,
     sight: false,
     convoy: false,
+    city: false,
+    nodes: 0,
     volley: [1, 1],
     span: 0.45,
     bounty: 1,
@@ -198,6 +234,8 @@ export const STAGES: readonly Stage[] = [
     refills: 3,
     sight: false,
     convoy: false,
+    city: false,
+    nodes: 0,
     volley: [1, 2],
     span: 0.6,
     bounty: 1.15,
@@ -226,6 +264,8 @@ export const STAGES: readonly Stage[] = [
     refills: 4,
     sight: false,
     convoy: false,
+    city: false,
+    nodes: 0,
     volley: [1, 2],
     span: 0.7,
     bounty: 1.3,
@@ -251,6 +291,8 @@ export const STAGES: readonly Stage[] = [
     refills: 4,
     sight: true,
     convoy: false,
+    city: false,
+    nodes: 0,
     volley: [2, 2],
     span: 0.8,
     bounty: 1.5,
@@ -275,12 +317,22 @@ export const STAGES: readonly Stage[] = [
     caches: 9,
     refills: 5,
     sight: true,
-    convoy: true,
+    convoy: false,
+    city: true,
+    nodes: 0,
     volley: [2, 3],
     span: 0.85,
     bounty: 1.7,
     runners: 0.26,
-    look: { sky: '#dee7e2', ground: '#b4c4bc', hatch: 16, weather: 'ash', density: 0.55 },
+    look: {
+      sky: '#dee7e2',
+      ground: '#b4c4bc',
+      hatch: 16,
+      weather: 'ash',
+      density: 0.55,
+      car: '#c4552c',
+      city: 'slabs',
+    },
     tease: {
       scene: 'Ash over a wide contested floor, with people watching who do not post.',
       threat: 'Everyone comes out or nobody does. Losing one is losing the stage.',
@@ -292,8 +344,8 @@ export const STAGES: readonly Stage[] = [
     name: 'Narrative Thunderdome',
     restores: 'The story, off whoever is shouting loudest',
     brief:
-      'Everyone who spent last cycle saying we were early has gone quiet. What is left is the accounts with nothing to lose, and they are setting the terms. Take the day back off them before the timeline files it under failure.',
-    objective: 'All five out, eighteen attackers cleared.',
+      'Everyone who spent last cycle saying we were early has gone quiet. What is left is the accounts with nothing to lose, and they are setting the terms. The panels in this district are still arguing about why today happened, and each one is showing four posts that genuinely went out. One of them is right. Pick it and the panel flips. Pick wrong and everyone within a street starts walking toward the noise.',
+    objective: 'Read every panel, then get out.',
     seconds: 100,
     density: 1.8,
     minDifficulty: 4,
@@ -301,16 +353,38 @@ export const STAGES: readonly Stage[] = [
     refills: 5,
     sight: true,
     convoy: false,
+    city: true,
+    nodes: 4,
     volley: [2, 3],
     span: 0.92,
     bounty: 2,
     runners: 0.3,
-    look: { sky: '#e0dae8', ground: '#bcb2c8', hatch: 14, weather: 'static', density: 0.8 },
-    tease: {
-      scene: 'Four narratives burning at once across nearly the whole chart.',
-      threat: 'Three rounds a volley, and the ground belongs to the chasers.',
+    look: {
+      sky: '#e0dae8',
+      ground: '#bcb2c8',
+      hatch: 14,
+      weather: 'static',
+      density: 0.8,
+      // Deep teal against stage five's rust. Reads as a different vehicle at a
+      // glance without leaving the ink-on-paper register the rest of the game
+      // sits in.
+      car: '#2f6b70',
+      city: 'towers',
     },
-    clear: (r) => r.survived && r.extracted >= 5 && r.attackers >= 18,
+    tease: {
+      scene: 'A district arguing with itself, four panels deep, and nobody agreeing.',
+      threat: 'The way out stays shut until you have read every one of them right.',
+    },
+    /*
+     * No node count in here, and that is deliberate.
+     *
+     * Reaching the pad on this stage already requires every panel read, because
+     * the exit will not open otherwise. Restating it as a clear condition would
+     * be a second copy of one rule that could drift from the first, and on a day
+     * too quiet for four sourced posts it would make the stage impossible while
+     * the exit stood open.
+     */
+    clear: (r) => r.survived && r.extracted >= 3,
   },
   {
     n: 7,
@@ -326,6 +400,8 @@ export const STAGES: readonly Stage[] = [
     refills: 6,
     sight: true,
     convoy: false,
+    city: false,
+    nodes: 0,
     volley: [3, 3],
     span: 1,
     bounty: 2.5,

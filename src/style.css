@@ -3901,3 +3901,172 @@ body.is-fullscreen .foot,
   flex: 1;
   min-width: 180px;
 }
+
+/* The stage brief -------------------------------------------------------
+ *
+ * Drops in when a run starts, holds long enough to read, then leaves word by
+ * word. See ui/brief.ts for why the motion is shaped this way; the timings live
+ * there and are passed in as custom properties so the two cannot drift.
+ *
+ * Sits in the HUD layer, which is click-through, so the card itself must not
+ * take pointer events either. Skipping is handled on the window rather than by
+ * making this a button, because a thumb anywhere on the screen should work.
+ */
+.brief-layer {
+  /*
+   * Fixed rather than absolute.
+   *
+   * `#ui` is `inset: 0` so absolute would position correctly, but it is also
+   * `overflow-y: auto`, which makes it a scroll container. A full-screen card
+   * inside a scroll container can be scrolled away from, and this one appears at
+   * the exact moment a thumb is about to move. Taking the viewport directly
+   * means the brief cannot drift out of frame no matter what the layer beneath
+   * it is doing.
+   */
+  position: fixed;
+  inset: 0;
+  display: flex;
+  /*
+   * Top, not centre.
+   *
+   * The run is live while this is up, so a card across the middle of the screen
+   * would hide the street the player is standing in and whatever is walking
+   * toward them. Pinned under the HUD strip it stays out of the play area and
+   * away from both thumbs, which on a phone own the bottom corners.
+   */
+  align-items: flex-start;
+  justify-content: center;
+  pointer-events: none;
+  padding: calc(env(safe-area-inset-top) + 58px) 20px 20px;
+}
+
+.brief {
+  width: min(560px, 100%);
+  background: var(--ink);
+  border: 3px solid var(--ink);
+  box-shadow: 10px 10px 0 rgba(20, 17, 14, 0.28);
+  padding: 26px 26px 22px;
+  text-align: left;
+  /* Clip the words as they fly out rather than letting them cross the card's
+   * own border, which reads as a rendering fault rather than as motion. */
+  overflow: hidden;
+}
+
+/* The card takes taps so it can be dismissed on a phone, while the layer around
+ * it stays click-through so the pads underneath keep working. See ui/brief.ts:
+ * a window-wide dismiss killed the brief on the first touch of the controls. */
+.brief {
+  pointer-events: auto;
+}
+
+/* Words arrive one at a time, in one sequence across the whole card, so the
+ * brief reads as being written rather than switched on. 340 words a minute. */
+.brief__word {
+  animation: brief-word-in 0.26s cubic-bezier(0.2, 1.5, 0.4, 1) both;
+  animation-delay: calc(var(--w) * 0.1765s);
+}
+
+@keyframes brief-word-in {
+  from {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.brief__kicker,
+.brief__title,
+.brief__objective,
+.brief__day {
+  display: block;
+}
+
+.brief__kicker {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+
+.brief__title {
+  font-family: var(--display);
+  font-size: clamp(26px, 7vw, 40px);
+  line-height: 1.02;
+  letter-spacing: 0.5px;
+  color: var(--canvas);
+  text-transform: uppercase;
+}
+
+.brief__objective {
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--canvas);
+  margin-top: 12px;
+  /* The one rule on the card. It gets the accent bar every other "to clear"
+   * line in the app gets, so the same fact looks the same everywhere. */
+  border-left: 3px solid var(--accent);
+  padding-left: 11px;
+}
+
+.brief__day {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: rgba(244, 237, 224, 0.5);
+  margin-top: 14px;
+}
+
+/* Words are inline-block so they can be transformed individually, and carry
+ * their own trailing space since inline-block collapses it. */
+.brief__word {
+  display: inline-block;
+  white-space: pre;
+}
+
+.brief__word::after {
+  content: ' ';
+}
+
+/* The exit. Each word waits on its own index, so the card empties left to right
+ * and a late reader still has the end of the sentence for a moment longer. */
+.brief--out .brief__word {
+  animation: brief-word-out 0.32s cubic-bezier(0.5, 0, 0.75, 0) both;
+  animation-delay: calc(var(--w) * 0.045s);
+}
+
+@keyframes brief-word-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) rotate(0deg);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(22px) rotate(-6deg);
+  }
+}
+
+/* Reduced motion: everything present, nothing moving. The card still holds for
+ * the full reading time, because disliking animation is not the same as reading
+ * faster. */
+.brief--still .brief__word {
+  animation: none;
+}
+
+.brief--still.brief--out .brief__word {
+  animation: none;
+  opacity: 0;
+  transition: opacity 0.25s linear;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brief__word,
+  .brief--out .brief__word {
+    animation: none;
+  }
+}

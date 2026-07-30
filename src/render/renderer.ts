@@ -17,6 +17,7 @@
  * operations and there are rarely more than twenty on screen.
  */
 
+import { NODE_REACH } from '../game/node';
 import { theme, MONO, DISPLAY } from './theme';
 import { AvatarCache, drawHuman, type Role } from './characters';
 import type { Camera } from './camera';
@@ -25,7 +26,10 @@ import type { Enemy, Face, RunState } from '../game/state';
 import type { Squad } from '../game/squad';
 import { POINT_SPACING, WORLD_HEIGHT, CEILING } from '../game/terrain';
 import { BULLET_RADIUS } from '../game/bullet';
-import { CELL_RADIUS, isCaged } from '../game/cell';
+import { BREACH_REACH, CELL_RADIUS, cellInReach, isCaged } from '../game/cell';
+import { CONSUMABLES } from '../data/consumables';
+import { CAR_RADIUS, CAR_REACH } from '../game/car';
+import { PATROL_CAR_RADIUS } from '../game/enemy';
 import { SIGHT_RANGE, gaze, sees, watches } from '../game/sight';
 import { CONVOY_MAX_HEALTH, CONVOY_RADIUS } from '../game/convoy';
 import { MAX_SPEED } from '../game/player';
@@ -38,6 +42,17 @@ import { MAX_SPEED } from '../game/player';
  * says currency, which is what a refill is dressed as.
  */
 const REFILL_GOLD = '#e9b13c';
+
+/**
+ * Paint on a patrol car.
+ *
+ * Not theme.ink, which is what it was, and that was the bug: the windscreen and
+ * the outline are both ink, so an ink body swallowed both and the car came out
+ * as a featureless black lozenge with no readable front. A dark plum is close
+ * enough to ink to read as hostile at a glance and far enough off it that the
+ * glass and the panel lines survive.
+ */
+const ENEMY_CAR_PAINT = '#463040';
 
 /** Set on the player's character when they have connected an account. */
 export interface PlayerIdentity {
@@ -96,10 +111,16 @@ export class Renderer {
     ctx.save();
     camera.applyTo(ctx);
 
-    this.drawGrid(camera);
-    this.drawRidge(state, camera);
-    this.drawWeather(state, camera);
-    this.drawTerrain(state, camera);
+    if (state.city) {
+      // A city replaces the whole backdrop. Drawing the chart underneath it
+      // would put a ground line through a place that has no ground.
+      this.drawCity(state, camera);
+    } else {
+      this.drawGrid(camera);
+      this.drawRidge(state, camera);
+      this.drawWeather(state, camera);
+      this.drawTerrain(state, camera);
+    }
     this.drawExtraction(state, camera);
     this.drawConvoy(state, camera);
     this.drawRefills(state, camera);
@@ -110,6 +131,7 @@ export class Renderer {
     this.drawEnemies(state, camera);
     this.drawBullets(state, camera);
     if (squad) this.drawSquad(squad, camera, state.time);
+    this.drawCar(state, camera);
     this.drawPlayer(state, me);
     effects.drawWorld(ctx);
 
@@ -576,6 +598,7 @@ private drawExtraction(state: RunState, camera: Camera): void {
 
       if (isCaged(face)) {
         this.drawCell(face.x, face.y);
+        this.drawCellPrompt(state, face);
       } else if (face.state === 'trapped') {
         // A ring that breathes, so somebody waiting to be pulled out is
         // findable at a glance without an arrow cluttering the HUD.
@@ -724,6 +747,383 @@ private drawExtraction(state: RunState, camera: Camera): void {
     ctx.restore();
   }
 
+  /**
+   * The city: solid blocks, and the streets between them.
+   *
+   * Drawn as flat ink slabs rather than as anything perspective. This is a plan
+   * view of a place, in the same register as the printed chart everywhere else,
+   * and a fake three-quarter view would be the one thing on screen pretending
+   * to be somewhere other than paper.
+   */
+  private drawCity(state: RunState, camera: Camera): void {
+    const city = state.city;
+    if (!city) return;
+
+    const ctx = this.ctx;
+    const look = state.stage.look;
+
+    // Street surface under everything.
+    ctx.fillStyle = look.ground;
+    ctx.fillRect(0, 0, city.width, city.height);
+
+    /*
+     * Lane markings, downtown only.
+     *
+     * Drawn on a fixed pitch off the city's own dimensions rather than from the
+     * block list, because the streets ARE the negative space: there is no list of
+     * roads to iterate. A dashed rule down the middle of each avenue is enough to
+     * turn "gaps between boxes" into "roads", and it gives the eye something to
+     * measure the car's speed against on an otherwise flat surface.
+     */
+    if (look.city === 'towers') {
+      const pitch = 646;
+      ctx.save();
+      ctx.globalAlpha = 0.5;
+      ctx.strokeStyle = theme.canvas;
+      ctx.lineWidth = 3;
+      ctx.setLineDash([26, 30]);
+
+      ctx.beginPath();
+      for (let x = 95; x < city.width; x += pitch) {
+        if (!camera.visibleX(x, 40)) continue;
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, city.height);
+      }
+      for (let y = 95; y < city.height; y += pitch) {
+        ctx.moveTo(0, y);
+        ctx.lineTo(city.width, y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    /*
+     * Interiors first, under the walls.
+     *
+     * A hollowed building is drawn as four wall blocks, so without this its
+     * floor is just street and the only clue it can be entered is a notch in one
+     * side. That is too subtle to spot from across a junction, and a player who
+     * cannot tell a room from a solid block will never go in.
+     *
+     * A shade off the street rather than a new colour: it says indoors without
+     * spending one of the three colours the palette allows.
+     */
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = look.hatch > 0 ? look.sky : theme.canvas;
+    for (const room of city.rooms) {
+      if (!camera.visibleX(room.x + room.w / 2, room.w)) continue;
+      ctx.fillRect(room.x, room.y, room.w, room.h);
+    }
+    ctx.restore();
+
+    const towers = look.city === 'towers';
+
+    ctx.save();
+    for (const block of city.blocks) {
+      if (!camera.visibleX(block.x + block.w / 2, block.w)) continue;
+
+      ctx.fillStyle = look.sky;
+      ctx.strokeStyle = theme.ink;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.rect(block.x, block.y, block.w, block.h);
+      ctx.fill();
+      ctx.stroke();
+
+      /*
+       * Windows, on the downtown stage only.
+       *
+       * The geometry of the two city stages is identical by design, since both
+       * are built from the same day's bars, so the only thing available to tell
+       * them apart is surface. Flat slabs read as warehouses; a grid of windows
+       * reads as offices, which is the right register for a stage about the
+       * narrative being written.
+       *
+       * Skipped on anything too small to hold a row, so a wall segment of a
+       * hollowed building does not end up speckled.
+       */
+      if (towers && block.w > 70 && block.h > 70) this.drawWindows(block);
+    }
+    ctx.restore();
+
+    // The way out, marked, because an exit that is a point on a map has to be
+    // findable without a minimap.
+    const shut = state.nodes.length > 0 && state.nodesCaptured < state.nodes.length;
+
+    ctx.save();
+    // Faint and grey while it is shut, full accent once the reads are done. The
+    // marker is the only thing at the exit, so it has to carry whether the exit
+    // actually works rather than looking identical either way.
+    ctx.strokeStyle = shut ? theme.hairline : theme.accent;
+    ctx.lineWidth = 5;
+    ctx.setLineDash([14, 10]);
+    ctx.beginPath();
+    ctx.arc(city.exitX, city.exitY, 70, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    this.drawNodes(state);
+  }
+
+  /**
+   * The reads, in the street: a panel on a post.
+   *
+   * Deliberately a piece of street furniture rather than a glowing pickup. It
+   * is a thing you walk up to and stand at, and the ring around it is exactly
+   * the reach, so where the question opens is drawn rather than guessed at.
+   */
+  private drawNodes(state: RunState): void {
+    if (state.nodes.length === 0) return;
+
+    const ctx = this.ctx;
+
+    for (const node of state.nodes) {
+      ctx.save();
+      ctx.translate(node.x, node.y);
+
+      if (node.captured) {
+        // Flipped. Filled and quiet: a captured node is scenery now, and it
+        // should stop competing with the ones still to do.
+        ctx.fillStyle = theme.accentPale;
+        ctx.strokeStyle = theme.ink;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.roundRect(-22, -26, 44, 34, 4);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+        continue;
+      }
+
+      // The reach, so standing in the right place is a visible thing.
+      ctx.strokeStyle = theme.accentPale;
+      ctx.lineWidth = 3;
+      ctx.setLineDash([9, 9]);
+      ctx.beginPath();
+      ctx.arc(0, 0, NODE_REACH, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // The post.
+      ctx.fillStyle = theme.ink;
+      ctx.fillRect(-3, -8, 6, 22);
+
+      // The panel, unread.
+      ctx.fillStyle = theme.canvas;
+      ctx.strokeStyle = theme.ink;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.roundRect(-24, -30, 48, 36, 4);
+      ctx.fill();
+      ctx.stroke();
+
+      // Four lines of something to read. Abstract, because the actual posts are
+      // long and the panel is forty pixels wide; the words are in the HUD.
+      ctx.fillStyle = theme.ink;
+      for (let i = 0; i < 4; i++) {
+        ctx.fillRect(-16, -24 + i * 8, i === 1 ? 22 : 32, 3);
+      }
+
+      // A blown read is marked on the thing you blew, so coming back to it you
+      // know which one already cost you.
+      if (node.missed > 0) {
+        ctx.fillStyle = theme.accent;
+        ctx.beginPath();
+        ctx.arc(24, -30, 6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
+  }
+
+  /**
+   * What to do about a cell, said at the cell.
+   *
+   * A locked door with no instructions is a puzzle nobody asked for. The rule
+   * is simple once you know it and invisible until you are told, and the first
+   * person to play a caged stage asked out loud how to open one, which is the
+   * clearest possible evidence that the game was not saying.
+   *
+   * Only drawn when you are close enough to act on it, so the level is not
+   * carpeted in labels. It shows the price when you cannot afford it and the
+   * key when you can, because those are two different problems.
+   */
+  private drawCellPrompt(state: RunState, face: Face): void {
+    const player = state.player;
+    const near = Math.hypot(player.x - face.x, player.y - face.y) <= BREACH_REACH * 2.4;
+    if (!near) return;
+
+    const charge = CONSUMABLES[0];
+    if (!charge) return;
+
+    const inReach = cellInReach(state) === face;
+    const afford = state.purse.held >= charge.cost;
+    const label = !afford
+      ? `NEED ${charge.cost} ${state.purse.ticker}`
+      : inReach
+        ? 'PRESS 1 TO BLOW THE DOOR'
+        : 'GET CLOSER';
+
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font = `700 12px ${MONO}`;
+
+    const width = ctx.measureText(label).width + 16;
+    const y = face.y + CELL_RADIUS + 18;
+
+    ctx.fillStyle = afford && inReach ? theme.accent : theme.ink;
+    ctx.beginPath();
+    ctx.roundRect(face.x - width / 2, y - 10, width, 20, 4);
+    ctx.fill();
+
+    ctx.fillStyle = afford && inReach ? theme.ink : theme.canvas;
+    ctx.fillText(label, face.x, y + 4);
+    ctx.restore();
+  }
+
+  /**
+   * The car, pointing where it is going.
+   *
+   * Drawn wider than it is long and rotated to its heading, so its footprint on
+   * screen is the footprint it actually collides with. A vehicle drawn smaller
+   * than its collision is the reason players say a game feels unfair when they
+   * clip a corner they thought they had cleared.
+   */
+  private drawCar(state: RunState, camera: Camera): void {
+    const car = state.car;
+    if (!car || !camera.visibleX(car.x, 160)) return;
+
+    // Falls back to the old paint when a stage does not name one, so a city
+    // added later without a colour still draws something sensible.
+    const paint = state.stage.look.car ?? theme.accentDeep;
+    this.drawCarBody(car.x, car.y, car.heading, CAR_RADIUS, paint, false);
+
+    /*
+     * The prompt, only when close and only when out of it. A label floating
+     * over a car you are already driving is noise, and one visible from across
+     * the map would make every street shout.
+     */
+    if (!state.driving) {
+      const near = Math.hypot(state.player.x - car.x, state.player.y - car.y) <= CAR_REACH;
+      if (near) this.drawTag(car.x, car.y - CAR_RADIUS - 16, 'PRESS E TO DRIVE', true);
+    }
+  }
+
+  /**
+   * Window rows on a downtown building.
+   *
+   * Stepped on a fixed pitch and clipped to the block, so a wide squat building
+   * gets many small windows and a narrow tall one gets a column of them. The
+   * pattern comes from the block's own position rather than a random draw, which
+   * keeps it identical for two players on one seed and costs nothing to compute.
+   */
+  private drawWindows(block: { x: number; y: number; w: number; h: number }): void {
+    const ctx = this.ctx;
+    const pitch = 30;
+    const size = 13;
+    const inset = 16;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(block.x + inset, block.y + inset, block.w - inset * 2, block.h - inset * 2);
+    ctx.clip();
+
+    ctx.fillStyle = theme.ink;
+    ctx.globalAlpha = 0.5;
+    for (let wy = block.y + inset; wy < block.y + block.h - inset; wy += pitch) {
+      for (let wx = block.x + inset; wx < block.x + block.w - inset; wx += pitch) {
+        /*
+         * A few are dark. Every window lit identically reads as a texture swatch
+         * rather than a building, and the choice is made from the coordinates so
+         * it is stable rather than flickering every frame.
+         */
+        const lit = ((wx * 7 + wy * 13) >> 4) % 5 !== 0;
+        if (!lit) continue;
+        ctx.fillRect(wx, wy, size, size);
+      }
+    }
+    ctx.restore();
+  }
+
+  /**
+   * One car body, used for the one you drive and the ones hunting you.
+   *
+   * Shared deliberately. Two vehicles drawn by two pieces of code drift apart,
+   * and the moment a patrol car stops reading as the same KIND of object as your
+   * own the player stops being able to judge it. What differs is paint and one
+   * detail, which is enough to tell them apart and not enough to make them
+   * separate ideas.
+   */
+  private drawCarBody(
+    x: number,
+    y: number,
+    heading: number,
+    radius: number,
+    paint: string,
+    hostile: boolean,
+  ): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(heading);
+
+    const w = radius * 2.1;
+    const h = radius * 1.35;
+
+    ctx.fillStyle = paint;
+    ctx.strokeStyle = theme.ink;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.roundRect(-w / 2, -h / 2, w, h, 6);
+    ctx.fill();
+    ctx.stroke();
+
+    // A windscreen, so which end is the front is readable at a glance.
+    ctx.fillStyle = theme.ink;
+    ctx.beginPath();
+    ctx.roundRect(w * 0.12, -h * 0.28, w * 0.26, h * 0.56, 3);
+    ctx.fill();
+
+    /*
+     * A hostile one carries a bar across the roof.
+     *
+     * The difference has to survive being glanced at from across a junction while
+     * something is shooting, so it is a shape rather than only a colour: colour
+     * alone fails for the colour blind and fails again on a stage whose palette
+     * happens to sit near the paint. Danger, because that is what it is, and it
+     * is the one place the palette allows crimson.
+     */
+    if (hostile) {
+      ctx.fillStyle = theme.danger;
+      ctx.beginPath();
+      ctx.roundRect(-w * 0.16, -h * 0.5 - 3, w * 0.3, 6, 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  /** A small plate of text in the world. Shared by the car and the cells. */
+  private drawTag(x: number, y: number, label: string, live: boolean): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font = `700 12px ${MONO}`;
+    const width = ctx.measureText(label).width + 16;
+
+    ctx.fillStyle = live ? theme.accent : theme.ink;
+    ctx.beginPath();
+    ctx.roundRect(x - width / 2, y - 10, width, 20, 4);
+    ctx.fill();
+
+    ctx.fillStyle = live ? theme.ink : theme.canvas;
+    ctx.fillText(label, x, y + 4);
+    ctx.restore();
+  }
+
   private drawFaceHuman(state: RunState, face: Face): void {
     const following = face.state === 'following';
 
@@ -737,6 +1137,9 @@ private drawExtraction(state: RunState, camera: Camera): void {
       time: state.time + face.id,
       thrust: following ? 0.6 : 0,
       role: 'rescue',
+      // Everyone in the city is dressed for it, the people you are pulling out
+      // included. It is the same day and the same crowd, one floor down.
+      suit: state.city !== null,
       seed: face.handle,
       avatar: this.avatars.get(face.avatarUrl),
       alpha: 1,
@@ -747,7 +1150,26 @@ private drawExtraction(state: RunState, camera: Camera): void {
 
   private drawEnemies(state: RunState, camera: Camera): void {
     for (const enemy of state.enemies) {
-      if (!enemy.alive || !enemy.active) continue;
+      if (!enemy.alive) continue;
+      /*
+       * In a city, an attacker is drawn whether or not it has noticed you.
+       *
+       * This is not a cosmetic choice, it is the stage. A city attacker only
+       * becomes `active` once it has SENSED the player, so hiding the inactive
+       * ones meant every patrol walking its beat was invisible until the moment
+       * it turned on you. Seeing it first is the entire advantage that being on
+       * foot buys, and the game was refusing to show it.
+       *
+       * Together with the same guard on the bullet test, it also explains the
+       * playtest report that attackers could only be killed from the car:
+       * driving is sensed from much further away, so climbing in was what made
+       * them appear and become hittable at all.
+       *
+       * A chart run keeps the old rule. There an attacker wakes at eight hundred
+       * units, further than the view, so nothing is hidden that could be seen and
+       * a sleeping turret two ridges ahead should not be drawn mid-air.
+       */
+      if (!state.city && !enemy.active) continue;
       if (!camera.visibleX(enemy.x, 80)) continue;
       this.drawEnemy(state, enemy);
     }
@@ -756,6 +1178,50 @@ private drawExtraction(state: RunState, camera: Camera): void {
   private drawEnemy(state: RunState, enemy: Enemy): void {
     const toPlayer = Math.atan2(state.player.y - enemy.y, state.player.x - enemy.x);
     const role: Role = enemy.kind;
+
+    /*
+     * The ones in cars are a car with somebody in it.
+     *
+     * Drawn heading-first from its own travel direction rather than aimed at the
+     * player, because a vehicle points where it is going. That is also the tell
+     * that makes them readable: a patrol car crossing a junction is side-on and
+     * obviously not looking at you, and one that has noticed you is pointed
+     * straight down the street you are standing in.
+     */
+    if (enemy.driving) {
+      const moving = Math.hypot(enemy.vx, enemy.vy) > 8;
+      const heading = state.time < enemy.alertUntil
+        ? toPlayer
+        : moving
+          ? Math.atan2(enemy.vy, enemy.vx)
+          : enemy.patrolHeading;
+
+      this.drawCarBody(enemy.x, enemy.y, heading, PATROL_CAR_RADIUS, ENEMY_CAR_PAINT, true);
+
+      /*
+       * The occupant is a head behind glass, not a figure.
+       *
+       * Drawing the full human here put a standing person on top of the roof:
+       * drawHuman plants its feet at the y it is given and builds upward, which
+       * is correct in a side view and nonsense in a plan view of a car. Top down,
+       * all you can see of somebody in a vehicle is the top of their head, and
+       * that is all it takes to say there is a person in there to shoot at.
+       */
+      const cabinX = enemy.x + Math.cos(heading) * PATROL_CAR_RADIUS * 0.42;
+      const cabinY = enemy.y + Math.sin(heading) * PATROL_CAR_RADIUS * 0.42;
+      const ctx = this.ctx;
+      ctx.save();
+      ctx.fillStyle = theme.canvas;
+      ctx.strokeStyle = theme.ink;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(cabinX, cabinY, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+
+      return;
+    }
 
     drawHuman(this.ctx, {
       x: enemy.x,
@@ -771,6 +1237,7 @@ private drawExtraction(state: RunState, camera: Camera): void {
       avatar: null,
       alpha: 1,
       firing: enemy.fireCooldown > 1.6,
+      suit: state.city !== null,
       label: null,
     });
   }
@@ -859,6 +1326,7 @@ private drawExtraction(state: RunState, camera: Camera): void {
       time: state.time,
       thrust: Math.min(1, speed / MAX_SPEED),
       role: 'player',
+      suit: state.city !== null,
       seed: me?.handle ?? 'you',
       avatar: this.avatars.get(me?.avatarUrl),
       alpha: 1,

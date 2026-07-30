@@ -31,6 +31,7 @@
 
 import { RunState } from '../src/game/state';
 import { ATTACKER_SCORE, TIME_BONUS_PER_SECOND } from '../src/game/state';
+import { NODE_SCORE } from '../src/game/node';
 
 import { parseMission } from '../src/game/mission';
 import { CACHES } from '../src/data/story';
@@ -91,6 +92,10 @@ export function levelFacts(payload: unknown, stage: number): LevelFacts | null {
   const raw =
     bounties +
     caches +
+    // Every panel read correctly. Built from the rebuilt level's own node list
+    // rather than from a stage constant, so a quiet day that produced no nodes
+    // does not silently raise the ceiling by sixteen hundred points.
+    run.nodes.length * NODE_SCORE +
     run.enemies.length * ATTACKER_SCORE +
     Math.floor(run.seconds * TIME_BONUS_PER_SECOND);
 

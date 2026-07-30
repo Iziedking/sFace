@@ -25,6 +25,7 @@ import type { RunState as Run } from './state';
 import { CEILING, WORLD_HEIGHT } from './terrain';
 import { earn } from './scrip';
 import { ALERT_FIRE_SCALE, alerted } from './sight';
+import { updatePatrol } from './patrol';
 
 export const ENEMY_RADIUS = 16;
 export const TURRET_RADIUS = 19;
@@ -96,7 +97,25 @@ const RUNNER_RANGE = 640;
 /** Ride height above the chart, so it reads as driving rather than sliding. */
 const RUNNER_CLEARANCE = 22;
 
+/**
+ * How wide a patrol car is, for collision and for being shot.
+ *
+ * Matches the player's own car, because two vehicles of visibly the same size
+ * behaving as different sizes is the kind of inconsistency players feel without
+ * being able to name.
+ */
+export const PATROL_CAR_RADIUS = 32;
+
+/**
+ * How big a target this one is.
+ *
+ * A car-borne attacker is hit anywhere on the vehicle. That is the point: you
+ * should not have to pick out the driver through a windscreen, and a round that
+ * visibly strikes the car has to count. It makes them easier to hit than a
+ * person on foot, which is the trade for them being faster and seeing further.
+ */
 export function radiusOf(enemy: Enemy): number {
+  if (enemy.driving) return PATROL_CAR_RADIUS;
   return enemy.kind === 'turret' ? TURRET_RADIUS : ENEMY_RADIUS;
 }
 
@@ -113,6 +132,19 @@ export function updateEnemies(state: RunState, dt: number): void {
    */
   const aggression =
     (0.7 + state.mission.difficulty * 0.16) / (alerted(state) ? ALERT_FIRE_SCALE : 1);
+
+  /*
+   * A city has its own rules and none of these apply.
+   *
+   * Every behaviour below is defined against a ground line and a forward axis,
+   * and waking is keyed to a difference in x, which in a map thousands wide
+   * woke a vertical strip rather than the neighbourhood the player is in. From
+   * inside that reads as a city where nothing ever comes. See game/patrol.ts.
+   */
+  if (state.city) {
+    for (const enemy of state.enemies) updatePatrol(state, enemy, dt);
+    return;
+  }
 
   for (const enemy of state.enemies) {
     if (!enemy.alive) continue;
@@ -309,6 +341,19 @@ export function damageEnemy(state: RunState, enemy: Enemy, amount: number): void
 
   enemy.health -= amount;
   state.emit({ kind: 'hit', x: enemy.x, y: enemy.y });
+
+  /*
+   * Being shot wakes you up.
+   *
+   * Without this, hitting an unaware patrol would leave it walking its beat
+   * while its health drained, which reads as a bug even though the damage is
+   * landing. It also has to be here rather than at the call site, because every
+   * source of damage should have the same effect: a bomb, a squadmate's round
+   * and your own shot all announce your presence equally.
+   */
+  enemy.active = true;
+  enemy.notice = 1;
+  enemy.alertUntil = Math.max(enemy.alertUntil, state.time + 3);
 
   if (enemy.health <= 0) {
     enemy.alive = false;

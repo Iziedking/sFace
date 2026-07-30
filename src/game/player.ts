@@ -15,6 +15,8 @@
 
 import { clamp, direction, groundPenetration } from './collision';
 import { updateConvoy } from './convoy';
+import { resolve as resolveCity } from './city';
+import { driveCar } from './car';
 import { spawnBullet, BULLET_RADIUS } from './bullet';
 import { fireRateScale, recoilScale } from './consume';
 import type { Weapon } from '../data/weapons';
@@ -64,7 +66,23 @@ export function updatePlayer(state: RunState, dt: number, command: PlayerCommand
    * made the first two versions of this stage fail.
    */
   if (state.driving) {
-    drive(state, dt, command);
+    // A city car and a chart transport are different vehicles with different
+    // physics, so they get different code rather than one function with a flag.
+    if (state.city) driveInCity(state, dt, command);
+    else drive(state, dt, command);
+    return;
+  }
+
+  /*
+   * In a city there is no down.
+   *
+   * Gravity, hard landings and a ceiling are all statements about a world with
+   * one ground line under it. A street has walls on four sides and no floor to
+   * fall onto, so flight physics here is a top-down glide: thrust in any
+   * direction, drag, and buildings you cannot pass through.
+   */
+  if (state.city) {
+    walkCity(state, dt, command);
     return;
   }
 
@@ -97,6 +115,97 @@ export function updatePlayer(state: RunState, dt: number, command: PlayerCommand
   fire(state, dt, command);
   recordTrail(state);
 }
+
+/**
+ * Moving through a city.
+ *
+ * The same thrust and drag as flight, minus gravity and the ground, plus walls.
+ * Keeping the acceleration model identical matters: a player who has flown four
+ * stages already knows how this responds, and a city that handled differently
+ * for no reason would be a second control scheme to learn rather than a second
+ * place to be.
+ */
+function walkCity(state: RunState, dt: number, command: PlayerCommand): void {
+  const player = state.player;
+  const city = state.city;
+  if (!city) return;
+
+  player.vx += command.moveX * CITY_THRUST * dt;
+  player.vy += command.moveY * CITY_THRUST * dt;
+
+  const damping = Math.pow(DRAG_PER_SECOND, dt);
+  player.vx *= damping;
+  player.vy *= damping;
+
+  const speed = Math.hypot(player.vx, player.vy);
+  if (speed > CITY_MAX_SPEED) {
+    player.vx = (player.vx / speed) * CITY_MAX_SPEED;
+    player.vy = (player.vy / speed) * CITY_MAX_SPEED;
+  }
+
+  player.x += player.vx * dt;
+  player.y += player.vy * dt;
+
+  // Walls, then the edge of the map. In that order, so being pushed out of a
+  // building can never push you outside the world.
+  const pushed = resolveCity(city, player.x, player.y, PLAYER_RADIUS);
+  if (pushed.hit) {
+    // Kill the velocity into the wall rather than all of it, so a glancing
+    // contact slides along the face instead of stopping you dead.
+    if (Math.abs(pushed.x - player.x) > 0.01) player.vx = 0;
+    if (Math.abs(pushed.y - player.y) > 0.01) player.vy = 0;
+    player.x = pushed.x;
+    player.y = pushed.y;
+  }
+
+  player.x = clamp(player.x, PLAYER_RADIUS, city.width - PLAYER_RADIUS);
+  player.y = clamp(player.y, PLAYER_RADIUS, city.height - PLAYER_RADIUS);
+
+  if (Math.abs(player.vx) > 12) player.facing = player.vx > 0 ? 1 : -1;
+
+  aim(state, command);
+  fire(state, dt, command);
+  recordTrail(state);
+}
+
+/**
+ * At the wheel, in a city.
+ *
+ * The car moves and the driver is carried. Aiming and firing still work, so
+ * steering and shooting compete for the same attention, which is the whole
+ * reason driving is a different job rather than a faster one.
+ */
+function driveInCity(state: RunState, dt: number, command: PlayerCommand): void {
+  const car = state.car;
+  if (!car) {
+    state.driving = false;
+    return;
+  }
+
+  driveCar(state, dt, command.moveX, command.moveY);
+
+  const player = state.player;
+  player.x = car.x;
+  player.y = car.y;
+  player.vx = 0;
+  player.vy = 0;
+  if (Math.abs(car.vx) > 12) player.facing = car.vx > 0 ? 1 : -1;
+
+  aim(state, command);
+  fire(state, dt, command);
+  recordTrail(state);
+}
+
+/**
+ * Slightly gentler than flight, because there is no gravity to fight.
+ *
+ * Two hundred and forty rather than three hundred, so the car at five hundred
+ * is a bit over twice the pace. The gap has to be felt for walking to the car
+ * to be a decision, and it has to be small enough that going on foot is still
+ * a real option rather than a penalty.
+ */
+const CITY_THRUST = 1250;
+const CITY_MAX_SPEED = 240;
 
 /**
  * How close you have to be to climb in.

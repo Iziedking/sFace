@@ -24,6 +24,7 @@ import { CONSUMABLES } from '../data/consumables';
 import { padLayout, type PadRegion } from '../core/pads';
 import { alerted } from '../game/sight';
 import { CONVOY_MAX_HEALTH } from '../game/convoy';
+import { isCaged } from '../game/cell';
 import { snapsToDirections, usingPads } from '../core/scheme';
 
 export interface SafeInsets {
@@ -103,10 +104,17 @@ export class Hud {
     // Clear of the ticker block, which owns the left of the strip. The offset
     // is the ticker's own width plus a gap, measured once rather than guessed:
     // the ticker is at most five characters of 17px mono.
-    this.drawSlots(ctx, state, scripRight + 14, mid);
+    // The reads take the slots over while you are at a node, so only one of
+    // these two ever draws and the numbers under your thumb always mean one
+    // thing. See the matching branch in main.ts.
+    if (state.openNodeId === null) this.drawSlots(ctx, state, scripRight + 14, mid);
     this.drawCargo(ctx, state, width / 2, mid);
     this.drawAlert(ctx, state, width, top + BAR_HEIGHT);
-    this.drawProgress(ctx, state, width, top + BAR_HEIGHT);
+    this.drawReadTally(ctx, state, padX, top + BAR_HEIGHT + 16);
+    this.drawRead(ctx, state, width, top + BAR_HEIGHT);
+    // A city has no progress along a line, so it gets a map instead.
+    if (state.city) this.drawMap(ctx, state, height);
+    else this.drawProgress(ctx, state, width, top + BAR_HEIGHT);
     this.drawCarrying(ctx, state, padX, height - this.insets.bottom - 26);
     this.drawStick(ctx, input);
     this.drawPads(ctx, state, input, width, height);
@@ -367,6 +375,242 @@ export class Hud {
   }
 
   /**
+   * How many reads are left, and therefore whether the way out is shut.
+   *
+   * The exit refusing to open is the kind of thing a player blames on a bug
+   * rather than on themselves, so the count is on screen for the whole run and
+   * it says EXIT OPEN the moment the last one lands. Nothing about the
+   * objective should have to be inferred from a door that will not work.
+   */
+  private drawReadTally(
+    ctx: CanvasRenderingContext2D,
+    state: RunState,
+    x: number,
+    y: number,
+  ): void {
+    if (state.nodes.length === 0) return;
+    // Suppressed while the question is up, which is drawn directly beneath it.
+    if (state.openNodeId !== null) return;
+
+    const done = state.nodesCaptured >= state.nodes.length;
+
+    ctx.save();
+    ctx.textAlign = 'left';
+    ctx.font = `700 12px ${MONO}`;
+    ctx.fillStyle = done ? theme.accent : theme.ink;
+    ctx.fillText(
+      done ? 'EXIT OPEN' : `READS ${state.nodesCaptured}/${state.nodes.length}`,
+      x,
+      y,
+    );
+    ctx.restore();
+  }
+
+  /**
+   * The question, when you are standing at a node.
+   *
+   * Anchored under the strip rather than above the thumbs, which is where a
+   * panel this size wants to go and where it would sit directly on top of the
+   * stick, the trigger and the map. Reading is the one moment in the game you
+   * are not moving, so taking the top of the screen for it costs nothing.
+   *
+   * Every row is a real post. The handle is the account that actually sent it
+   * and the line under it is the post's own summary from the Dispatch, so
+   * nothing on this panel is a sentence written for the game.
+   */
+  private drawRead(
+    ctx: CanvasRenderingContext2D,
+    state: RunState,
+    width: number,
+    top: number,
+  ): void {
+    if (state.openNodeId === null) return;
+    const node = state.nodes.find((n) => n.id === state.openNodeId);
+    if (!node) return;
+
+    const cardW = Math.min(width - 24, 620);
+    const x = (width - cardW) / 2;
+    const rowH = 44;
+    const headH = 34;
+    const cardH = headH + node.options.length * rowH + 10;
+    /*
+     * Below the pause button, not under it.
+     *
+     * The pause control is a DOM overlay centred at the top of the play area:
+     * `.hud-overlay` sits at inset-top + 54 and the button is 32 tall, so it
+     * occupies inset-top + 54 through 86. `top` here is the bottom of the ink
+     * strip, which is inset-top + 46. At the fourteen pixel gap the rest of the
+     * HUD uses, the card's header ran straight underneath it and the pause glyph
+     * landed in the middle of the question.
+     *
+     * Forty-eight clears the button by eight. Derived from those two numbers
+     * rather than nudged until it looked right, so moving the pause button moves
+     * this with it instead of quietly recreating the overlap.
+     */
+    const y = top + 48;
+
+    ctx.save();
+
+    ctx.fillStyle = theme.ink;
+    ctx.globalAlpha = 0.93;
+    ctx.beginPath();
+    ctx.roundRect(x, y, cardW, cardH, 10);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    ctx.strokeStyle = theme.accent;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(x, y, cardW, cardH, 10);
+    ctx.stroke();
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = theme.accent;
+    ctx.font = `700 12px ${MONO}`;
+    ctx.fillText('WHICH POST EXPLAINS TODAY?', x + 14, y + 21);
+
+    // Says what a wrong one does, at the moment you are about to press one.
+    // The cost of a bad read is the whole design of the stage, so it is stated
+    // rather than discovered.
+    ctx.textAlign = 'right';
+    ctx.fillStyle = node.missed > 0 ? theme.danger : theme.inkFaint;
+    ctx.font = `600 10px ${MONO}`;
+    ctx.fillText(node.missed > 0 ? 'WRONG ONCE' : 'WRONG WAKES THEM', x + cardW - 14, y + 21);
+
+    node.options.forEach((option, index) => {
+      const rowY = y + headH + index * rowH;
+
+      // The key, boxed, matching the slot boxes it is standing in for.
+      ctx.strokeStyle = theme.accent;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.roundRect(x + 12, rowY + 8, 22, 22, 5);
+      ctx.stroke();
+
+      ctx.textAlign = 'center';
+      ctx.fillStyle = theme.accent;
+      ctx.font = `700 12px ${MONO}`;
+      ctx.fillText(String(index + 1), x + 23, rowY + 23);
+
+      ctx.textAlign = 'left';
+      ctx.fillStyle = theme.canvas;
+      ctx.font = `700 12px ${MONO}`;
+      ctx.fillText(`@${option.post.handle}`, x + 44, rowY + 18);
+
+      ctx.fillStyle = theme.inkFaint;
+      ctx.font = `500 11px ${MONO}`;
+      ctx.fillText(clip(ctx, option.post.summary, cardW - 60), x + 44, rowY + 33);
+    });
+
+    ctx.restore();
+  }
+
+  /**
+   * The city, small, in the corner.
+   *
+   * A chart run needs no map: there is one direction and a bar under the strip
+   * tells you how far along it you are. A city has no "along". Without a map
+   * you are not exploring a place, you are lost in corridors, and the first
+   * thing anyone asked after walking one was where they were meant to go.
+   *
+   * Deliberately shows the LAYOUT and the exit, not the attackers. A map that
+   * marks every threat replaces the game with a radar display and makes the
+   * corners it is built from meaningless. It answers where am I and where is
+   * the way out, and nothing else.
+   */
+  private drawMap(ctx: CanvasRenderingContext2D, state: RunState, height: number): void {
+    const city = state.city;
+    if (!city) return;
+
+    const size = 118;
+    const scale = size / Math.max(city.width, city.height);
+    const w = city.width * scale;
+    const h = city.height * scale;
+
+    const x = this.insets.left + 12;
+
+    /*
+     * Bottom left, and lifted clear of the movement pad when there is one.
+     *
+     * The corner the map wants is the corner a left thumb already owns. On a
+     * phone running the fixed pads it would sit exactly under the ring you
+     * steer with, so it moves up above it rather than being drawn somewhere
+     * else entirely: a map that changes corner depending on your control
+     * scheme is a map you have to hunt for.
+     */
+    const padClearance = usingPads() ? 150 : 0;
+    const y = height - this.insets.bottom - h - 12 - padClearance;
+
+    ctx.save();
+    ctx.globalAlpha = 0.9;
+
+    ctx.fillStyle = theme.ink;
+    ctx.fillRect(x - 3, y - 3, w + 6, h + 6);
+    ctx.fillStyle = theme.canvas;
+    ctx.fillRect(x, y, w, h);
+
+    // Buildings as solid ink, so the streets read as the negative space.
+    ctx.fillStyle = 'rgba(20, 17, 14, 0.55)';
+    for (const b of city.blocks) {
+      ctx.fillRect(x + b.x * scale, y + b.y * scale, b.w * scale, b.h * scale);
+    }
+
+    /*
+     * Punch the interiors back out.
+     *
+     * The walls are drawn as blocks above, so a hollow building comes out as a
+     * solid smudge at this scale and looks exactly like one you cannot enter.
+     * Clearing the floor is what makes the map answer "which of these can I get
+     * into", which is the question the refills inside them create.
+     */
+    ctx.fillStyle = theme.canvas;
+    for (const room of city.rooms) {
+      ctx.fillRect(x + room.x * scale, y + room.y * scale, room.w * scale, room.h * scale);
+    }
+
+    // Anyone still to be got out, so a map answers "what is left" as well as
+    // "where am I". Caged and free are drawn alike: both are somebody waiting.
+    ctx.fillStyle = theme.rescue;
+    for (const face of state.faces) {
+      if (face.state !== 'trapped') continue;
+      ctx.beginPath();
+      ctx.arc(x + face.x * scale, y + face.y * scale, isCaged(face) ? 3 : 2.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    /*
+     * Reads still open, as hollow squares.
+     *
+     * These are the objective on the stage that has them, and a node is a fixed
+     * panel on a wall rather than a person who might have moved, so hiding them
+     * would just mean walking every street twice. Squares against the circles
+     * everything else uses, because the map is two colours and shape is the
+     * only thing left to tell them apart with.
+     */
+    ctx.strokeStyle = theme.ink;
+    ctx.lineWidth = 1.6;
+    for (const node of state.nodes) {
+      if (node.captured) continue;
+      ctx.strokeRect(x + node.x * scale - 3, y + node.y * scale - 3, 6, 6);
+    }
+
+    // The way out.
+    ctx.strokeStyle = theme.accent;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x + city.exitX * scale, y + city.exitY * scale, 4.5, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // You, last and brightest.
+    ctx.fillStyle = theme.accent;
+    ctx.beginPath();
+    ctx.arc(x + state.player.x * scale, y + state.player.y * scale, 3.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  /**
    * How much of the chart is behind you, as a rule under the strip. The only
    * way to know how far extraction is without a minimap, and it costs one rect.
    */
@@ -469,6 +713,50 @@ export class Hud {
     ctx.strokeStyle = theme.ink;
     ctx.lineWidth = 3;
     ctx.stroke();
+
+    /*
+     * At a node these same buttons are the four answers.
+     *
+     * The hit regions do not move: main.ts already reroutes a slot press to the
+     * open question, so the only thing that was wrong was the labelling. A phone
+     * player saw pucks reading BOMB and 120 while the card above said 1 to 4, with
+     * no indication the two were the same buttons. On a device with no keyboard
+     * that made stage six unanswerable in practice.
+     *
+     * Reusing the pads rather than making the card's rows tappable is deliberate:
+     * one set of coordinates that input and the renderer already agree on cannot
+     * drift out of step, and the answer buttons land under the thumb that is
+     * already there instead of at the top of the screen.
+     */
+    const reading = state.openNodeId !== null;
+    if (reading) {
+      const node = state.nodes.find((n) => n.id === state.openNodeId);
+      const count = node?.options.length ?? 0;
+
+      pads.slots.forEach((slot, index) => {
+        if (index >= count) return;
+
+        ctx.globalAlpha = 0.62;
+        ctx.fillStyle = theme.canvas;
+        ctx.beginPath();
+        ctx.arc(slot.x, slot.y, slot.r, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Accent ring, because these are live choices rather than priced goods.
+        ctx.globalAlpha = 0.95;
+        ctx.strokeStyle = theme.accent;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        ctx.fillStyle = theme.ink;
+        ctx.textAlign = 'center';
+        ctx.font = `700 18px ${MONO}`;
+        ctx.fillText(String(index + 1), slot.x, slot.y + 1);
+      });
+
+      ctx.restore();
+      return;
+    }
 
     // The consumables, priced, and dimmed when they cannot be afforded so the
     // thumb learns which are live without reading anything.
@@ -580,3 +868,14 @@ export function formatClock(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
+/**
+ * Cut a line to fit, with an ellipsis. Measured rather than counted, because a
+ * post's summary is proportionally spaced text of no predictable width.
+ */
+function clip(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
+  if (ctx.measureText(text).width <= maxWidth) return text;
+
+  let cut = text.length;
+  while (cut > 1 && ctx.measureText(`${text.slice(0, cut)}...`).width > maxWidth) cut--;
+  return `${text.slice(0, cut).trimEnd()}...`;
+}

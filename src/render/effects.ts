@@ -35,6 +35,28 @@ interface FloatingText {
   color: string;
 }
 
+/*
+ * How long a line of world text stays up.
+ *
+ * Reported from a playtest as words disappearing before you could read them,
+ * and the old numbers say why. Every line lived 2.2 seconds and its opacity was
+ * life/maxLife scaled by 1.6, so it was only fully solid for the first 0.8 of
+ * that and spent the remaining 1.4 fading while drifting upward. A short one
+ * like "+32" was fine. A pickup line is a whole sentence, and a sentence you
+ * have less than a second of solid contrast on, while flying, is a sentence you
+ * do not read.
+ *
+ * So the budget scales with how much there is to read, and the fade is moved to
+ * the very end instead of running the whole time: it holds, then goes.
+ */
+const TEXT_BASE_SECONDS = 2.4;
+/** Reading time per character. Roughly 240 words a minute, generously rounded. */
+const TEXT_SECONDS_PER_CHAR = 0.055;
+/** Long enough for the longest pickup line, short enough not to stack up. */
+const TEXT_MAX_SECONDS = 6;
+/** Only the last stretch fades. Before that the line is at full contrast. */
+const TEXT_FADE_SECONDS = 0.45;
+
 const MAX_PARTICLES = 300;
 
 export class Effects {
@@ -126,7 +148,16 @@ export class Effects {
     this.particles = this.particles.filter((p) => p.life > 0);
 
     for (const text of this.texts) {
-      text.y -= 26 * dt;
+      /*
+       * Rises quickly, then settles.
+       *
+       * A constant climb carried a long line more than a hundred units up the
+       * screen before it expired, out of the place the thing it describes
+       * happened. Easing on the elapsed fraction means it pops clear of the
+       * character in the first moment and then holds roughly still to be read.
+       */
+      const elapsed = 1 - text.life / text.maxLife;
+      text.y -= 34 * Math.max(0, 1 - elapsed * 4) * dt;
       text.life -= dt;
     }
     this.texts = this.texts.filter((t) => t.life > 0);
@@ -153,7 +184,8 @@ export class Effects {
     ctx.textBaseline = 'middle';
     ctx.font = `600 13px ${MONO}`;
     for (const text of this.texts) {
-      ctx.globalAlpha = Math.min(1, (text.life / text.maxLife) * 1.6);
+      // Solid until the last moment, then out. See TEXT_FADE_SECONDS.
+      ctx.globalAlpha = Math.min(1, text.life / TEXT_FADE_SECONDS);
 
       // A solid plate behind the line. Type over a moving chart on a bright
       // canvas is unreadable, and a drop shadow on paper looks like a mistake.
@@ -208,6 +240,10 @@ export class Effects {
   private say(x: number, y: number, text: string, color: string): void {
     // One line at a time per spot. Overlapping quips are unreadable on a phone.
     this.texts = this.texts.filter((t) => Math.abs(t.x - x) > 40 || Math.abs(t.y - y) > 24);
-    this.texts.push({ x, y: y - 26, text, life: 2.2, maxLife: 2.2, color });
+    const life = Math.min(
+      TEXT_MAX_SECONDS,
+      TEXT_BASE_SECONDS + text.length * TEXT_SECONDS_PER_CHAR,
+    );
+    this.texts.push({ x, y: y - 26, text, life, maxLife: life, color });
   }
 }

@@ -116,6 +116,21 @@ export function padLayout(width: number, height: number, slotCount: number): Pad
   return { move, fire, slots, slotCount };
 }
 
+/**
+ * Where the use button sits, when there is something to use.
+ *
+ * Above the fire button rather than beside it, so a thumb reaching for it
+ * cannot brush the trigger on the way. Only ever drawn when the game has
+ * something for it to do, so it is never a mystery control.
+ */
+export function useRegion(width: number, height: number): PadRegion {
+  return {
+    x: width - EDGE - FIRE_RADIUS,
+    y: height - EDGE - MOVE_RADIUS - FIRE_RADIUS - 74,
+    r: 30,
+  };
+}
+
 export function hit(region: PadRegion, x: number, y: number, slack = 8): boolean {
   return Math.hypot(x - region.x, y - region.y) <= region.r + slack;
 }

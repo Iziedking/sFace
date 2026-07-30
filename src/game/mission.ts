@@ -104,72 +104,13 @@ export interface DailyMission {
 }
 
 /*
- * Read lazily rather than at module scope.
+ * Nothing in this file reads the environment, and that is deliberate.
  *
- * import.meta.env only exists under Vite, so evaluating it on import made this
- * whole module unimportable from Node. That mattered the moment the service
- * needed to reconstruct a level to check a score against it: state.ts imports
- * types and the fallback roster from here, so one browser-only constant made
- * the entire level builder browser-only too.
+ * The service imports it to rebuild a level from a seed, so it has to stay
+ * importable from Node: types, parsing and the fallback only. The fetch that
+ * used to live here now sits in net/mission.ts, which is client-only. See the
+ * header of that file for the bug that separation exists to prevent.
  */
-function apiBase(): string {
-  // Typed structurally rather than through vite/client, because the service
-  // typechecks this file too now and its tsconfig has no Vite types. Widening
-  // here keeps one definition working under both projects.
-  const meta = import.meta as ImportMeta & { env?: Record<string, string | undefined> };
-  return meta.env?.VITE_API_BASE ?? '';
-}
-
-export interface MissionLoad {
-  mission: DailyMission;
-  /** Set when we fell back, so the brief screen can say so plainly. */
-  notice: string | null;
-}
-
-/**
- * Fetch today's mission. Never rejects: a run must always be startable, because
- * the alternative is a judge staring at a spinner.
- */
-export async function loadMission(signal?: AbortSignal): Promise<MissionLoad> {
-  /*
-   * No service configured. Fall back silently.
-   *
-   * There used to be a banner here saying so, and it was redundant: a practice
-   * mission already announces itself everywhere it matters. The ticker strip
-   * reads PRACTICE instead of a percentage, the brief says PRACTICE MISSION on
-   * the card, and the score card carries it too. A pink notice on top of that
-   * was the same fact a fourth time, in the loudest possible voice, on the
-   * first screen anybody sees.
-   *
-   * The state is still labelled. It is just no longer shouted.
-   */
-  if (!apiBase()) {
-    return { mission: practiceMission(), notice: null };
-  }
-
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
-    signal?.addEventListener('abort', () => controller.abort(), { once: true });
-
-    const response = await fetch(`${apiBase()}/mission/today`, {
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-
-    if (!response.ok) throw new Error(`mission ${response.status}`);
-
-    const mission = parseMission(await response.json());
-    if (!mission) throw new Error('mission payload failed validation');
-
-    return { mission, notice: null };
-  } catch {
-    return {
-      mission: practiceMission(),
-      notice: 'Could not reach the market. This is a practice mission.',
-    };
-  }
-}
 
 /**
  * Validate a payload off the wire. Anything unexpected returns null and we take

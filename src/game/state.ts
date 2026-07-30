@@ -27,7 +27,10 @@ import { layOutCaches, type Cache } from './cache';
 import { openPurse, rollDrop, type ScripPurse } from './scrip';
 import { lockUp } from './cell';
 import { makeConvoy, type Convoy } from './convoy';
-import { layOutRefills, type Refill } from './refill';
+import { buildCity, openSpot, roomSpot, type City } from './city';
+import { makeCar, type Car } from './car';
+import { layOutNodes, type StoryNode } from './node';
+import { layOutRefills, REFILL_REACH, type Refill } from './refill';
 import { fallbackRoster, type DailyMission, type RosterEntry } from './mission';
 import { Terrain, EXTRACTION_X, WORLD_HEIGHT, CEILING } from './terrain';
 
@@ -85,6 +88,17 @@ export interface Enemy {
   homeY: number;
   phase: number;
   /**
+   * How close this one is to noticing you, 0 to 1. City stages only.
+   *
+   * Per attacker rather than global, because in a city the whole point is that
+   * the one round the corner has not seen you while the one in front has.
+   */
+  notice: number;
+  /** Run clock until which it keeps coming after losing sight of you. */
+  alertUntil: number;
+  /** Which way it is walking its patch when it has not noticed anything. */
+  patrolHeading: number;
+  /**
    * Scrip paid out when this one is cleared.
    *
    * Drawn at layout rather than rolled on death. A roll at death time is
@@ -93,6 +107,20 @@ export interface Enemy {
    * the divergence the two-stream rule exists to prevent.
    */
   drop: number;
+  /**
+   * This one is in a car. City stages only.
+   *
+   * A flag on the ordinary attacker rather than a separate entity, and that is
+   * the whole reason it is cheap: patrol behaviour, damage, drops, scoring, the
+   * minimap and the alarm all work on it already. What changes is how fast it
+   * covers ground, how far it can sense from, how big it is to shoot, and how it
+   * is drawn.
+   *
+   * Deliberately NOT a vehicle you can steal. A second drivable car would need
+   * its own entry prompt, its own seat state and its own answer to what happens
+   * to the driver, for a mechanic the stage does not need.
+   */
+  driving: boolean;
 }
 
 export interface Face {
@@ -171,7 +199,9 @@ export interface RunEvent {
     | 'pickupLine'
     | 'cache'
     | 'relic'
-    | 'refill';
+    | 'refill'
+    | 'read'
+    | 'misread';
   text?: string;
   x: number;
   y: number;
@@ -268,6 +298,15 @@ export class RunState {
    * has to acknowledge that most stages do not have one and none of them can
    * accidentally read a dormant convoy's health as meaningful.
    */
+  /**
+   * The city, on a stage that is one. Null on every chart run.
+   *
+   * When this is set the world is boxes and streets rather than a height per
+   * column, and the parts of the game that assume a ground line branch on it.
+   */
+  readonly city: City | null;
+  /** The car, in a city. Null on a chart run, which has the transport instead. */
+  readonly car: Car | null;
   readonly convoy: Convoy | null;
   /**
    * True while the player is at the wheel rather than flying.
@@ -279,6 +318,27 @@ export class RunState {
   driving = false;
   /** Run clock before which the seat is refused, so getting out is possible. */
   remountAt = -1;
+  /** Raised by the input layer for one step when the use key was pressed. */
+  useRequested = false;
+
+  /**
+   * The day's reads, on a stage that has them. Empty everywhere else.
+   *
+   * Also empty on a stage that wants them but on a day the service could not
+   * give us four sourced posts, because a question built from anything less
+   * would have to invent an option. See game/node.ts.
+   */
+  readonly nodes: StoryNode[];
+  /** Id of the node whose question is up, or null. Set by proximity. */
+  openNodeId: number | null = null;
+  /** Reads landed. The stage's actual objective. */
+  nodesCaptured = 0;
+  /** Reads blown. Shown on the results screen, because it is the skill. */
+  nodesMissed = 0;
+  /** Run clock until which a blown read is still pulling attackers in. */
+  nodeAlarmUntil = -1;
+  /** Score from captured nodes, banked as they land rather than at the end. */
+  nodeScore = 0;
   /** Nothing about this run will be saved. */
   readonly practice: boolean;
   /** A clipped look at a stage this player has not signed in to fly properly. */
@@ -386,6 +446,14 @@ export class RunState {
       this.extractionX,
       stage.caches,
     );
+    /*
+     * Built from the same chart the terrain is, off the same level stream, so a
+     * city and a chart run made from one seed are two projections of one day.
+     */
+    this.city = stage.city ? buildCity(levelRng, mission.terrain) : null;
+    // Parked a little way from the start, so the first decision of the run is
+    // whether to walk to it at all rather than being handed it for free.
+    this.car = this.city ? makeCar(this.city.startX + 260, this.city.startY - 120) : null;
     this.convoy = stage.convoy ? makeConvoy(this.terrain) : null;
 
     this.refills = layOutRefills(
@@ -395,6 +463,98 @@ export class RunState {
       this.extractionX,
       stage.refills,
     );
+
+    /*
+     * Relocate everything into the streets.
+     *
+     * The layout functions place things against a ground line, which in a city
+     * means inside a building or floating above one. Rather than write a second
+     * placement path for every entity, the level is laid out as normal and then
+     * moved: the counts, the tiers, the quirks and the drops are all decided by
+     * the same code, so a city and a chart run made from one seed still contain
+     * exactly the same things. Only where they stand changes.
+     *
+     * Drawn from the level stream after every other placement, so adding this
+     * cannot shift any draw that came before it.
+     */
+    if (this.city) {
+      const city = this.city;
+      const place = (item: { x: number; y: number }, clearance: number): void => {
+        const spot = openSpot(city, levelRng, clearance);
+        item.x = spot.x;
+        item.y = spot.y;
+      };
+
+      for (const enemy of this.enemies) {
+        place(enemy, 46);
+        enemy.homeY = enemy.y;
+      }
+      for (const face of this.faces) place(face, 42);
+      for (const cache of this.caches) place(cache, 40);
+
+      /*
+       * Some of them get cars.
+       *
+       * Only on the stage that has the towers look, so the two city stages read
+       * as two places rather than one map twice: stage five is people on foot in
+       * a warehouse district, stage six is a downtown with traffic in it that is
+       * looking for you.
+       *
+       * A share rather than a count, so a dense day fields more of them and a
+       * calm day fewer, which is the same rule the rest of the level follows.
+       */
+      if (stage.look.city === 'towers') {
+        for (const enemy of this.enemies) {
+          // Turrets are rooted by definition. Putting one in a car would make it
+          // the only thing in the game that is both immobile and a vehicle.
+          if (enemy.kind === 'turret') continue;
+          if (levelRng.chance(0.3)) enemy.driving = true;
+        }
+      }
+
+      /*
+       * Hull refills go INSIDE the buildings that have a way in.
+       *
+       * These used to be built after this block ran, so they were the one thing
+       * in the level that never got relocated: they kept the positions the chart
+       * layout gave them, against a ground line the city does not have, and
+       * ended up sealed inside walls. Reported from a playtest as health you can
+       * see and cannot reach, which is exactly what it was.
+       *
+       * Fixing the order alone would have scattered them along the streets like
+       * everything else. Putting them indoors instead makes the interiors worth
+       * the detour, and since the doorway is too narrow for the car, topping up
+       * your hull is something you can only do on foot. One placement decision
+       * pays for the rooms, gives the walking route an advantage the driving
+       * route cannot have, and turns the medkit into a reason to explore.
+       *
+       * Street fallback for the days that produce no interiors at all.
+       */
+      this.refills.forEach((refill, index) => {
+        const indoors = roomSpot(city, levelRng, index, REFILL_REACH + 8);
+        if (indoors) {
+          refill.x = indoors.x;
+          refill.y = indoors.y;
+        } else {
+          place(refill, 34);
+        }
+      });
+    }
+
+    /*
+     * The reads, last of all, so a stage that has none draws nothing and every
+     * placement above it lands identically on stage five and stage six.
+     */
+    this.nodes =
+      this.city && stage.nodes > 0
+        ? layOutNodes(
+            levelRng,
+            mission.story?.posts ?? [],
+            stage.nodes,
+            () => openSpot(this.city!, levelRng, 70),
+            () => this.nextId++,
+          )
+        : [];
 
     this.player = {
       x: 120,
@@ -435,6 +595,7 @@ export class RunState {
       this.rescueScore +
       this.extractionScore +
       this.cacheScore +
+      this.nodeScore +
       this.attackersCleared * ATTACKER_SCORE +
       timeBonus;
     return Math.floor(raw * this.mission.bountyMultiplier * this.stage.bounty * this.contractBonus);
@@ -498,6 +659,14 @@ function layOutEnemies(
       homeY: y,
       phase: rng.range(0, Math.PI * 2),
       drop: rollDrop(rng, difficulty),
+      notice: 0,
+      alertUntil: -1,
+      // A quarter turn each, so a street has patrols crossing it rather than a
+      // column all walking the same way.
+      patrolHeading: rng.int(0, 3) * (Math.PI / 2),
+      // Set below, once the city is known. Rolled here anyway so the draw count
+      // per attacker does not depend on which stage is being built.
+      driving: false,
     });
   }
 

@@ -10,6 +10,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { hit, padLayout, padVector } from '../src/core/pads';
+import { Input } from '../src/core/input';
+import { setScheme } from '../src/core/scheme';
 
 const PHONE = { w: 844, h: 390 }; // a phone in landscape
 const NARROW = { w: 390, h: 844 }; // the same phone upright
@@ -108,5 +110,120 @@ describe('the movement pad', () => {
     const pads = padLayout(PHONE.w, PHONE.h, 4);
     const v = padVector(pads.move, pads.move.x + 40, pads.move.y + 34, true);
     expect(Math.abs(v.x)).toBeCloseTo(Math.abs(v.y), 5);
+  });
+});
+
+/**
+ * The right thumb has to be able to aim, not only fire.
+ *
+ * Reported from a phone as shooting pointing one direction and not responding to
+ * control. The fire pad was a pure button: its pointer was grabbed on press and
+ * every move event for that pointer returned early, so aimVector was never set
+ * from a pad. The only aim source left on a touch device was the direction of
+ * travel, so standing still to take a shot, which is what you do at every corner
+ * in a city, left the gun stuck on its last heading.
+ *
+ * Driven through the real listeners rather than by poking internals, because the
+ * bug lived in the event plumbing: a test that called a method directly would
+ * have passed against the broken version.
+ *
+ * There is no DOM here and deliberately no jsdom either. Input binds to exactly
+ * two targets, so standing both of them up by hand is a dozen lines and costs the
+ * project no dependency the day before a deadline.
+ */
+describe('aiming with a thumb', () => {
+  type Handler = (event: unknown) => void;
+
+  function harness() {
+    const handlers = new Map<string, Handler[]>();
+    const record = (type: string, fn: Handler): void => {
+      const list = handlers.get(type) ?? [];
+      list.push(fn);
+      handlers.set(type, list);
+    };
+    const target = {
+      addEventListener: (type: string, fn: Handler) => record(type, fn),
+      removeEventListener: () => {},
+      clientWidth: PHONE.w,
+      clientHeight: PHONE.h,
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: PHONE.w, height: PHONE.h }),
+      // scheme.ts asks whether the device has a coarse pointer before deciding
+      // the pads are in force, so the stub has to answer as a phone.
+      matchMedia: () => ({ matches: true }),
+    };
+
+    const previous = (globalThis as Record<string, unknown>).window;
+    (globalThis as Record<string, unknown>).window = target;
+
+    const input = new Input(target as unknown as HTMLCanvasElement);
+    input.slotCount = 4;
+    // 'analog' is the ring; 'dpad' is the same footprint. Either puts the pads in
+    // force, which is what these cases are about.
+    setScheme('analog');
+
+    const send = (type: string, id: number, x: number, y: number): void => {
+      for (const fn of handlers.get(type) ?? []) {
+        fn({ pointerId: id, clientX: x, clientY: y, preventDefault: () => {} });
+      }
+    };
+
+    const restore = (): void => {
+      (globalThis as Record<string, unknown>).window = previous;
+    };
+
+    return { input, send, restore, pads: padLayout(PHONE.w, PHONE.h, 4) };
+  }
+
+  it('turns the gun when the fire thumb pushes, and keeps firing', () => {
+    const { input, send, restore, pads } = harness();
+    try {
+      send('pointerdown', 1, pads.fire.x, pads.fire.y);
+      expect(input.firing).toBe(true);
+
+      send('pointermove', 1, pads.fire.x - 60, pads.fire.y);
+      expect(input.aimVector).not.toBeNull();
+      expect(input.aimVector!.x).toBeLessThan(-0.9);
+      expect(input.firing).toBe(true);
+
+      // And now up: the gun has to follow, not hold the old heading.
+      send('pointermove', 1, pads.fire.x, pads.fire.y - 60);
+      expect(input.aimVector!.y).toBeLessThan(-0.9);
+    } finally {
+      restore();
+    }
+  });
+
+  it('holds the last heading when the thumb lifts', () => {
+    const { input, send, restore, pads } = harness();
+    try {
+      send('pointerdown', 1, pads.fire.x, pads.fire.y);
+      send('pointermove', 1, pads.fire.x + 60, pads.fire.y);
+      const held = { ...input.aimVector! };
+
+      send('pointerup', 1, pads.fire.x + 60, pads.fire.y);
+
+      expect(input.firing).toBe(false);
+      expect(input.aimVector).toEqual(held);
+    } finally {
+      restore();
+    }
+  });
+
+  it('lets the move thumb steer while the fire thumb aims', () => {
+    // Two thumbs down at once is the normal state of play, and neither may
+    // steal the other's control.
+    const { input, send, restore, pads } = harness();
+    try {
+      send('pointerdown', 1, pads.move.x, pads.move.y);
+      send('pointerdown', 2, pads.fire.x, pads.fire.y);
+
+      send('pointermove', 1, pads.move.x + 50, pads.move.y);
+      send('pointermove', 2, pads.fire.x, pads.fire.y + 60);
+
+      expect(input.move.x).toBeGreaterThan(0.5);
+      expect(input.aimVector!.y).toBeGreaterThan(0.9);
+    } finally {
+      restore();
+    }
   });
 });

@@ -1,6 +1,19 @@
 /**
  * The transport, which you drive.
  *
+ * ## Currently switched off on every stage
+ *
+ * This was stage five until the city replaced it. It is kept rather than
+ * deleted because the city needs a car and this is most of one: the mount and
+ * dismount, the seat, the cargo health, the "clears when the cargo arrives"
+ * rule and the refusal to climb are all reusable. What has to change is the
+ * movement, which assumes a single ground height per column and has to become
+ * free movement in two axes with building collision.
+ *
+ * If a car in the city does not get built, delete this file rather than leaving
+ * it here looking like a feature.
+ *
+ *
  * ## Two wrong versions before this one
  *
  * The first drove itself the whole route. In play it left: it got ahead, outran

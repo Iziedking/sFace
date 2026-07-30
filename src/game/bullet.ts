@@ -12,6 +12,7 @@
 import type { Bullet, RunState } from './state';
 import { hitsGround } from './collision';
 import { WORLD_HEIGHT, WORLD_WIDTH, CEILING } from './terrain';
+import { solidAt } from './city';
 
 /*
  * The player's own speed and damage used to live here as two constants. They
@@ -47,6 +48,37 @@ export function updateBullets(state: RunState, dt: number): void {
     bullet.x += bullet.vx * dt;
     bullet.y += bullet.vy * dt;
     bullet.life -= dt;
+
+    /*
+     * The bounds depend on which world this is.
+     *
+     * A city is four thousand units tall and the chart world is nine hundred
+     * and sixty, so culling a city against the chart's ceiling destroyed every
+     * bullet the moment it spawned. Nothing could shoot anything down there,
+     * player included, and the symptom was a city where attackers walked around
+     * and no shot ever connected.
+     */
+    const city = state.city;
+
+    if (city) {
+      if (
+        bullet.x < -40 ||
+        bullet.x > city.width + 40 ||
+        bullet.y < -40 ||
+        bullet.y > city.height + 40
+      ) {
+        bullet.life = 0;
+        continue;
+      }
+
+      // Buildings stop rounds, which is what makes a corner cover rather than
+      // decoration. There is no ground to hit.
+      if (solidAt(city, bullet.x, bullet.y)) {
+        bullet.life = 0;
+        state.emit({ kind: 'hit', x: bullet.x, y: bullet.y });
+      }
+      continue;
+    }
 
     const outOfWorld =
       bullet.x < -40 ||

@@ -20,7 +20,8 @@ import { Input } from './core/input';
 import { audio, voiceForEvent } from './core/audio';
 import { music } from './core/music';
 import { setLanguage, t } from './data/copy';
-import { loadMission, utcDate, type DailyMission } from './game/mission';
+import { utcDate, type DailyMission } from './game/mission';
+import { loadMission } from './net/mission';
 import { RunState, PLAYER_MAX_HEALTH } from './game/state';
 import { step } from './game/update';
 import type { PlayerCommand } from './game/player';
@@ -38,6 +39,7 @@ import { renderIntro, introSeen } from './ui/intro';
 import { renderControls } from './ui/controls';
 import { renderGate } from './ui/gate';
 import { renderPause, renderRunOverlay } from './ui/pause';
+import { showBriefCard } from './ui/brief';
 import { renderLoadout } from './ui/loadout';
 import { renderClan } from './ui/clan';
 import { renderCampaign } from './ui/campaign';
@@ -110,6 +112,8 @@ import { buy } from './game/consume';
 import { CONSUMABLES } from './data/consumables';
 import { signClaim } from './nimiq/wallet';
 import { renderSettings } from './ui/settings';
+import { CAR_REACH, carStopped } from './game/car';
+import { answerNode } from './game/node';
 
 type Screen =
   | 'loading'
@@ -187,6 +191,28 @@ class App {
    * "this run does not count" is a property of the run and not of the person.
    */
   private practice = false;
+
+  /*
+   * The brief does NOT hold the simulation, and that is deliberate.
+   *
+   * It used to. Holding the step meant the stick and the trigger did nothing for
+   * the first few seconds of a stage: the aim stayed wherever it spawned and the
+   * player was pushing controls that were not connected to anything yet.
+   * Reported as movement not responding until after some time and shooting stuck
+   * pointing one way, which is exactly what a frozen step looks like from
+   * outside.
+   *
+   * Unresponsive controls at the start of a run are far worse than a few seconds
+   * of reading, so the run is live from the first frame and the card sits clear of
+   * the play area instead. Read it standing still, or ignore it and move.
+   *
+   * The clock is deliberately not extended to compensate either. `seconds` is
+   * readonly because the service derives its score ceiling from it, and a client
+   * that granted itself extra time would earn a time bonus above that ceiling and
+   * get its own honest run rejected.
+   */
+  /** Cancels a brief that is still on screen. See ui/brief.ts. */
+  private cancelBrief: (() => void) | null = null;
   /**
    * True when the last refusal was "you need a wallet" rather than an error.
    *
@@ -565,6 +591,38 @@ class App {
   private showRunOverlay(): void {
     this.ui.className = 'is-hud';
     renderRunOverlay(this.ui, { onPause: () => this.setPaused(true) });
+  }
+
+  /**
+   * The stage brief, then the run.
+   *
+   * Shown on every stage including the ones a player has flown fifty times,
+   * because the alternative is a card that appears on some runs and not others
+   * and nobody can tell which rule decides. It is skippable with any tap or key,
+   * which is what makes that affordable.
+   */
+  private showStageBrief(): void {
+    const run = this.run;
+    if (!run) {
+      this.showRunOverlay();
+      return;
+    }
+
+    // Any brief still on screen from an abandoned run goes first, or two cards
+    // stack and the second one's timer starts a run under the first.
+    this.cancelBrief?.();
+
+    this.cancelBrief = showBriefCard(this.ui, {
+      stage: run.stage,
+      mission: run.mission,
+      onDone: () => {
+        this.cancelBrief = null;
+        // Only take over the layer if the player is still here. Quitting during
+        // the brief leaves them on another screen, and painting the run overlay
+        // on top of it would strand them.
+        if (this.screen === 'run') this.showRunOverlay();
+      },
+    });
   }
 
   /** Only offer Connect X where the service is actually configured for it. */
@@ -1246,7 +1304,7 @@ class App {
     this.postError = null;
     this.screen = 'run';
     this.paused = false;
-    this.showRunOverlay();
+    this.showStageBrief();
   }
 
   private prepareRun(): void {
@@ -1261,7 +1319,14 @@ class App {
     this.effects.clear();
     this.input.reset();
     this.recorder.reset();
-    this.camera.jumpTo(this.run.player, this.run.terrain.groundAt(this.run.player.x));
+    // A city has no ground line to bias toward, so it gets the free camera.
+    if (this.run.city) {
+      this.run.player.x = this.run.city.startX;
+      this.run.player.y = this.run.city.startY;
+      this.camera.jumpToFree(this.run.player, this.run.city);
+    } else {
+      this.camera.jumpTo(this.run.player, this.run.terrain.groundAt(this.run.player.x));
+    }
 
     // Ghosts are re-seated from the pool each run, so restarting replays them
     // from the top rather than leaving them frozen wherever they finished.
@@ -1773,7 +1838,25 @@ class App {
     if (this.screen === 'run' && !run.finished && !this.paused) {
       // Purchases resolve before the step, so a bomb bought this frame clears
       // the attacker that would otherwise have hit you during it.
+      /*
+       * At a node the four slots answer the question instead of buying.
+       *
+       * One set of inputs, two meanings, decided by where you are standing. The
+       * alternative was four more keys and four more buttons on a phone screen
+       * that is already carrying a stick, a trigger and a use key, for a verb
+       * that only exists on one stage. The HUD swaps with it, so what the slots
+       * do is always what is drawn under your thumb.
+       */
+      const reading = run.openNodeId !== null;
+
       for (const slot of this.input.takeBuys()) {
+        if (reading) {
+          const outcome = answerNode(run, slot);
+          if (outcome === 'captured') audio.play('relic');
+          else if (outcome === 'wrong') audio.play('down');
+          continue;
+        }
+
         const item = CONSUMABLES[slot];
         if (!item) continue;
         const result = buy(run, item.id);
@@ -1798,6 +1881,24 @@ class App {
         }
       }
 
+      /*
+       * Is there anything to use, and therefore anything to draw and tap?
+       *
+       * Computed here rather than in the input layer or the renderer, because
+       * this is the only place that can see both the run and the controls. Both
+       * of those then read the one answer.
+       */
+      this.input.useVisible = Boolean(
+        run.city &&
+          run.car &&
+          (run.driving
+            ? carStopped(run)
+            : Math.hypot(run.player.x - run.car.x, run.player.y - run.car.y) <= CAR_REACH),
+      );
+
+      // Hand the use press to the simulation, which decides what it means.
+      if (this.input.takeUse()) run.useRequested = true;
+
       const firedAt = run.player.lastFiredAt;
       step(run, dt, this.command());
       // One blip per round that actually left the gun. Playing it while the
@@ -1810,7 +1911,11 @@ class App {
       this.live?.publish(poseOf(run), performance.now());
     }
 
-    this.camera.follow(run.player, run.terrain.groundAt(run.player.x), dt);
+    if (run.city) {
+      this.camera.followFree(run.player, run.city, dt);
+    } else {
+      this.camera.follow(run.player, run.terrain.groundAt(run.player.x), dt);
+    }
     // Squadmates read the run clock, which is why a recording made yesterday
     // lines up with a run happening now without any synchronisation.
     this.squad.update(run.time, dt);

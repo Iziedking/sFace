@@ -87,6 +87,45 @@ export class Camera {
     this.shakeAmount = Math.min(26, this.shakeAmount + amount);
   }
 
+  /**
+   * Free follow, for a world with no ground line.
+   *
+   * The normal target biases downward to keep the chart on screen, which is
+   * correct when there is exactly one surface and it is beneath you. A city has
+   * walls on four sides and nothing to look down at, so that bias would push
+   * the view off the bottom of the map and hide the street the player is
+   * standing in.
+   */
+  followFree(player: Player, world: { width: number; height: number }, dt: number): void {
+    const halfW = this.viewW / 2;
+    const halfH = this.viewH / 2;
+    const lead = clamp(player.vx / MAX_SPEED, -1, 1) * LOOKAHEAD;
+
+    const x =
+      this.viewW >= world.width ? world.width / 2 : clamp(player.x + lead, halfW, world.width - halfW);
+    const y =
+      this.viewH >= world.height ? world.height / 2 : clamp(player.y, halfH, world.height - halfH);
+
+    const pull = 1 - Math.exp(-FOLLOW_SPRING * dt);
+    this.x += (x - this.x) * pull;
+    this.y += (y - this.y) * pull;
+
+    this.shakeAmount *= Math.pow(0.02, dt);
+    if (this.shakeAmount < 0.4) this.shakeAmount = 0;
+    this.shakeX = (Math.random() * 2 - 1) * this.shakeAmount;
+    this.shakeY = (Math.random() * 2 - 1) * this.shakeAmount;
+  }
+
+  /** Snap straight to a free-follow target, for the first frame of a run. */
+  jumpToFree(player: Player, world: { width: number; height: number }): void {
+    const halfW = this.viewW / 2;
+    const halfH = this.viewH / 2;
+    this.x =
+      this.viewW >= world.width ? world.width / 2 : clamp(player.x, halfW, world.width - halfW);
+    this.y =
+      this.viewH >= world.height ? world.height / 2 : clamp(player.y, halfH, world.height - halfH);
+  }
+
   private target(player: Player, groundY: number): { x: number; y: number } {
     const lead = clamp(player.vx / MAX_SPEED, -1, 1) * LOOKAHEAD;
 

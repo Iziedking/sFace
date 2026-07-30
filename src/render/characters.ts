@@ -44,6 +44,20 @@ export interface HumanOptions {
   /** 0 to 1. Opens the plume and straightens the legs. */
   thrust: number;
   role: Role;
+  /**
+   * Dressed for the city.
+   *
+   * Changes the SILHOUETTE and never the colour. The jacket palette carries the
+   * whole friend-or-threat read: the player is the one orange thing on screen
+   * and every threat is an ink cutout, which is the only contrast that survives
+   * peripheral vision while dodging. A suit that recoloured anybody would trade
+   * the game's readability for a costume.
+   *
+   * So: lapels, a collar, a tie, and squarer shoulders. Same colours, different
+   * shape, and on a stage where everyone is suited the shape is what tells you
+   * this is not the wreck.
+   */
+  suit?: boolean;
   /** Stable string for the generated look. A handle, or an entity id. */
   seed: string;
   /** A loaded, untainted profile picture, or null for a generated face. */
@@ -90,7 +104,9 @@ export function drawHuman(ctx: CanvasRenderingContext2D, o: HumanOptions): void 
   const skin = pickFrom(SKIN, o.seed, 1);
   const hair = pickFrom(HAIR, o.seed, 2);
   const hairStyle = hashString(o.seed) % 4;
-  const glasses = hashString(`${o.seed}g`) % 5 === 0;
+  // Suited means glasses. It reads as a uniform rather than five people who
+  // happened to dress the same, and it is a second silhouette cue at range.
+  const glasses = o.suit === true || hashString(`${o.seed}g`) % 5 === 0;
 
   ctx.save();
   ctx.globalAlpha = o.alpha;
@@ -244,14 +260,72 @@ function drawUpright(
   ctx.stroke();
   ctx.lineWidth = OUTLINE;
 
-  // Torso.
+  // Torso. Squarer through the shoulders in a suit, which is most of the read.
   ctx.fillStyle = jacket;
-  roundRect(ctx, -6, -6, 12, 13, 3.5);
+  if (o.suit) roundRect(ctx, -7, -7, 14, 14, 1.5);
+  else roundRect(ctx, -6, -6, 12, 13, 3.5);
   ctx.fill();
   ctx.stroke();
 
+  if (o.suit) drawSuit(ctx, jacket);
+
   drawArm(ctx, o, skin);
   drawHead(ctx, o, skin, hair, hairStyle, glasses);
+}
+
+/**
+ * Lapels, a shirt and a tie, cut into the torso already drawn.
+ *
+ * Drawn in the canvas colour rather than a new one, so it reads as the shirt
+ * showing through the jacket on any jacket colour. That keeps one function
+ * working for the orange player and the ink attackers without a palette per
+ * role, and it means adding a role later cannot forget to define a suit.
+ */
+function drawSuit(ctx: CanvasRenderingContext2D, _jacket: string): void {
+  // The V of an open jacket.
+  ctx.fillStyle = theme.canvas;
+  ctx.beginPath();
+  ctx.moveTo(-3.4, -7);
+  ctx.lineTo(0, -1.4);
+  ctx.lineTo(3.4, -7);
+  ctx.closePath();
+  ctx.fill();
+
+  /*
+   * An orange tie, on everybody.
+   *
+   * This is the one place the palette rule bends, and it is worth saying why it
+   * survives. The rule is that the player is orange and threats are ink, and it
+   * holds by AREA rather than by exclusivity: the player's whole torso is
+   * orange, while a tie is a few pixels. At the distance you actually read a
+   * fight, a suited attacker is still an ink cutout with a spark on it, and the
+   * player is still the orange one.
+   *
+   * What it buys is that a suited figure is findable at all. Ink on a pale
+   * street with no detail reads as a smudge in peripheral vision; a small warm
+   * mark on the chest is enough to catch the eye and say "person, facing you".
+   *
+   * If this ever starts causing misreads in play, the tie goes back to the
+   * jacket colour. Area is doing the work, and area has a limit.
+   */
+  ctx.fillStyle = theme.accent;
+  ctx.beginPath();
+  ctx.moveTo(-1.3, -4.4);
+  ctx.lineTo(1.3, -4.4);
+  ctx.lineTo(0.8, 2.2);
+  ctx.lineTo(-0.8, 2.2);
+  ctx.closePath();
+  ctx.fill();
+
+  // Collar edges, so the V does not float.
+  ctx.strokeStyle = theme.ink;
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(-3.4, -7);
+  ctx.lineTo(0, -1.4);
+  ctx.lineTo(3.4, -7);
+  ctx.stroke();
+  ctx.lineWidth = OUTLINE;
 }
 
 /** Turrets are people who dug in. Same body, planted and hunched. */

@@ -35,6 +35,7 @@
 
 import type { Enemy, RunState } from './state';
 import type { Terrain } from './terrain';
+import { lineBlocked as cityBlocked } from './city';
 
 /** How wide a watcher's arc is, half-angle in radians. About 50 degrees. */
 const CONE_HALF = 0.44;
@@ -152,12 +153,31 @@ export function updateSight(state: RunState, dt: number): void {
   if (state.finished) return;
 
   const player = state.player;
+  const city = state.city;
 
   let watched = false;
   for (const enemy of state.enemies) {
     // Asleep watchers are not watching. Otherwise the whole level would see you
     // from the first frame and the meter would be full before you moved.
     if (!enemy.active) continue;
+
+    /*
+     * Buildings break a line of sight the way a hill does.
+     *
+     * Without this a city would be the worst of both: enemies watching through
+     * solid walls, and the cover the map is made of meaning nothing. It is the
+     * same test with a different notion of what is solid.
+     */
+    if (city) {
+      const dx = player.x - enemy.x;
+      const dy = player.y - enemy.y;
+      if (Math.hypot(dx, dy) > SIGHT_RANGE) continue;
+      if (angleBetween(Math.atan2(dy, dx), gaze(enemy, state.time)) > CONE_HALF) continue;
+      if (cityBlocked(city, enemy.x, enemy.y, player.x, player.y)) continue;
+      watched = true;
+      break;
+    }
+
     if (sees(enemy, state.terrain, state.time, player.x, player.y)) {
       watched = true;
       break;
