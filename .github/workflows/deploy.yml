@@ -134,6 +134,18 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Trim the host and user before using them.
+          #
+          # These are pasted by a human into a web form, and a leading space
+          # survives. A space in front of the username cost an hour once: sshd
+          # looked for an account literally named " root", failed to find it, and
+          # returned "Permission denied (publickey)" without ever evaluating the
+          # key. Every symptom pointed at the key, which was fine all along. The
+          # only tell was a double space in the server's "Invalid user  root".
+          HOST="$(printf '%s' "$HOST" | tr -d '[:space:]')"
+          USER="$(printf '%s' "$USER" | tr -d '[:space:]')"
+          echo "Connecting as '$USER' (host is redacted by Actions)."
+
           mkdir -p ~/.ssh
 
           # Strip carriage returns on the way in.
