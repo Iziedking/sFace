@@ -169,3 +169,22 @@ export function networkHeaders(): Record<string, string> {
 export function networkLabel(id: NetworkId = network()): string {
   return id === 'test' ? 'Testnet' : 'Mainnet';
 }
+
+/**
+ * Where to get testnet NIM.
+ *
+ * Testnet is only useful for the parts of sFace that touch money, and those
+ * need a balance. Without somewhere to get one, a tester can see the game on
+ * testnet but cannot stake a challenge or settle one, which are precisely the
+ * paths worth rehearsing.
+ *
+ * Nimiq runs the faucet, not us. We link to it rather than proxying it: a
+ * faucet we operated would need a funded hot wallet, rate limiting and abuse
+ * handling, for a service that already exists and is somebody else's job.
+ */
+export const TESTNET_FAUCET = 'https://faucet.pos.nimiq-testnet.com';
+
+/** True when the player is on testnet and might need funding. */
+export function needsFaucet(): boolean {
+  return onTestnet();
+}

@@ -1,0 +1,47 @@
+[
+  {
+    "name": "opening",
+    "caption": "Every visit opens here. Tapping starts the story, and unlocks the voice.",
+    "view": "wide"
+  },
+  {
+    "name": "home",
+    "caption": "The front door: today’s coin, its move, and the ways in.",
+    "view": "wide"
+  },
+  {
+    "name": "home-phone",
+    "caption": "The same screen on a phone, which is where the mini app lives.",
+    "view": "phone"
+  },
+  {
+    "name": "chart-run",
+    "caption": "Stage one. The ground is today’s real 24 hour chart.",
+    "view": "wide"
+  },
+  {
+    "name": "city",
+    "caption": "Stage five leaves the chart for streets built from the day’s bars.",
+    "view": "wide"
+  },
+  {
+    "name": "rings",
+    "caption": "Stage seven: concentric walls around a core, worked inward.",
+    "view": "wide"
+  },
+  {
+    "name": "ending",
+    "caption": "Clearing the campaign: the day you flew, against everything before it.",
+    "view": "wide"
+  },
+  {
+    "name": "docs",
+    "caption": "In-app documentation, reachable from the footer on every screen.",
+    "view": "wide"
+  },
+  {
+    "name": "how-to-play",
+    "caption": "The guide, written for a thumb first.",
+    "view": "phone"
+  }
+]

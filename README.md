@@ -1,328 +1,271 @@
+<div align="center">
+
 # sFace
 
 **Crypto's down. Somebody has to save face.**
 
-A rescue shooter that runs inside Nimiq Pay. Every day the worst-performing
-coin in the top 100 becomes the level: its real 24-hour chart is the ground you
-fly over, the Fear and Greed index decides how hard the day is, and the chart's
-own volatility decides where the attackers are. Trapped in the wreck are the
-faces of the industry. Get as many out as you can before the clock runs down.
+A rescue game that runs inside Nimiq Pay. Every day the worst-performing coin in
+the top 100 becomes the level. Its real 24-hour chart is the ground you fly over,
+the Fear and Greed index sets the odds, and the people trapped in the wreck are
+whoever crypto X spent that day arguing about.
 
-Today's level is not a theme. It is the actual chart, pulled at midnight UTC,
-and the mission brief names the real ticker and the real percentage.
+Nobody draws the level. The market does, every morning, at midnight UTC.
+
+[Play](https://sface.site) · [What you are flying](#what-you-are-actually-flying) · [The seven stages](#seven-stages-seven-different-games) · [How it is built](#how-it-is-built) · [Run it](#run-it)
+
+</div>
+
+---
+
+<div align="center">
+  <img src="docs/shots/opening.png" width="820" alt="The sFace opening screen, reading save face, tap to begin">
+  <p><em>Every visit opens here. The tap starts the story and is what unlocks the voice.</em></p>
+</div>
+
+<div align="center">
+  <img src="docs/shots/home.png" width="820" alt="The sFace home screen showing today's coin and its 24 hour move">
+  <p><em>Then the front door: today's coin, its move, and the ways in.</em></p>
+</div>
+
+## What you are actually flying
+
+Three things in this game are not invented, and every one of them can be checked
+from inside a single run.
+
+| | |
+|---|---|
+| **The map** | Today's worst performer in the top 100 becomes the stage. Its real 24-hour chart is the ground. A violent morning is a wall you have to climb; a slow bleed is a long drop with nowhere to stand. |
+| **The odds** | Fear and Greed decides how many attackers there are and how fast they fire. Everyone who plays that day gets the same one. |
+| **The cast** | The accounts trapped in the wreck are whoever crypto X spent the day on, read fresh each morning. Every post the game shows carries a link back to the original. |
+
+The rule behind the third one is absolute: **no statement is ever attributed to a
+real person without a link to the post it came from.** An early build generated
+plausible quotes and it was removed entirely. The model returns indices into real
+posts and never writes a URL.
+
+<div align="center">
+  <img src="docs/shots/chart-run.png" width="820" alt="Stage one, flying over the day's real price chart">
+  <p><em>Stage one. That ridge is a real price move from the last 24 hours.</em></p>
+</div>
+
+## Seven stages, seven different games
+
+The complaint that shaped the second half of this project was that the stages felt
+like one run with a different background. They no longer are. Each asks something
+the others do not.
+
+| Stage | The world | What it asks of you |
+|---|---|---|
+| **1–3** | The chart | Fly it. Free people. Reach the pad before the clock. |
+| **4** | The chart, watched | Do not be seen. Sight cones, and the level wakes if you cross one. |
+| **5** | A city | Drive, or walk. The car is twice as fast and heard from twice as far. |
+| **6** | A downtown | Read. Four posts that genuinely went out today, one explains it. |
+| **7** | A ring city | Work it out. No weapon opens a gate. |
+
+### Stages five and six: the city
+
+Two stages leave the heightmap entirely. A price line drawn as **bars** is already
+a skyline, so the streets between the buildings are the gaps between the bars.
+Same seed, same numbers, projected differently. A violent day gives a jagged city
+full of cover; a flat day gives long open avenues with nowhere to hide.
+
+<div align="center">
+  <img src="docs/shots/city.png" width="820" alt="The city stage, built from the day's price bars">
+  <p><em>Streets built from the day's own price bars. Some buildings open, and the doorway fits a person but not the car.</em></p>
+</div>
+
+### Stage seven: the ring city
+
+The finale is a third geometry. Concentric walls around a core, worked inward
+rather than crossed, with one gap in each wall to find.
+
+**No weapon opens a gate.** Reaching a project hands you its intel: where it sits
+by size, and how it is holding up today. The wall then asks a question about the
+projects behind it and shows only their tickers, so the answer is only knowable if
+you went and looked. Fly past a project and you can still reach the wall. You
+simply cannot answer it.
+
+<div align="center">
+  <img src="docs/shots/rings.png" width="820" alt="Stage seven, a ring city with a gate question showing two projects marked never asked">
+  <p><em>Both options marked <code>never asked</code>. The answer was out there, and this player did not go and get it.</em></p>
+</div>
+
+The allies are the largest projects by market capitalisation on the day you play,
+off the same market call that picks the day's wreck. Not a curated list of what
+anyone thinks deserves to be there. Stablecoins are filtered out on the data,
+because a peg is engineered not to move and so has not survived anything.
+
+## The ending
+
+Clearing the campaign pulls the camera back. The chart you just spent seven stages
+inside is redrawn smaller, and smaller, until the catastrophe is a notch on a long
+climb.
+
+<div align="center">
+  <img src="docs/shots/ending.png" width="820" alt="The campaign ending, showing the day's chart as a small notch on a long climb with live market figures">
+  <p><em>Every figure is fetched. The closing line makes a claim about size, never a forecast.</em></p>
+</div>
+
+## Built for Nimiq Pay
+
+sFace is a Mini App. It opens inside the wallet somebody already has, with their
+identity and their clan already there. No download, no extension, no seed phrase in
+the middle of a run.
+
+- **Face is rank.** Every run banks it, and rank opens stages, weapons and a
+  steadier gun. It compounds across days.
+- **Challenges settle on-chain.** Stake a friend on your exact seed and the better
+  run takes it. A fee small enough that a wager can be worth a coffee is what makes
+  that a feature rather than a demo.
+- **sFace never holds funds.** Stakes are ordinary transactions signed in Nimiq Pay
+  against your own wallet.
+- **Scores are signed and re-checked.** Your wallet signs the score; the service
+  rebuilds the level from the same seed and refuses a run that could not have
+  happened.
+
+Outside the wallet, every stage is a 25-second preview: the day's real chart and
+real cast, no score at the end. Enough to see what the game is, not enough to be
+the game.
+
+<div align="center">
+  <img src="docs/shots/home-phone.png" width="270" alt="sFace on a phone">
+  &nbsp;&nbsp;
+  <img src="docs/shots/how-to-play.png" width="270" alt="The how to play guide on a phone">
+  <p><em>Phone first. Both thumbs, a fixed-pad option in settings, and a guide written for a thumb.</em></p>
+</div>
+
+## How it is built
+
+**Client.** TypeScript, Vite, canvas 2D. No game engine and no framework. Every
+character on screen is drawn by one function, which is what makes a crowd read as a
+crowd rather than as a set of shapes.
+
+**Service.** Node, Express, zod at every boundary. It composes the day's mission
+from CoinGecko and Fear and Greed, reads crypto X for the story, and verifies
+scores.
+
+**Chain.** Nimiq Pay Mini App SDK. Ed25519 signatures over the Nimiq signed-message
+envelope, verified server-side with `@nimiq/core`.
+
+### The rules the code holds itself to
+
+<details>
+<summary><strong>Two random streams, and the distinction is load-bearing</strong></summary>
+
+<br>
+
+`levelRng` is consumed once at construction to lay out the entire level. `runRng`
+is everything reactive during play. If enemy fire timing drew from `levelRng`, one
+player killing an enemy early would shift every later draw and two players on one
+seed would quietly stop playing the same level. That bug is invisible until a
+challenge settles wrong.
+</details>
+
+<details>
+<summary><strong>Scores are bounded by rebuilding the level</strong></summary>
+
+<br>
+
+The service reconstructs the run from the seed using the client's own parser, so it
+checks against precisely the level the client was given rather than a near copy
+that could drift apart from it. A claim of more kills than the level contains is
+refused. The signing address is derived from the public key; there is deliberately
+no address field in the request.
+</details>
+
+<details>
+<summary><strong>A staked challenge is levelled</strong></summary>
+
+<br>
+
+Aim assist is free at a baseline for everyone and rises with progress, but a
+challenge pins both sides to the baseline. The camera already refuses to show a
+desktop more of the world than a phone for the same reason. A bet settles on who
+played better today, not on who has played longer.
+</details>
+
+<details>
+<summary><strong>No purchasable advantage</strong></summary>
+
+<br>
+
+Scrip is earned in-run and cannot be bought. Pay-to-win would break the fair-bet
+guarantee the whole challenge system rests on.
+</details>
+
+<details>
+<summary><strong>Testnet never spends</strong></summary>
+
+<br>
+
+A testnet session serves cached reads and never triggers a metered X call, and its
+scores are verified but kept off the mainnet board. Declaring testnet can only ever
+make the service spend less, so trusting the client with it is safe in the one
+direction that matters.
+</details>
+
+## Repository
+
+```
+src/
+  core/       loop, input, pads, network, audio, speech
+  game/       the simulation. no DOM, no canvas, no fetch
+    terrain     the chart, as ground
+    city        stages 5 and 6: blocks and streets
+    rings       stage 7: concentric walls and a core
+    node        stage 6: reading the day's posts
+    ally        stage 7: intel, and the gates it opens
+    assist      aim help, and why a staked run is levelled
+  render/     canvas only. reads state, never writes it
+  ui/         DOM screens
+  net/        anything that talks to the service
+server/
+  oracle      composes the day from CoinGecko and Fear and Greed
+  xsense      reads crypto X for the story and the cast
+  verify      rebuilds a level to bound a submitted score
+  attest      Nimiq signature verification
+  challenges  stakes, acceptance and settlement
+scripts/
+  shoot.mjs   regenerates every screenshot in this file
+```
 
 ## Run it
 
 ```bash
 npm install
 npm run dev          # client on 5173
-npm run server:dev   # oracle and challenge service on 8790
+npm run server:dev   # service on 8790
 ```
 
-Copy `.env.example` to `.env` first. Nothing secret goes in the client half:
-Vite exposes everything prefixed `VITE_`.
+The client works with no service at all: it falls back to a practice mission and
+every stage is playable. The service is what makes it today's real market.
 
 ```bash
-npm run check        # typecheck all three projects, then the tests
-npm run build        # check, then bundle
-npm run icons        # regenerate the PNG icons from the vector mark
+npm run check            # three tsconfigs and the whole suite
+npm test                 # 441 tests
+node scripts/shoot.mjs   # re-shoot the screenshots above
 ```
 
-Test it inside Nimiq Pay early. A WebView is not a browser:
-
-```
-nimiqpay://miniapp?url=your-deployed-url
-```
-
-## How a level is generated
-
-The server reads the market once a day and publishes one payload: the ticker,
-the normalised chart, the fear reading, a difficulty, and a seed string. The
-seed is built from the day and the data, so anyone can check that today's level
-came from today's market:
-
-```
-2026-07-28:beat:-19.10:fng29
-```
-
-Every client feeds that seed into `src/core/rng.ts` and lays out an identical
-level. Same attackers, same places, same faces. Two players anywhere in the
-world get the same run without exchanging a packet, which is what makes a
-challenge a fair bet.
-
-**Two random streams, and the difference matters.** One is consumed once, at
-construction, to lay out the level. The other drives everything reactive during
-play. If they were merged, one player killing an attacker early would shift
-every later draw and the two levels would quietly stop matching partway
-through. That failure is invisible until a challenge settles wrong, so it is
-pinned by a test in `tests/determinism.test.ts`.
-
-Never use `Math.random` for anything that affects the level.
-
-## The market builds the level. Crypto X casts it.
-
-Two live reads, once a day, and between them the mission is a story rather
-than a chart.
-
-**The market** picks the ticker, the terrain and the difficulty. The worst
-performer in the top 100 becomes the level, its 24-hour chart becomes the
-ground, the Fear and Greed index sets the spawn rate, and the chart's own
-volatility decides where the attackers are.
-
-**Crypto X picks the cast.** Once a day the service asks Grok to search X and
-report what crypto is actually arguing about, how the timeline actually feels,
-and which five accounts were genuinely at the centre of it. Those five become
-the people trapped in the wreck, each with one dry line about what actually
-happened to them today and a rescue quirk that suits them. Ansem has a day, so
-you are flying out to get Ansem.
-
-Both reads are optional and both degrade honestly. No `XAI_API_KEY` and the
-roster falls back to five fictional archetypes, with no headline shown at all
-rather than a headline with nothing behind it. No service at all and the whole
-mission falls back to a practice run generated from the date, labelled as
-practice everywhere it appears.
-
-**On real people.** The roster carries real handles, real public context and
-real profile pictures, because all three are facts about the day and a wall of
-generated figures made the whole thing feel invented. Pictures come from X's
-public `profile_image_url` in `server/xusers.ts`, hotlinked at display time,
-never copied or stored. With no token the character falls back to a figure
-derived deterministically from the handle, so the same person still looks the
-same on every device.
-
-The hard line is on words, not faces. **No statement is ever attributed to a
-real person without a link to the post it came from.** The model is handed real
-posts with an index and returns indices; it never writes a URL, so a fabricated
-citation cannot be expressed in the first place. `server/xsense.ts` carries a
-comment saying not to reintroduce a model-written URL field, because an earlier
-version had one and it invented quotes.
-
-## Connect X
-
-Optional, and worth it: your own profile picture rides on your character's
-head, your handle replaces the generated pilot name on the leaderboard and on
-your score card, and squadmates see it too.
-
-OAuth 2.0 with PKCE. The token exchange happens on the service because a
-client secret in a browser bundle is not a secret. **Nothing is stored**: no
-user table, no session, no refresh token. The access token is used once, in the
-request that exchanges the code, and dropped. What comes back to the browser is
-a handle, a display name and a picture URL, all public. If the service were
-fully compromised there would be no X account it could act on behalf of.
-
-## Flying with other people, without netcode
-
-Everyone on a given day flies the same seeded level. That one fact is what the
-whole social layer is built on, and it is why none of it can desync.
-
-**Ghost squadmates.** Every run is recorded as a compact position trace, about
-6 bytes per frame at 20Hz. Open the game and the best recent runs on today's
-seed fly beside you, named, towing their own rescued faces, firing their own
-shots. The first player of the day flies alone and everyone after them flies
-with whoever came before, so there is no lobby, no matchmaking, and no waiting
-for a second human.
-
-**Live co-op.** If someone else is playing right now, their ship appears too.
-The server relays positions and nothing else: there is no authoritative state
-and no simulation on it, because the terrain, the attackers and the faces
-already match on every client without a byte crossing the wire. A ghost and a
-live squadmate are the same struct behind the same render path, which is why
-live co-op cost about a hundred lines on top of ghosts.
-
-Squadmates are deliberately non-interacting. They cannot shoot you, cannot be
-shot, and cannot take a face you were going for. That is a design choice, not
-a shortcut: the moment one player's actions change another player's level, the
-shared seed stops guaranteeing a fair challenge, and the fair challenge is what
-the NIM is riding on. They are drawn translucent so the screen says so.
-
-Traces record positions rather than inputs. Inputs would be smaller and would
-let the server verify a score, but any drift at all, a quantised aim angle or a
-float rounding differently on another device, compounds over a hundred and ten
-seconds into a ghost flying through a hill. Ghosts are cosmetic, so a correct
-picture beats a compact file.
-
-## The wallet
-
-Read accounts through the SDK, take a per-device identifier for the daily
-leaderboard, and request a payment when a challenge resolves. That is all.
-
-The wallet is never a toll gate. The mission loads and the brief appears while
-the provider is still being probed, the device identifier is only requested
-after a finished run, and every wallet call degrades to solo play rather than
-blanking the screen. Opened in a plain browser with no provider at all, the
-game is fully playable.
-
-## The money, honestly
-
-The app never holds funds. Two players run the same seeded mission, the scores
-resolve, and the loser sends the winner NIM directly from their own wallet with
-the on-chain transaction as the receipt. No pot, no escrow, no house, and no
-key anywhere in this repo.
-
-The honest consequence: **a loser can decline to pay.** There is nothing here
-that can force a settlement, and the challenge screen says so rather than
-implying an enforcement that does not exist.
-
-## CT Signals
-
-The one thing in here that charges money, and the reason is boring: reading X
-costs per lookup and the credit has to come from somewhere.
-
-It answers a question you cannot answer about yourself. Of the accounts that
-publicly replied to or mentioned you this week, which ones already fly here,
-and which clan are they in. Picking a clan blind was the weakest decision in
-the game, so this is the fix for it: two or more of your actual engagers in one
-clan is a reason to look at it, and one is a coincidence.
-
-The free glance is deliberately useful rather than a teaser. It shows the real
-totals and your top three, computed from exactly the same read the paid tier
-uses. A paywall whose free side is worthless teaches people the paid side is
-worse. The deep read extends it to twenty and adds the clan overlap.
-
-**Nothing is stored.** Public replies and mentions only, computed on request
-and discarded. There is no engagement graph on disk, about players or about
-anyone they talk to. Set `SFACE_TREASURY` to charge for the deep read and
-`SIGNALS_PRICE_NIM` to price it; leave the treasury unset and it is simply
-free, which is the right default for a paywall with nowhere to pay. The
-payment is reported by the client, not verified on chain, exactly like
-challenge settlement and with the same caveat below. It matters less here:
-this repo is MIT and public, so the deep read was never behind a lock anybody
-had to break, and the screen says as much.
-
-## The campaign
-
-Seven stages, each one restoring a piece of what 2026 cost: market panic,
-project shutdowns, exploits, regulatory limbo, institutional doubt, broken
-narratives, and finally the lot. A stage sets its own clock, enemy density,
-cache count, incoming volley, and how much of the day's chart you fly, and it
-carries an objective that has to be met before it counts as cleared. Clearing
-one opens exactly the next one.
-
-**A stage is the same engine with different numbers and a different thing to
-achieve.** That is stated plainly at the top of `src/data/campaign.ts` rather
-than dressed up: the escalation is in parameters and objectives, not in seven
-separate games. The stage number is folded into the seed, so Stage 1 and Stage
-3 on the same day are genuinely different levels and two players comparing
-Stage 3 scores flew the same Stage 3. Every stage has its own sky, ground and
-hatching, so seven stages read as seven places.
-
-**Not built, and named here rather than half-built:** PvP arenas, boss
-entities, escort AI, and maps that reshape mid-run from live X. Those need new
-systems rather than new numbers.
-
-## Progression that cannot become pay-to-win
-
-Every run adds to a lifetime Face total, and that total is the only currency in
-the game. It moves you up an eight-tier ladder and it opens the rack: four
-weapons, at 0, 5,000, 20,000 and 50,000 Face.
-
-**None of them is for sale.** NIM does exactly one thing in sFace, which is
-back your own run against somebody else's. A gun you could buy would make that
-bet unfair, so the guns cost the one thing you can only get by playing.
-
-**None of them is stronger, either**, and that is the harder half. Two players
-on the same seed have to be playing the same game, so a full rack is more ways
-to fly rather than more damage:
-
-| | Damage/s | Reach | What it gives up |
-|---|---|---|---|
-| Sidearm | 96 | 836 | Best at nothing in particular |
-| Scattergun | 104 | 260 | A third of the reach |
-| Lance | 81 | 1500 | Slow, and it shoves you backwards |
-| Stream | 91 | 480 | Five damage a round, so you must stay on target |
-
-The rule is written at the top of `src/data/weapons.ts` and pinned by two tests
-in `tests/weapons.test.ts`: every weapon must lay out an identical level, and
-nothing may out-damage the sidearm while also out-ranging it. If either fails,
-the correct response is to fix the weapon.
-
-Rank itself unlocks nothing else. A tier eight pilot flies the identical
-mission to a tier one, so somebody who plays twenty runs a day has earned a
-bigger number and no advantage at all.
-
-## Clans
-
-A clan is a four character tag and a pooled total. There is no clan record, no
-owner, no roster table, no invite list and no approval step: the tag is written
-on a profile, and everything a board shows about a clan is folded out of the
-profiles carrying that tag. A clan therefore cannot go out of sync with its own
-members, because there is nothing separate to go out of sync.
-
-Invites are a link. Tapping it opens the app with the tag already in the field,
-so an invited player joins in one tap, and the link goes out through the same X
-compose intent the score cards use.
-
-**Anyone can join any tag, and that is not an oversight.** Authentication here
-is a device identifier anybody can regenerate by clearing their site data, so an
-ownership model would be ceremony around a lock with no key in it. It also has
-nothing to protect: joining a clan adds your Face to its total and can never
-remove anyone else's, so a squatter donates. The clan screen says this on the
-screen rather than implying a security model that is not there.
-
-## What this build does not verify
-
-Stated plainly, because dressing them up would be worse than the gaps
-themselves.
-
-**Payments are reported, not verified.** When a payment goes through, the
-client sends the serialized transaction to the service and it is stored and
-displayed as *reported by the payer*. There is no Nimiq node in this build to
-check it against. This covers both challenge settlements and the CT Signals
-deep read.
-
-**Leaderboard scores are bounded, not proven.** A client can lie about its
-score. Input-trace replay was scoped out, so what the service does instead is
-refuse scores above the game's actual maximum, refuse durations a run cannot
-have, refuse a high score claimed against an impossibly short run, and keep one
-entry per pilot per day. That is a speed bump, not a lock.
-
-**Pilot identity is pseudonymous, and outside Nimiq Pay it is local.** Inside
-Nimiq Pay we ask for the real device identifier after your first run, which is
-stable across reinstalls and cannot be correlated with other mini apps. Outside
-it, or if you decline, the game generates one and keeps it in local storage, so
-squadmates and the board work in any browser. A local identifier can be reset
-by clearing site data, which makes it an anti-spam bucket rather than proof of
-anything. Nothing that moves NIM depends on it: a settlement is authorised in
-the wallet, against an address shown on the payer's own screen.
-
-## What is in here
-
-- `src/core/` the fixed-timestep loop, the seeded RNG, input, audio
-- `src/game/` the run: state, one step of update, player, attackers, faces,
-  terrain, collision, the daily mission with its validator and fallback, and
-  the ghost codec and squad
-- `src/render/` canvas drawing, camera, HUD, effects, and the palette
-- `src/nimiq/` every call that touches the wallet, each one guarded
-- `src/net/` the service client, the live socket, and pilot identity
-- `src/ui/` the screens either side of a run, plus the score card
-- `server/` the daily oracle, leaderboard, clans, challenges, ghost traces, the
-  live relay, the X reads behind the Dispatch and CT Signals, and a JSON
-  snapshot that survives a restart
-- `tests/` 215 tests, weighted toward the seed invariant, the payment path, and
-  the trace decoder, which is the one place network data reaches the renderer
-
-## Stack
-
-Vite and TypeScript, Canvas 2D, no game engine. A side-scroller this size is a
-few hundred lines of loop and collision, and a dependency you have to learn is
-a dependency that eats hours. The client ships one runtime dependency,
-`@nimiq/mini-app-sdk`, and the whole bundle is around 41 kB gzipped.
-
-The service is Express with zod at every boundary and per-endpoint rate limits,
-since every endpoint is unauthenticated by design. Live co-op shares the same
-http server on `/live`, so it is one port and one proxy rule.
+Copy `.env.example` to `.env`. Every key is optional, and each one degrades a
+feature rather than breaking the app.
 
 ## Deploy
 
-Static client on Vercel, since a mini app only needs an HTTPS URL. The service
-on a VPS behind Caddy. Set `VITE_API_BASE` on the client, and `ALLOWED_ORIGINS`
-and `TRUST_PROXY=true` on the service. If the service is unreachable the client
-falls back to a practice mission generated from the date, labelled as practice
-everywhere it appears, so a judge opening a cold URL still gets a playable game
-rather than a spinner.
+The client is static and builds to `dist`. The service ships as a container: CI
+runs the suite, publishes to GHCR, and rolls out to the VPS, where the deploy key
+is pinned to a single root-owned script that accepts nothing but a commit sha.
 
-## Credits
+Screenshots here are generated rather than taken by hand. `node scripts/shoot.mjs`
+drives a real browser against the dev server and puts the game into each state
+deliberately, so the showcase cannot drift from the build it sits beside.
 
-Faces are fictional archetypes. No real person is named or depicted.
+---
 
-Market data from CoinGecko. Fear and Greed index from alternative.me.
+<div align="center">
+  <img src="docs/shots/docs.png" width="820" alt="The in-app documentation page">
+  <p><em>The same explanation ships inside the app, reachable from the footer on every screen.</em></p>
+</div>
+
+<div align="center">
+  <sub><strong>The market builds the level.</strong></sub>
+</div>

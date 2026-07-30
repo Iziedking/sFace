@@ -35,7 +35,7 @@ import { Effects } from './render/effects';
 import { renderBoard, renderBrief, renderResults, type BoardTab } from './ui/screens';
 import { initialSteps, renderLoading, type LoadStep } from './ui/loading';
 import { renderChallenge } from './ui/challenge';
-import { renderIntro, introSeen } from './ui/intro';
+import { renderIntro } from './ui/intro';
 import { renderControls } from './ui/controls';
 import { renderGate } from './ui/gate';
 import { renderPause, renderRunOverlay } from './ui/pause';
@@ -389,19 +389,32 @@ class App {
     this.loop.start();
 
     /*
-     * The intro plays before the brief, once ever.
+     * The opening plays on every visit, not once ever.
      *
-     * It sits after the loop has started so the chart is already alive behind
-     * it, and after the mission has loaded so nothing about it is a guess. A
-     * returning player never sees it again and goes straight to the brief.
+     * It used to be gated on a flag in localStorage, which meant it fired the
+     * first time somebody ever loaded the site and never again. On the live site
+     * that reads as no onboarding at all: you land straight on the sign-in page
+     * with no idea what the game is, and the voice never starts because the
+     * gesture that unlocks audio was on a screen you were never shown.
+     *
+     * So it plays every time. It is five short lines, it is skippable from the
+     * first frame, and the tap that starts it is what browsers require before
+     * any sound can play. Somebody arriving cold is exactly who this is for, and
+     * that is most people most days.
+     *
+     * It sits after the loop has started so the chart is alive behind it, and
+     * after the mission has loaded so nothing in it is a guess.
      */
-    if (!introSeen() && !this.pendingChallengeId) {
+    if (!this.pendingChallengeId) {
       this.ui.className = '';
       this.screen = 'intro';
       renderIntro(this.ui, {
         voice: music.on,
         onBegin: () => this.startSound(),
-        onDone: () => void this.enter(),
+        // Straight to the home page. The opening already had its own title
+        // beat, so a second brand splash here is a wall between somebody who
+        // just watched the pitch and the button the pitch was arguing for.
+        onDone: () => this.landing(),
       });
     }
 
@@ -1387,6 +1400,9 @@ class App {
     this.effects.clear();
     this.input.reset();
     this.recorder.reset();
+    // The ring city is read at a distance, so the camera sits back from it.
+    if (this.run.rings) this.camera.zoomOut(Camera.RING_ZOOM_OUT);
+
     // A city has no ground line to bias toward, so it gets the free camera.
     if (this.run.city) {
       this.run.player.x = this.run.city.startX;

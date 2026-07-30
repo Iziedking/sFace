@@ -148,7 +148,19 @@ export function renderChrome(root: HTMLElement, options: ChromeOptions): void {
           : 'Mainnet: real NIM, real board. Tap to rehearse on testnet.',
     },
     el('span', { class: 'chrome__netdot' }),
-    el('span', { class: 'chrome__netname', text: networkLabel(net).toUpperCase() }),
+    /*
+     * Shortened rather than hidden on a narrow screen.
+     *
+     * MAINNET and TESTNET do not fit beside a wordmark, a ticker and a rank chip
+     * on a phone, and the old answer was to drop the word entirely and keep a
+     * coloured dot. That made it unreadable: this chip decides whether the NIM
+     * on screen is real, and nobody should have to learn a colour code for that.
+     * MAIN and TEST fit, and say it.
+     */
+    el('span', {
+      class: 'chrome__netname',
+      text: net === 'test' ? 'TEST' : 'MAIN',
+    }),
   );
   chain.addEventListener('click', () => setNetwork(net === 'test' ? 'main' : 'test'));
 

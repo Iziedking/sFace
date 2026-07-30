@@ -116,6 +116,28 @@ export class Camera {
     this.shakeY = (Math.random() * 2 - 1) * this.shakeAmount;
   }
 
+  /**
+   * How much wider the view goes on the ring city.
+   *
+   * The rings sit five hundred apart in a world nearly six thousand across, and
+   * at the normal scale you see one curved wall filling the screen with no way
+   * to tell it is one of several. Pulling back is what makes the shape of the
+   * place readable, which is the entire reason it is rings rather than a grid.
+   *
+   * Applied as a zoom rather than by raising the view caps, because those caps
+   * exist to stop a desktop seeing more of a LEVEL than a phone. This changes
+   * both devices by the same factor, so the fairness the caps protect is
+   * untouched.
+   */
+  static readonly RING_ZOOM_OUT = 2.6;
+
+  /** Widen the view for a world that has to be read at a distance. */
+  zoomOut(factor: number): void {
+    this.scale /= factor;
+    this.viewW *= factor;
+    this.viewH *= factor;
+  }
+
   /** Snap straight to a free-follow target, for the first frame of a run. */
   jumpToFree(player: Player, world: { width: number; height: number }): void {
     const halfW = this.viewW / 2;

@@ -4131,15 +4131,19 @@ body.is-fullscreen .foot,
 }
 
 /* On a narrow phone the bar is already carrying a wordmark, a ticker and a rank
- * chip. The dot survives and the word goes: colour and position still say which
- * network it is, and the accessible label is unaffected. */
+ * chip, so this tightens up. What it does NOT do any more is drop the label.
+ *
+ * It used to hide the word and keep the dot, on the theory that colour and
+ * position carried the meaning. They do not. Reported from a phone as an icon
+ * nobody can read, which is exactly right: a chip that silently decides whether
+ * your NIM is real has to say which one it is, and a coloured dot is a puzzle,
+ * not an answer. Four characters fit. */
 @media (max-width: 560px) {
-  .chrome__netname {
-    display: none;
-  }
-
   .chrome__net {
-    padding: 6px;
+    padding: 5px 7px;
+    gap: 4px;
+    font-size: 9px;
+    letter-spacing: 1px;
   }
 }
 
@@ -4420,4 +4424,43 @@ body.is-fullscreen .foot,
   text-transform: uppercase;
   letter-spacing: 0.4px;
   margin: 0 0 26px;
+}
+
+/* The network block in settings ----------------------------------------
+ *
+ * The chip in the app bar is four characters. This is where the difference is
+ * actually explained, including the faucet, because testnet is only useful for
+ * the money paths and those need a balance.
+ */
+.settings__net {
+  margin-top: 26px;
+  padding: 16px;
+  border: 2px solid var(--ink);
+  background: var(--paper, var(--canvas));
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+
+.settings__nethead {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--accent);
+  margin: 0;
+}
+
+.settings__netsay {
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 0;
+  max-width: 56ch;
+}
+
+.settings__faucet {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }

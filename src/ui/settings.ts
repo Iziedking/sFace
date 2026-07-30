@@ -10,6 +10,7 @@
  * to tidy the home page would be a worse app arranged more neatly.
  */
 
+import { networkLabel, onTestnet, setNetwork, TESTNET_FAUCET } from '../core/network';
 import { button, el, mount } from './dom';
 import {
   SCHEME_LABEL,
@@ -77,6 +78,43 @@ export function renderSettings(root: HTMLElement, options: SettingsOptions): voi
         class: 'settings__note',
         text: 'Turn the phone sideways if you can. The level runs left to right, so landscape shows you more of what is coming and puts both controls under your thumbs.',
       }),
+
+      /*
+       * Which network this is, said in words rather than left to a chip.
+       *
+       * The chip in the bar is four characters and a dot, which is enough to
+       * notice and not enough to explain. Somebody who wants to know what the
+       * difference actually means comes here, and the difference matters: it
+       * decides whether the NIM in a stake is real.
+       */
+      el(
+        'div',
+        { class: 'settings__net' },
+        el('p', { class: 'settings__nethead', text: `NETWORK: ${networkLabel().toUpperCase()}` }),
+        el('p', {
+          class: 'settings__netsay',
+          text: onTestnet()
+            ? 'Testnet. The game is identical, but NIM here is worth nothing, scores stay off the daily board, and CT Signals is off because it reads live X. Use it to rehearse a challenge without spending anything.'
+            : 'Mainnet. Real NIM, the real daily board, and live reads of crypto X. This is the game.',
+        }),
+        onTestnet()
+          ? el(
+              'a',
+              {
+                class: 'settings__faucet',
+                href: TESTNET_FAUCET,
+                target: '_blank',
+                rel: 'noopener noreferrer',
+              },
+              'Get testnet NIM from the Nimiq faucet',
+            )
+          : null,
+        button(
+          onTestnet() ? 'Switch to Mainnet' : 'Switch to Testnet',
+          () => setNetwork(onTestnet() ? 'main' : 'test'),
+          'ghost',
+        ),
+      ),
 
       el('div', { class: 'actions' }, button('Done', options.onBack)),
     ),

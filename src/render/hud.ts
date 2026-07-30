@@ -119,7 +119,8 @@ export class Hud {
     this.drawRead(ctx, state, width, top + BAR_HEIGHT);
     this.drawGate(ctx, state, width, top + BAR_HEIGHT);
     // A city has no progress along a line, so it gets a map instead.
-    if (state.city) this.drawMap(ctx, state, height);
+    if (state.rings) this.drawRingMap(ctx, state, height);
+    else if (state.city) this.drawMap(ctx, state, height);
     else this.drawProgress(ctx, state, width, top + BAR_HEIGHT);
     this.drawCarrying(ctx, state, padX, height - this.insets.bottom - 26);
     this.drawStick(ctx, input);
@@ -623,6 +624,90 @@ export class Hud {
         ctx.fillText('never asked', x + cardW - 16, rowY + 17);
       }
     });
+
+    ctx.restore();
+  }
+
+  /**
+   * The ring city, small, in the corner.
+   *
+   * Not optional. The view shows about a quarter of the ring city's width, so
+   * from inside it you see one curved wall and no way to tell it is one of
+   * several, or which side of it you are on. The stage is built on working
+   * inward and without this there is nothing to work inward BY.
+   *
+   * It shows the walls, which ones are still shut, where the openings are, and
+   * where you are. The gap markers matter most: hunting for the way through is
+   * the movement of the whole stage, and hunting blind is not a puzzle, it is a
+   * chore.
+   */
+  private drawRingMap(ctx: CanvasRenderingContext2D, state: RunState, height: number): void {
+    const rings = state.rings;
+    if (!rings) return;
+
+    const size = 124;
+    const scale = size / rings.width;
+    const x = this.insets.left + 12;
+    const padClearance = usingPads() ? 150 : 0;
+    const y = height - this.insets.bottom - size - 12 - padClearance;
+
+    const cx = x + rings.cx * scale;
+    const cy = y + rings.cy * scale;
+
+    ctx.save();
+    ctx.globalAlpha = 0.92;
+
+    ctx.fillStyle = theme.ink;
+    ctx.fillRect(x - 3, y - 3, size + 6, size + 6);
+    ctx.fillStyle = theme.canvas;
+    ctx.fillRect(x, y, size, size);
+
+    for (const ring of rings.rings) {
+      const r = ring.radius * scale;
+
+      // A shut wall is solid and loud. An answered one is a faint rule, so the
+      // eye goes to what is still in the way.
+      ctx.strokeStyle = ring.locked ? theme.danger : theme.hairline;
+      ctx.lineWidth = ring.locked ? 2.5 : 1.5;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, ring.gapAt + ring.gapHalf, ring.gapAt - ring.gapHalf + Math.PI * 2);
+      ctx.stroke();
+
+      /*
+       * The opening, marked.
+       *
+       * A gap this small is a couple of pixels of missing arc and invisible at
+       * this scale, so it gets its own dot. Without it the map shows walls and
+       * no doors, which tells a player they are trapped rather than where to go.
+       */
+      if (ring.locked) {
+        ctx.fillStyle = theme.accent;
+        ctx.beginPath();
+        ctx.arc(cx + Math.cos(ring.gapAt) * r, cy + Math.sin(ring.gapAt) * r, 2.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // The core, which is the way out.
+    ctx.fillStyle = theme.accent;
+    ctx.beginPath();
+    ctx.arc(cx, cy, Math.max(3, rings.coreRadius * scale), 0, Math.PI * 2);
+    ctx.fill();
+
+    // Projects still to be asked, so the detour is findable.
+    ctx.fillStyle = theme.rescue;
+    for (const ally of state.allies) {
+      if (ally.known) continue;
+      ctx.beginPath();
+      ctx.arc(x + ally.x * scale, y + ally.y * scale, 2.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // You, last and brightest.
+    ctx.fillStyle = theme.ink;
+    ctx.beginPath();
+    ctx.arc(x + state.player.x * scale, y + state.player.y * scale, 3.4, 0, Math.PI * 2);
+    ctx.fill();
 
     ctx.restore();
   }
