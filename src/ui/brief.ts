@@ -52,29 +52,66 @@ export interface BriefCardOptions {
 }
 
 /**
- * Seconds between one word appearing and the next.
+ * The hard ceiling on the whole card, start to finish.
  *
- * Three hundred and forty words a minute. Comfortably faster than reading aloud
- * and slow enough that the text is visibly being written rather than switched
- * on, which is the whole difference between this and a splash.
+ * The run is held while this is up, so every one of these seconds is a second
+ * the player is watching rather than playing. Five is enough to read four short
+ * lines and little enough that it never becomes the thing you remember about
+ * starting a stage. Nothing below is allowed to push past it.
+ */
+const MAX_BRIEF_SECONDS = 5;
+
+/**
+ * Preferred pace, in seconds between one word appearing and the next.
+ *
+ * Three hundred and forty words a minute: faster than reading aloud, slow enough
+ * that the text is visibly being written rather than switched on. A long brief
+ * compresses below this to fit the ceiling; a short one is never slowed down to
+ * fill it.
  */
 const WORD_IN_STAGGER = 60 / 340;
 /** How long a single word takes to land. */
 const WORD_IN_SECONDS = 0.26;
 
-/**
- * How long the completed card sits there.
- *
- * Timed from the last word landing, so this is time the brief is whole. Fixed
- * rather than scaled by length, because the reveal already took longer for a
- * longer brief and scaling both would compound.
- */
-const HOLD_SECONDS = 2.6;
+/** How long the completed card sits there, once every word has landed. */
+const HOLD_SECONDS = 1.8;
 
 /** Seconds between words as the card empties. */
-const WORD_OUT_STAGGER = 0.045;
+const WORD_OUT_STAGGER = 0.03;
 /** How long one word takes to leave. */
-const WORD_OUT_SECONDS = 0.32;
+const WORD_OUT_SECONDS = 0.28;
+
+/**
+ * Fit the reveal, the hold and the exit inside the ceiling.
+ *
+ * Only the two staggers are compressed. The per-word animations and the hold
+ * keep their durations, because shortening those makes the card feel hurried
+ * rather than brisk, while a tighter stagger just reads as someone typing
+ * faster.
+ */
+function timings(words: number): { inStagger: number; outStagger: number; total: number } {
+  const gaps = Math.max(1, words - 1);
+  const fixed = WORD_IN_SECONDS + HOLD_SECONDS + WORD_OUT_SECONDS;
+  const budget = Math.max(0, MAX_BRIEF_SECONDS - fixed);
+
+  const wanted = (WORD_IN_STAGGER + WORD_OUT_STAGGER) * gaps;
+  const scale = wanted > budget ? budget / wanted : 1;
+
+  const inStagger = WORD_IN_STAGGER * scale;
+  const outStagger = WORD_OUT_STAGGER * scale;
+
+  const total =
+    inStagger * gaps + WORD_IN_SECONDS + HOLD_SECONDS + outStagger * gaps + WORD_OUT_SECONDS;
+
+  return {
+    inStagger,
+    outStagger,
+    // Clamped rather than trusted. A compressed brief works out to exactly the
+    // ceiling, and floating point lands a hair either side of it, so the
+    // guarantee is enforced here instead of being an emergent property.
+    total: Math.min(MAX_BRIEF_SECONDS, total),
+  };
+}
 
 /**
  * Show the brief, then call onDone.
@@ -157,20 +194,32 @@ export function showBriefCard(root: HTMLElement, options: BriefCardOptions): () 
    */
   if (reducedMotion()) {
     card.classList.add('brief--still');
-    timers.push(window.setTimeout(finish, (HOLD_SECONDS + 1) * 1000));
+    timers.push(window.setTimeout(finish, MAX_BRIEF_SECONDS * 1000));
     window.addEventListener('keydown', finish);
     card.addEventListener('pointerdown', finish);
     return finish;
   }
 
+  /*
+   * The pace is computed here and handed to CSS as custom properties.
+   *
+   * Both halves have to agree on it exactly: the stylesheet drives the per-word
+   * delays and this file drives the timers that end the card. A hardcoded number
+   * in the CSS and a computed one here would drift the moment a stage's name got
+   * longer, and the card would either clear mid-sentence or sit there after the
+   * animation finished.
+   */
+  const pace = timings(order);
+  card.style.setProperty('--in-stagger', `${pace.inStagger}s`);
+  card.style.setProperty('--out-stagger', `${pace.outStagger}s`);
+
   // When the last word has landed. Everything after is measured from here.
-  const revealed = WORD_IN_STAGGER * (order - 1) + WORD_IN_SECONDS;
-  const emptied = WORD_OUT_STAGGER * (order - 1) + WORD_OUT_SECONDS;
+  const revealed = pace.inStagger * (order - 1) + WORD_IN_SECONDS;
 
   timers.push(
     window.setTimeout(() => card.classList.add('brief--out'), (revealed + HOLD_SECONDS) * 1000),
   );
-  timers.push(window.setTimeout(finish, (revealed + HOLD_SECONDS + emptied) * 1000));
+  timers.push(window.setTimeout(finish, pace.total * 1000));
 
   /*
    * Dismissed by a key, or by tapping the card itself. NOT by tapping anywhere.
@@ -187,19 +236,16 @@ export function showBriefCard(root: HTMLElement, options: BriefCardOptions): () 
   return finish;
 }
 
-/** Total seconds a brief occupies, for anything that needs to plan around it. */
+/**
+ * How long a brief occupies, capped. Used by anything that has to plan around
+ * it, and by the tests that pin the ceiling.
+ */
 export function briefSeconds(stage: Stage, mission: DailyMission): number {
-  const count =
+  const words =
     `Stage ${stage.n}`.split(/\s+/).length +
     stage.name.split(/\s+/).length +
     stage.objective.split(/\s+/).length +
     (mission.live ? 3 : 2);
 
-  return (
-    WORD_IN_STAGGER * (count - 1) +
-    WORD_IN_SECONDS +
-    HOLD_SECONDS +
-    WORD_OUT_STAGGER * (count - 1) +
-    WORD_OUT_SECONDS
-  );
+  return timings(words).total;
 }

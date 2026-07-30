@@ -355,6 +355,8 @@ export class RunState {
   readonly practice: boolean;
   /** A clipped look at a stage this player has not signed in to fly properly. */
   readonly taster: boolean;
+  /** True when this run is a look at the game from outside Nimiq Pay. */
+  readonly preview: boolean;
   refillsTaken = 0;
   /** Whether the day's single relic was recovered. Tracked for the profile. */
   relicTaken = false;
@@ -379,6 +381,15 @@ export class RunState {
    */
   static readonly TASTER_SECONDS = 45;
 
+  /**
+   * How long a run lasts outside Nimiq Pay.
+   *
+   * Enough to fly into the day's chart, meet its weather and see who is trapped
+   * in it. Not enough to extract anybody, which is deliberate: the point is to
+   * make somebody want the real run, not to hand them a worse copy of it.
+   */
+  static readonly PREVIEW_SECONDS = 25;
+
   constructor(
     mission: DailyMission,
     weapon: WeaponId = DEFAULT_WEAPON,
@@ -393,6 +404,20 @@ export class RunState {
      * sign in than being told about them.
      */
     practice = false,
+    /**
+     * Running outside Nimiq Pay.
+     *
+     * sFace is a Mini App, and the full game is the one in the wallet: rank that
+     * compounds, a clan, a challenge you can actually settle, a place on the
+     * board. A browser tab can show what the game IS, and it should, because
+     * that is how somebody decides to open it properly. What it cannot do is be
+     * the whole thing, or the wallet becomes a payment step people route around
+     * rather than the place the game lives.
+     *
+     * So out here every stage is a look: long enough to see the day's chart, the
+     * cast and the weather, and short enough that finishing is not on the table.
+     */
+    preview = false,
   ) {
     this.mission = mission;
     this.terrain = new Terrain(mission.terrain);
@@ -402,8 +427,11 @@ export class RunState {
     this.stage = stage;
     this.practice = practice;
     // Only later stages are clipped. Stage one practice is the full run.
-    this.taster = practice && stage.n > 1;
-    this.seconds = this.taster
+    this.preview = preview;
+    this.taster = preview || (practice && stage.n > 1);
+    this.seconds = preview
+      ? Math.min(stage.seconds, RunState.PREVIEW_SECONDS)
+      : this.taster
       ? Math.min(stage.seconds, RunState.TASTER_SECONDS)
       : stage.seconds;
     // Never shorter than a level worth flying, whatever a stage asks for.

@@ -11,6 +11,8 @@
  * a fetch with no timeout is a spinner that never ends.
  */
 
+import { networkHeaders } from '../core/network';
+
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
 const TIMEOUT_MS = 6000;
 
@@ -359,6 +361,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<ApiResu
       signal: controller.signal,
       headers: {
         'content-type': 'application/json',
+        // Every call carries the network, so the service never has to guess
+        // whether a request is a rehearsal or the real thing. See core/network.
+        ...networkHeaders(),
         ...(init.headers ?? {}),
       },
     });

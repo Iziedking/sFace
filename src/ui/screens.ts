@@ -57,6 +57,7 @@ export interface BriefOptions {
   onLoadout: () => void;
   onClan: () => void;
   onToggleSound: () => void;
+  onAbout: () => void;
   onControls: () => void;
   /** Null on a phone, where fullscreen is refused or actively harmful. */
   onFullscreen: (() => void) | null;
@@ -234,6 +235,7 @@ export function renderBrief(root: HTMLElement, options: BriefOptions): void {
       ),
 
       footer({
+        onAbout: options.onAbout,
         onControls: options.onControls,
         onDispatch: options.onDispatch,
         onBoard: options.onBoard,

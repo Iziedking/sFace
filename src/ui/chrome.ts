@@ -19,6 +19,7 @@
  * focal points and a bar across the top of them is furniture in the way.
  */
 
+import { network, networkLabel, setNetwork } from '../core/network';
 import { el } from './dom';
 import { rankFor } from '../data/story';
 import type { DailyMission } from '../game/mission';
@@ -121,8 +122,38 @@ export function renderChrome(root: HTMLElement, options: ChromeOptions): void {
   );
   rank.addEventListener('click', options.onRank);
 
+  /*
+   * Which chain this is, top right, always.
+   *
+   * Permanent rather than tucked into settings, because it answers a question
+   * that changes what every number on screen MEANS. A stake of five NIM is a
+   * real five NIM or it is nothing at all, and a player who cannot tell at a
+   * glance which one they are looking at has been handed a trap.
+   *
+   * It is a switch as well as a label. Two networks are the entire set, so a
+   * menu would be a click to reveal one alternative; tapping cycles instead.
+   */
+  const net = network();
+  const chain = el(
+    'button',
+    {
+      class: net === 'test' ? 'chrome__net chrome__net--test' : 'chrome__net',
+      type: 'button',
+      'aria-label': `Network: ${networkLabel(net)}. Switch to ${networkLabel(
+        net === 'test' ? 'main' : 'test',
+      )}.`,
+      title:
+        net === 'test'
+          ? 'Testnet: nothing here is worth anything, and X reads are off. Tap for mainnet.'
+          : 'Mainnet: real NIM, real board. Tap to rehearse on testnet.',
+    },
+    el('span', { class: 'chrome__netdot' }),
+    el('span', { class: 'chrome__netname', text: networkLabel(net).toUpperCase() }),
+  );
+  chain.addEventListener('click', () => setNetwork(net === 'test' ? 'main' : 'test'));
+
   root.replaceChildren(
-    ...[mark, wreck, el('div', { class: 'chrome__spacer' }), clan, rank].filter(
+    ...[mark, wreck, el('div', { class: 'chrome__spacer' }), clan, chain, rank].filter(
       (node): node is HTMLElement => node !== null,
     ),
   );

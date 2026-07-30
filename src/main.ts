@@ -44,6 +44,8 @@ import { earnedAssist } from './game/assist';
 import { renderLoadout } from './ui/loadout';
 import { renderClan } from './ui/clan';
 import { renderCampaign } from './ui/campaign';
+import { renderAbout } from './ui/about';
+import { renderHandoff } from './ui/handoff';
 import { renderDispatch } from './ui/dispatch';
 import { renderSignals } from './ui/signals';
 import { SPLASH_FULL_MS, pause as splashPause, renderSplash } from './ui/splash';
@@ -122,6 +124,7 @@ type Screen =
   | 'intro'
   | 'gate'
   | 'controls'
+  | 'about'
   | 'settings'
   | 'loadout'
   | 'clan'
@@ -193,26 +196,25 @@ class App {
    */
   private practice = false;
 
-  /*
-   * The brief does NOT hold the simulation, and that is deliberate.
+  /**
+   * True while the stage brief is on screen, and the run is held.
    *
-   * It used to. Holding the step meant the stick and the trigger did nothing for
-   * the first few seconds of a stage: the aim stayed wherever it spawned and the
-   * player was pushing controls that were not connected to anything yet.
-   * Reported as movement not responding until after some time and shooting stuck
-   * pointing one way, which is exactly what a frozen step looks like from
-   * outside.
+   * Holding is the point. The card is an explainer, and a player reading it is
+   * not playing, so letting attackers move and the clock drain behind it takes a
+   * stage away from somebody who was doing what they were asked to do.
    *
-   * Unresponsive controls at the start of a run are far worse than a few seconds
-   * of reading, so the run is live from the first frame and the card sits clear of
-   * the play area instead. Read it standing still, or ignore it and move.
+   * This was briefly the other way round, live underneath the card, because
+   * controls appeared dead at the start of a run. That turned out to be two
+   * separate faults: this freeze, and a fire pad that could not aim at all. With
+   * the pad fixed and the card capped at five seconds, holding is simply a short
+   * briefing rather than a game that ignores you.
    *
-   * The clock is deliberately not extended to compensate either. `seconds` is
-   * readonly because the service derives its score ceiling from it, and a client
-   * that granted itself extra time would earn a time bonus above that ceiling and
-   * get its own honest run rejected.
+   * Freezing also sidesteps the clock question entirely. Nothing has to be given
+   * back, so `seconds` stays readonly and the service's score ceiling still
+   * matches what the client had.
    */
   /** Cancels a brief that is still on screen. See ui/brief.ts. */
+  private briefing = false;
   private cancelBrief: (() => void) | null = null;
   /**
    * True when the last refusal was "you need a wallet" rather than an error.
@@ -612,12 +614,17 @@ class App {
     // Any brief still on screen from an abandoned run goes first, or two cards
     // stack and the second one's timer starts a run under the first.
     this.cancelBrief?.();
+    this.briefing = true;
 
     this.cancelBrief = showBriefCard(this.ui, {
       stage: run.stage,
       mission: run.mission,
       onDone: () => {
+        this.briefing = false;
         this.cancelBrief = null;
+        // Drop anything held during the card, so a thumb that was already down
+        // does not fling the player the moment control returns.
+        this.input.reset();
         // Only take over the layer if the player is still here. Quitting during
         // the brief leaves them on another screen, and painting the run overlay
         // on top of it would strand them.
@@ -836,11 +843,8 @@ class App {
       onFullscreen: fullscreenAvailable()
         ? () => void toggleFullscreen()
         : null,
-      onControls: () => {
-        this.ui.className = '';
-        this.screen = 'controls';
-        renderControls(this.ui, { onBack: () => this.showBrief() });
-      },
+      onAbout: () => void this.cross(() => this.showAbout()),
+      onControls: () => this.showControls(),
       onSettings: () => {
         this.ui.className = '';
         this.screen = 'settings';
@@ -1040,6 +1044,30 @@ class App {
     }
 
     await this.loadSignals('full');
+  }
+
+  /**
+   * The documentation page: what sFace is, and why it lives on Nimiq.
+   *
+   * Reachable from the footer on every screen that has one, so somebody who
+   * arrived cold and scrolled to the bottom looking for an explanation finds
+   * one rather than a list of links.
+   */
+  private showControls(): void {
+    this.ui.className = '';
+    this.screen = 'controls';
+    renderControls(this.ui, { onBack: () => this.showBrief() });
+  }
+
+  private showAbout(): void {
+    this.ui.className = '';
+    this.screen = 'about';
+
+    renderAbout(this.ui, {
+      onBack: () => this.showBrief(),
+      onPlay: () => this.showBrief(),
+      onGuide: () => this.showControls(),
+    });
   }
 
   private showCampaign(): void {
@@ -1315,7 +1343,23 @@ class App {
     // The weapon is decided here, once, rather than read every frame. A gun
     // that could change mid-run would make the recorded trace disagree with
     // the run that produced it.
-    this.run = new RunState(mission, this.weapon().id, this.activeStage(), this.practice);
+    /*
+     * Outside Nimiq Pay every run is a preview.
+     *
+     * `session.available` is true only when a live Nimiq provider answered, so
+     * it is the honest test for "is this the Mini App or a browser tab". A tab
+     * gets the day's real chart, its real cast and its real weather for a short
+     * look; the run that counts happens in the wallet.
+     */
+    const inWallet = this.session?.available === true;
+
+    this.run = new RunState(
+      mission,
+      this.weapon().id,
+      this.activeStage(),
+      this.practice,
+      !inWallet,
+    );
 
     /*
      * How much help the gun gets, decided here and nowhere else.
@@ -1463,6 +1507,25 @@ class App {
 
     if (this.challenge) {
       this.showChallengeScreen();
+      return;
+    }
+
+    /*
+     * A preview never shows a score.
+     *
+     * Deliberately not a smaller results screen. A number settles the question,
+     * and the point of a preview is to leave it open: they have seen today's
+     * real chart and the people in it, and what the run was worth is on the
+     * other side of opening it properly.
+     */
+    if (run.preview) {
+      this.ui.className = '';
+      this.screen = 'results';
+      renderHandoff(this.ui, {
+        state: run,
+        onReplay: () => this.startRun(),
+        onHome: () => this.showBrief(),
+      });
       return;
     }
 
@@ -1854,7 +1917,7 @@ class App {
     const run = this.run;
     if (!run) return;
 
-    if (this.screen === 'run' && !run.finished && !this.paused) {
+    if (this.screen === 'run' && !run.finished && !this.paused && !this.briefing) {
       // Purchases resolve before the step, so a bomb bought this frame clears
       // the attacker that would otherwise have hit you during it.
       /*

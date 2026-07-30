@@ -3961,9 +3961,14 @@ body.is-fullscreen .foot,
 
 /* Words arrive one at a time, in one sequence across the whole card, so the
  * brief reads as being written rather than switched on. 340 words a minute. */
+/* The stagger comes from ui/brief.ts as a custom property, because the same
+ * number drives the timers that end the card. A literal here would drift from
+ * them the moment a stage name got longer, and the card would clear mid-sentence
+ * or linger after the animation had finished. The fallback is the uncompressed
+ * pace, for the case where the property never arrives. */
 .brief__word {
   animation: brief-word-in 0.26s cubic-bezier(0.2, 1.5, 0.4, 1) both;
-  animation-delay: calc(var(--w) * 0.1765s);
+  animation-delay: calc(var(--w) * var(--in-stagger, 0.1765s));
 }
 
 @keyframes brief-word-in {
@@ -4036,8 +4041,8 @@ body.is-fullscreen .foot,
 /* The exit. Each word waits on its own index, so the card empties left to right
  * and a late reader still has the end of the sentence for a moment longer. */
 .brief--out .brief__word {
-  animation: brief-word-out 0.32s cubic-bezier(0.5, 0, 0.75, 0) both;
-  animation-delay: calc(var(--w) * 0.045s);
+  animation: brief-word-out 0.28s cubic-bezier(0.5, 0, 0.75, 0) both;
+  animation-delay: calc(var(--w) * var(--out-stagger, 0.03s));
 }
 
 @keyframes brief-word-out {
@@ -4069,4 +4074,260 @@ body.is-fullscreen .foot,
   .brief--out .brief__word {
     animation: none;
   }
+}
+
+/* The network chip ------------------------------------------------------
+ *
+ * Top right, permanent, and a button. It answers what every NIM figure on
+ * screen actually means, which is not something to hide behind a settings
+ * screen.
+ *
+ * Mainnet is deliberately the quiet state: neutral, no colour, no attention. It
+ * is the default and the normal case, and a badge shouting MAINNET at somebody
+ * who never leaves it is noise. Testnet is the one that has to be impossible to
+ * miss, because that is the state where a number on screen is a rehearsal.
+ */
+.chrome__net {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border: 2px solid var(--ink);
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  cursor: pointer;
+  box-shadow: var(--lift-sm);
+  white-space: nowrap;
+}
+
+.chrome__net:active {
+  transform: translate(2px, 2px);
+  box-shadow: 0 0 0 var(--ink);
+}
+
+.chrome__netdot {
+  width: 7px;
+  height: 7px;
+  background: var(--ink);
+  border-radius: 50%;
+  flex: none;
+}
+
+/* Testnet takes the accent and inverts, because the whole point is that it
+ * cannot be mistaken for the real thing at a glance. */
+.chrome__net--test {
+  background: var(--accent);
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.chrome__net--test .chrome__netdot {
+  background: var(--canvas);
+}
+
+/* On a narrow phone the bar is already carrying a wordmark, a ticker and a rank
+ * chip. The dot survives and the word goes: colour and position still say which
+ * network it is, and the accessible label is unaffected. */
+@media (max-width: 560px) {
+  .chrome__netname {
+    display: none;
+  }
+
+  .chrome__net {
+    padding: 6px;
+  }
+}
+
+/* Documentation pages ---------------------------------------------------
+ *
+ * Read once, by a stranger, probably on a phone, probably in under a minute.
+ * So: one column, generous measure, and headings that survive being skimmed
+ * rather than read. No decoration that does not help someone find their place.
+ */
+.doc {
+  max-width: 940px;
+  margin: 0 auto;
+}
+
+.doc__lede {
+  font-size: clamp(16px, 2.4vw, 19px);
+  line-height: 1.55;
+  max-width: 62ch;
+  margin: 14px 0 0;
+}
+
+.doc__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 22px 0 8px;
+}
+
+.doc__section {
+  font-family: var(--display);
+  font-size: clamp(20px, 3.4vw, 27px);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin: 40px 0 14px;
+  padding-top: 18px;
+  border-top: 2px solid var(--ink);
+}
+
+/* Auto-fit rather than fixed columns: three cards on a desktop, one on a
+ * phone, and two on the awkward widths in between, without a breakpoint for
+ * each. */
+.doc__grid {
+  display: grid;
+  gap: 12px;
+}
+
+.doc__grid--three {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.doc__grid--two {
+  /* Exactly two, not auto-fit.
+   *
+   * Auto-fit put three of the four Nimiq cards on one row and left the fourth
+   * stranded on its own, which reads as a card that failed to load rather than
+   * as the last of a set. A fixed pair makes it a deliberate two by two. */
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 720px) {
+  .doc__grid--two {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.doc__card {
+  border: 2px solid var(--ink);
+  background: var(--paper, var(--canvas));
+  padding: 16px 16px 18px;
+  box-shadow: var(--lift-sm);
+}
+
+.doc__kicker {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--accent);
+  margin: 0 0 6px;
+}
+
+.doc__cardtitle {
+  font-family: var(--display);
+  font-size: 17px;
+  line-height: 1.15;
+  text-transform: uppercase;
+  margin: 0 0 8px;
+}
+
+.doc__body {
+  font-size: 14px;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.doc__body--wide {
+  max-width: 62ch;
+  margin-bottom: 14px;
+}
+
+/* Numbered because the order is the point: this is a sequence, not a list of
+ * features. The counter sits in the accent so the eye can walk the steps. */
+.doc__steps {
+  counter-reset: step;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-width: 68ch;
+}
+
+.doc__steps li {
+  counter-increment: step;
+  position: relative;
+  padding: 12px 0 12px 44px;
+  border-bottom: 1px solid var(--hairline, rgba(20, 17, 14, 0.14));
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.doc__steps li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 11px;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  border: 2px solid var(--ink);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.doc__note {
+  margin-top: 26px;
+  padding: 14px 16px;
+  border-left: 3px solid var(--accent);
+  background: var(--paper, var(--canvas));
+}
+
+/* The preview handoff ---------------------------------------------------
+ *
+ * Shown when a run outside Nimiq Pay runs out of clock. It has to read as an
+ * invitation rather than a wall, so the list of what is waiting gets more
+ * weight than the fact that the preview ended.
+ */
+.handoff__lead {
+  font-size: clamp(15px, 2.2vw, 17px);
+  line-height: 1.55;
+  margin: 12px 0 20px;
+}
+
+.handoff__list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 22px;
+  display: grid;
+  gap: 1px;
+  background: var(--ink);
+  border: 2px solid var(--ink);
+}
+
+.handoff__list li {
+  background: var(--paper, var(--canvas));
+  padding: 11px 13px;
+  display: grid;
+  gap: 2px;
+}
+
+.handoff__title {
+  font-family: var(--display);
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.handoff__what {
+  font-size: 13px;
+  line-height: 1.45;
+  opacity: 0.8;
+}
+
+.handoff__foot {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  opacity: 0.6;
+  margin-top: 18px;
 }

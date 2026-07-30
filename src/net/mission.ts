@@ -39,6 +39,7 @@
  */
 
 import { parseMission, practiceMission, type DailyMission } from '../game/mission';
+import { networkHeaders } from '../core/network';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
 
@@ -76,6 +77,9 @@ export async function loadMission(signal?: AbortSignal): Promise<MissionLoad> {
 
     const response = await fetch(`${API_BASE}/mission/today`, {
       signal: controller.signal,
+      // On testnet the service serves its cached read rather than spending a
+      // paid API call. Same mission shape either way.
+      headers: networkHeaders(),
     });
     clearTimeout(timer);
 

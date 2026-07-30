@@ -343,3 +343,44 @@ describe('anticipation', () => {
     expect(STAGES.filter((s) => s.look.weather === 'ember')).toHaveLength(1);
   });
 });
+
+/**
+ * The preview, for a run outside Nimiq Pay.
+ *
+ * sFace is a Mini App. A browser tab shows what the game is; the game itself
+ * lives in the wallet. These pin that the preview is genuinely short on every
+ * stage and that it never quietly becomes the real thing.
+ */
+describe('outside the wallet', () => {
+  it('clips every stage to the preview clock', () => {
+    for (let n = 1; n <= STAGES.length; n++) {
+      const preview = new RunState(practiceMission('2026-07-30'), 'sidearm', n, false, true);
+      expect(preview.preview).toBe(true);
+      expect(preview.seconds).toBeLessThanOrEqual(RunState.PREVIEW_SECONDS);
+    }
+  });
+
+  it('is shorter than the practice taster, which is already clipped', () => {
+    // Otherwise "preview" would be a label on the same run rather than a look.
+    expect(RunState.PREVIEW_SECONDS).toBeLessThan(RunState.TASTER_SECONDS);
+  });
+
+  it('leaves a run inside the wallet at its full length', () => {
+    for (let n = 1; n <= STAGES.length; n++) {
+      const full = new RunState(practiceMission('2026-07-30'), 'sidearm', n, false, false);
+      expect(full.preview).toBe(false);
+      expect(full.seconds).toBe(stageAt(n).seconds);
+    }
+  });
+
+  it('builds the same level either way', () => {
+    // The preview has to be today's real chart with today's real cast, or it is
+    // advertising something other than the game.
+    const mission = practiceMission('2026-07-30');
+    const preview = new RunState(mission, 'sidearm', 1, false, true);
+    const full = new RunState(mission, 'sidearm', 1, false, false);
+
+    expect(preview.enemies.length).toBe(full.enemies.length);
+    expect(preview.faces.map((f) => f.handle)).toEqual(full.faces.map((f) => f.handle));
+  });
+});

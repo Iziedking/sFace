@@ -1,39 +1,63 @@
 /**
  * The narrator.
  *
- * Built on the browser's own speech synthesis, which is the right call here:
- * no audio file to download, no third party, no cost, and it reads whatever
- * the story file says rather than a recording that goes stale the moment the
- * copy changes.
+ * Built on the browser's own speech synthesis: no audio file to download, no
+ * third party, no cost, and it reads whatever the story file says rather than a
+ * recording that goes stale the moment the copy changes.
  *
  * **The text is the story. The voice is decoration.** Every beat is on screen
  * before it is spoken and stays there after. Speech synthesis is genuinely
- * unreliable in the wild: some Android WebViews ship no voices at all, iOS
- * refuses to start outside a user gesture and sometimes stops on a
- * backgrounded tab, and a few browsers reject a long utterance silently. All
- * of that is survivable when the voice is an enhancement. None of it is
- * survivable if the story only exists as audio.
+ * unreliable in the wild, and all of that is survivable when the voice is an
+ * enhancement. None of it is survivable if the story only exists as audio.
  *
- * Two quirks worth knowing, because both cost an hour to find:
+ * ## The five faults that made it stutter, and what replaced them
  *
- *   1. `getVoices()` is empty on first call in most browsers and fills in
- *      asynchronously, announced by a `voiceschanged` event that some browsers
- *      fire late and others never fire at all. So we poll briefly and then
- *      give up rather than wait forever.
- *   2. Chrome stops speaking after roughly fifteen seconds unless something
- *      pokes it. The usual fix is a resume timer, which is exactly as silly as
- *      it sounds and is why one is here.
+ * Reported as breaking sometimes, not speaking sometimes, and picking up
+ * sometimes. That is three symptoms of five separate causes:
+ *
+ *   1. `say()` awaited voice discovery before calling `speak()`. On iOS speech
+ *      must begin inside the user gesture that triggered it, and an await
+ *      spends that gesture, so the first line was silent on iPhone every time.
+ *      Voices are now warmed in the background and read synchronously; if they
+ *      are not ready the line is spoken with the platform default rather than
+ *      waited for.
+ *   2. `cancel()` ran immediately before every `speak()`, including when nothing
+ *      was speaking. In Chrome a cancel followed straight away by a speak can
+ *      wedge the engine so the new utterance never starts. Cancel now happens
+ *      only when something is actually talking, and the next utterance waits a
+ *      tick for the engine to settle.
+ *   3. Chrome stops after roughly fifteen seconds of one utterance. The old fix
+ *      was a `pause()`/`resume()` timer, a hack that itself produces audible
+ *      breaks mid-sentence. Long text is now split into sentences and spoken in
+ *      sequence, so no single utterance is long enough to hit the limit and the
+ *      hack is gone.
+ *   4. The safety timeout resolved the promise but left the engine talking, so
+ *      the intro advanced and cancelled the line mid-word. The watchdog now
+ *      stops the speech it gave up on, and clears when a line ends normally.
+ *   5. Nothing guarded against two `say()` calls overlapping, so a fast skip
+ *      left two lines fighting. A generation counter makes a superseded line
+ *      resolve quietly instead.
  */
 
 const MAX_VOICE_WAIT_MS = 1500;
-const KEEPALIVE_MS = 10_000;
+
+/**
+ * Longest utterance we will hand the engine in one piece.
+ *
+ * Comfortably under the point where Chrome gives up. Sentences longer than this
+ * are split further on clause boundaries rather than mid-word.
+ */
+const MAX_CHUNK = 160;
+
+/** Time for the engine to settle after a cancel before speaking again. */
+const AFTER_CANCEL_MS = 60;
 
 /**
  * Voices, best first.
  *
  * The aim is calm and level rather than bright and helpful. Named voices are
- * tried first because the generic default on Windows is unusually flat even
- * by the standards of this API.
+ * tried first because the generic default on Windows is unusually flat even by
+ * the standards of this API.
  */
 const PREFERRED = [
   'Google UK English Male',
@@ -48,71 +72,156 @@ export function voiceAvailable(): boolean {
   return typeof window !== 'undefined' && 'speechSynthesis' in window;
 }
 
+/**
+ * Resolved voice, or null for "use the platform default".
+ *
+ * Read synchronously by `say()`. Undefined means discovery has not finished,
+ * which is treated exactly like null: speak now with whatever the platform
+ * gives us. A slightly worse voice on the first line is a far better outcome
+ * than silence on the first line.
+ */
 let cachedVoice: SpeechSynthesisVoice | null | undefined;
 
-async function pickVoice(): Promise<SpeechSynthesisVoice | null> {
-  if (cachedVoice !== undefined) return cachedVoice;
-  if (!voiceAvailable()) {
-    cachedVoice = null;
-    return null;
-  }
-
-  const voices = await waitForVoices();
-  if (voices.length === 0) {
-    // No voices does not mean speech will fail. Some engines still speak with
-    // the platform default when no voice is set, so leave it unset and try.
-    cachedVoice = null;
-    return null;
-  }
-
+function choose(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
   for (const wanted of PREFERRED) {
     const match = voices.find((v) => v.name.includes(wanted));
-    if (match) {
-      cachedVoice = match;
-      return match;
-    }
+    if (match) return match;
   }
-
-  cachedVoice =
+  return (
     voices.find((v) => v.lang.startsWith('en') && v.localService) ??
     voices.find((v) => v.lang.startsWith('en')) ??
     voices[0] ??
-    null;
-
-  return cachedVoice;
+    null
+  );
 }
 
-function waitForVoices(): Promise<SpeechSynthesisVoice[]> {
-  return new Promise((resolve) => {
-    const immediate = window.speechSynthesis.getVoices();
-    if (immediate.length > 0) {
-      resolve(immediate);
-      return;
+/**
+ * Start looking for a voice, without blocking anything.
+ *
+ * Called once at module load. `getVoices()` is empty on first call in most
+ * browsers and fills in asynchronously, announced by a `voiceschanged` event
+ * that some browsers fire late and others never fire at all, so this polls as
+ * well and gives up rather than waiting forever.
+ */
+function warmVoices(): void {
+  if (!voiceAvailable()) {
+    cachedVoice = null;
+    return;
+  }
+
+  const immediate = window.speechSynthesis.getVoices();
+  if (immediate.length > 0) {
+    cachedVoice = choose(immediate);
+    return;
+  }
+
+  let settled = false;
+  const done = (): void => {
+    if (settled) return;
+    settled = true;
+    window.speechSynthesis.removeEventListener('voiceschanged', done);
+    window.clearInterval(poll);
+    window.clearTimeout(giveUp);
+    cachedVoice = choose(window.speechSynthesis.getVoices());
+  };
+
+  window.speechSynthesis.addEventListener('voiceschanged', done);
+  const poll = window.setInterval(() => {
+    if (window.speechSynthesis.getVoices().length > 0) done();
+  }, 100);
+  const giveUp = window.setTimeout(done, MAX_VOICE_WAIT_MS);
+}
+
+if (typeof window !== 'undefined') warmVoices();
+
+/**
+ * Break a line into pieces no engine will choke on.
+ *
+ * Sentence ends first, because a pause between sentences is natural and one
+ * mid-clause is not. Anything still too long is split on commas, and only then
+ * on words, so the seams always land where a human would breathe.
+ */
+export function chunk(text: string, max = MAX_CHUNK): string[] {
+  const clean = text.trim().replace(/\s+/g, ' ');
+  if (clean.length === 0) return [];
+  if (clean.length <= max) return [clean];
+
+  const sentences = clean.match(/[^.!?]+[.!?]*\s*/g) ?? [clean];
+  const out: string[] = [];
+  let buffer = '';
+
+  const flush = (): void => {
+    const trimmed = buffer.trim();
+    if (trimmed) out.push(trimmed);
+    buffer = '';
+  };
+
+  for (const sentence of sentences) {
+    if (sentence.trim().length === 0) continue;
+
+    if (buffer.length + sentence.length <= max) {
+      buffer += sentence;
+      continue;
     }
 
-    let settled = false;
-    const done = (): void => {
-      if (settled) return;
-      settled = true;
-      window.speechSynthesis.removeEventListener('voiceschanged', done);
-      clearInterval(poll);
-      clearTimeout(giveUp);
-      resolve(window.speechSynthesis.getVoices());
-    };
+    flush();
 
-    window.speechSynthesis.addEventListener('voiceschanged', done);
-    // Some browsers never fire the event. Poll as well, briefly.
-    const poll = setInterval(() => {
-      if (window.speechSynthesis.getVoices().length > 0) done();
-    }, 100);
-    const giveUp = setTimeout(done, MAX_VOICE_WAIT_MS);
-  });
+    if (sentence.length <= max) {
+      buffer = sentence;
+      continue;
+    }
+
+    for (const part of splitLong(sentence, max)) out.push(part);
+  }
+
+  flush();
+  return out;
+}
+
+/** Commas, then words. Only reached by a sentence longer than the ceiling. */
+function splitLong(text: string, max: number): string[] {
+  const out: string[] = [];
+  let buffer = '';
+
+  for (const piece of text.split(/(?<=,)\s*/)) {
+    if (buffer.length + piece.length <= max) {
+      buffer += piece;
+      continue;
+    }
+    if (buffer.trim()) out.push(buffer.trim());
+    buffer = '';
+
+    if (piece.length <= max) {
+      buffer = piece;
+      continue;
+    }
+
+    let words = '';
+    for (const word of piece.split(' ')) {
+      if (words.length + word.length + 1 > max) {
+        if (words.trim()) out.push(words.trim());
+        words = '';
+      }
+      words += (words ? ' ' : '') + word;
+    }
+    if (words.trim()) out.push(words.trim());
+  }
+
+  if (buffer.trim()) out.push(buffer.trim());
+  return out;
 }
 
 export class Narrator {
-  private keepalive: number | null = null;
   private speaking = false;
   private muted = false;
+  /**
+   * Bumped by every `say()` and every `stop()`.
+   *
+   * A line whose generation is stale resolves quietly rather than fighting the
+   * one that replaced it, which is what stops a fast skip leaving two voices
+   * talking over each other.
+   */
+  private generation = 0;
 
   get enabled(): boolean {
     return !this.muted;
@@ -126,33 +235,58 @@ export class Narrator {
   /**
    * Speak a line. Resolves when it finishes, is cut off, or fails.
    *
-   * It never rejects. A narrator that throws would take the intro sequence
-   * down with it, and the intro has to survive a device with no voices.
+   * Never rejects. A narrator that throws would take the intro down with it,
+   * and the intro has to survive a device with no voices at all.
    */
   async say(text: string): Promise<void> {
     if (this.muted || !voiceAvailable()) return;
 
-    this.stop();
+    const mine = ++this.generation;
+    const pieces = chunk(text);
+    if (pieces.length === 0) return;
 
-    const voice = await pickVoice();
-    if (this.muted) return;
+    /*
+     * Only cancel if something is actually talking, and give the engine a beat
+     * afterwards. A cancel into an idle engine is what wedges Chrome, and a
+     * speak in the same tick as a cancel is what makes the next line silent.
+     */
+    if (this.isEngineBusy()) {
+      this.cancel();
+      await wait(AFTER_CANCEL_MS);
+      if (this.generation !== mine || this.muted) return;
+    }
 
+    this.speaking = true;
+
+    for (const piece of pieces) {
+      if (this.generation !== mine || this.muted) break;
+      await this.speakOne(piece, mine);
+    }
+
+    if (this.generation === mine) this.speaking = false;
+  }
+
+  /** One utterance, with a watchdog that stops rather than merely gives up. */
+  private speakOne(text: string, mine: number): Promise<void> {
     return new Promise<void>((resolve) => {
       let settled = false;
+      let watchdog: number | null = null;
+
       const finish = (): void => {
         if (settled) return;
         settled = true;
-        this.speaking = false;
-        this.stopKeepalive();
+        if (watchdog !== null) window.clearTimeout(watchdog);
         resolve();
       };
 
       try {
         const utterance = new SpeechSynthesisUtterance(text);
-        if (voice) utterance.voice = voice;
-        utterance.lang = voice?.lang ?? 'en-GB';
-        // Slower and lower than default. The default cadence reads as a
-        // screen reader, which is exactly the wrong register for this.
+        // Read synchronously. Awaiting here would spend the user gesture that
+        // iOS requires speech to start inside. See the header.
+        if (cachedVoice) utterance.voice = cachedVoice;
+        utterance.lang = cachedVoice?.lang ?? 'en-GB';
+        // Slower and lower than default. The default cadence reads as a screen
+        // reader, which is exactly the wrong register for this.
         utterance.rate = 0.94;
         utterance.pitch = 0.85;
         utterance.volume = 1;
@@ -160,24 +294,37 @@ export class Narrator {
         utterance.addEventListener('end', finish);
         utterance.addEventListener('error', finish);
 
-        this.speaking = true;
         window.speechSynthesis.speak(utterance);
-        this.startKeepalive();
 
-        // Belt and braces: if the engine never fires end or error, do not
-        // leave the intro waiting on it forever. Roughly reading speed.
-        const ceiling = 2000 + text.length * 90;
-        setTimeout(finish, ceiling);
+        /*
+         * If the engine never reports back, stop it before moving on.
+         *
+         * The old version resolved and left it talking, so the next line
+         * cancelled this one mid-word. Generous, because overrunning the
+         * estimate on a slow voice is far less damaging than cutting a line.
+         */
+        watchdog = window.setTimeout(
+          () => {
+            if (this.generation === mine) this.cancel();
+            finish();
+          },
+          2500 + text.length * 110,
+        );
       } catch {
         finish();
       }
     });
   }
 
-  stop(): void {
-    this.stopKeepalive();
-    this.speaking = false;
-    if (!voiceAvailable()) return;
+  private isEngineBusy(): boolean {
+    try {
+      return window.speechSynthesis.speaking || window.speechSynthesis.pending;
+    } catch {
+      return false;
+    }
+  }
+
+  private cancel(): void {
     try {
       window.speechSynthesis.cancel();
     } catch {
@@ -185,30 +332,21 @@ export class Narrator {
     }
   }
 
+  stop(): void {
+    // Bumping first is what makes any line still in flight give up quietly.
+    this.generation++;
+    this.speaking = false;
+    if (!voiceAvailable()) return;
+    this.cancel();
+  }
+
   get isSpeaking(): boolean {
     return this.speaking;
   }
+}
 
-  /** Chrome stops after ~15s of a single utterance unless nudged. */
-  private startKeepalive(): void {
-    this.stopKeepalive();
-    this.keepalive = window.setInterval(() => {
-      if (!this.speaking) return;
-      try {
-        window.speechSynthesis.pause();
-        window.speechSynthesis.resume();
-      } catch {
-        // Not supported here, which is fine: those engines do not stall.
-      }
-    }, KEEPALIVE_MS);
-  }
-
-  private stopKeepalive(): void {
-    if (this.keepalive !== null) {
-      clearInterval(this.keepalive);
-      this.keepalive = null;
-    }
-  }
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 export const narrator = new Narrator();

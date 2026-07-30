@@ -21,6 +21,8 @@
 import { el } from './dom';
 
 export interface FooterOptions {
+  /** The documentation: what the game is and why it is on Nimiq. */
+  onAbout: () => void;
   onControls: () => void;
   onDispatch: () => void;
   onBoard: () => void;
@@ -77,6 +79,9 @@ export function footer(options: FooterOptions): HTMLElement {
         // One column, not two. A heading over a single link was a category
         // pretending to be a category.
         column('THE GAME', [
+          // First, because it is the one a stranger scrolling to the bottom of
+          // an unfamiliar game is actually looking for.
+          ['What sFace is', options.onAbout],
           ['How to play', options.onControls],
           ['The campaign', options.onCampaign],
           ['The Dispatch', options.onDispatch],

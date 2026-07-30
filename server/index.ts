@@ -11,6 +11,7 @@
  * by design and an open POST with no cap is an invitation.
  */
 
+import { isRehearsal, networkOf, NETWORK_HEADER } from './network';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { z } from 'zod';
 
@@ -56,7 +57,17 @@ app.use((req, res, next) => {
     res.setHeader('vary', 'Origin');
   }
   res.setHeader('access-control-allow-methods', 'GET,POST,OPTIONS');
-  res.setHeader('access-control-allow-headers', 'content-type');
+  /*
+   * Both headers the client actually sends, and no more.
+   *
+   * x-sface-network is a CUSTOM header, and a custom header is what turns a
+   * simple request into a preflighted one. Leaving it out of this list does not
+   * merely ignore it: the browser refuses the whole request, so every call fails
+   * with a CORS error while the same URL answers fine from curl. That is a
+   * confusing failure to debug and it would have taken the live site down the
+   * moment the client started sending it.
+   */
+  res.setHeader('access-control-allow-headers', `content-type, ${NETWORK_HEADER}`);
 
   if (req.method === 'OPTIONS') {
     res.sendStatus(204);
@@ -224,8 +235,8 @@ app.get('/health', (_req, res) => {
   res.json({ ok: true, date: utcDate() });
 });
 
-app.get('/mission/today', limit(120, 40), async (_req, res) => {
-  const mission = await getMission();
+app.get('/mission/today', limit(120, 40), async (req, res) => {
+  const mission = await getMission({ rehearsal: isRehearsal(req) });
 
   if (!mission) {
     // The client has a practice mission for exactly this case. Say so plainly
@@ -282,6 +293,29 @@ app.post('/board', limit(20, 10), async (req, res) => {
   }
 
   const body = parsed.data;
+
+  /*
+   * A rehearsal is scored, checked and told the truth, then not written down.
+   *
+   * The submission still runs the whole path above and below this: the level is
+   * rebuilt, the ceiling is enforced, the signature is verified. That is the
+   * point of a test network, and stopping earlier would mean the one thing
+   * testnet cannot exercise is the thing most worth exercising.
+   *
+   * What it does not do is land on the daily board. That board is a public
+   * ranking with real stakes attached, and a row from a network where NIM is
+   * free is not comparable to one from a network where it is not. Mixing them
+   * would quietly devalue every honest entry.
+   */
+  if (networkOf(req) === 'test') {
+    res.json({
+      ok: true,
+      recorded: false,
+      network: 'test',
+      note: 'Testnet run. Scored and verified, but kept off the mainnet board.',
+    });
+    return;
+  }
 
   /*
    * Verify the signature, if there is one, and derive who signed.
@@ -480,6 +514,24 @@ app.get('/signals/:handle', limit(20, 8), async (req, res) => {
   // dead end, not a business model.
   const paid = signals.treasury() === null || (who !== '' && signals.unlocked(who));
   const depth = asked && paid ? 'full' : 'glance';
+
+  /*
+   * CT Signals is the most expensive thing in here: two queries per read, per
+   * handle, uncached by nature because it is about one person right now. A
+   * testnet session declines it rather than spending, and says so, which is a
+   * far better test result than a silently empty panel.
+   */
+  if (isRehearsal(req)) {
+    res.json({
+      handle,
+      rehearsal: true,
+      note: 'CT Signals reads live X, so it is off on testnet. Switch to mainnet for the real read.',
+      priceNim: signals.SIGNALS_PRICE_NIM,
+      treasury: signals.treasury(),
+      unlocked: false,
+    });
+    return;
+  }
 
   const out = await signals.readSignals(handle, depth);
   if (!out) {

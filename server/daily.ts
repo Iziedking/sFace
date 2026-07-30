@@ -37,11 +37,28 @@ export interface MissionResponse {
   stale: boolean;
 }
 
-export async function getMission(): Promise<MissionResponse | null> {
+export async function getMission(options: { rehearsal?: boolean } = {}): Promise<MissionResponse | null> {
   const today = utcDate();
 
   if (cached?.payload.date === today) {
     return { payload: cached.payload, stale: false };
+  }
+
+  /*
+   * A rehearsal never pays to build a mission.
+   *
+   * Testing reloads this endpoint constantly, and every miss on the cache is a
+   * metered read of the market and of X. A testnet caller gets whatever is
+   * already in hand: yesterday's chart if we have it, and the client's own
+   * practice mission if we do not. Both are real levels made of real numbers, so
+   * nothing about the test is weakened by declining to pay for a fresh one.
+   *
+   * Note the ordering. It sits after the cache hit, so a testnet session on a
+   * day the cache is warm still gets today's genuine mission for free.
+   */
+  if (options.rehearsal) {
+    if (cached) return { payload: cached.payload, stale: true };
+    return null;
   }
 
   const fresh = await refresh();

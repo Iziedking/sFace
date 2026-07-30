@@ -61,17 +61,31 @@ interface Chapter {
 }
 
 const TOUCH: Row[] = [
-  { key: 'Left thumb', what: 'Anywhere on the left half. Drag to fly.' },
+  { key: 'Left thumb', what: 'Anywhere on the left half. Drag to fly or walk.' },
   { key: 'Right thumb', what: 'Anywhere on the right half. Drag to aim, and it fires while held.' },
   { key: 'Tap a slot', what: 'The four boxes in the top strip. One tap buys and uses.' },
+  {
+    key: 'Tap E',
+    what: 'Appears beside a car when you are close enough. Tap again, stopped, to get out.',
+  },
+  {
+    key: 'At a panel',
+    what: 'The four slots become the four answers, numbered. Tap the one you believe.',
+  },
   { key: 'Pause', what: 'The button at the top, clear of both thumbs.' },
+  {
+    key: 'Prefer buttons?',
+    what: 'Settings offers a fixed stick and d-pad instead of drag-anywhere.',
+  },
 ];
 
 const DESKTOP: Row[] = [
-  { key: 'W A S D', what: 'Fly. Arrow keys work too.' },
+  { key: 'W A S D', what: 'Fly or walk. Arrow keys work too.' },
   { key: 'Mouse', what: 'Aim. No need to hold a button.' },
   { key: 'Click or Space', what: 'Fire.' },
   { key: '1 2 3 4', what: 'Buy and use a charge, bomb, patch or boost. No menu, no pause.' },
+  { key: 'E', what: 'Get into a car you are standing at, and out of one you have stopped.' },
+  { key: 'At a panel', what: 'The same 1 2 3 4 pick the answer instead of buying.' },
   { key: 'Esc', what: 'Pause, and resume again. There is a button on screen too.' },
 ];
 
@@ -167,6 +181,54 @@ const CHAPTERS: Chapter[] = [
       {
         key: 'The mission changes daily',
         what: 'Same stage, new level, new cast, three new contracts drawn from the day. Consistency is the only way up the board.',
+      },
+    ],
+  },
+  {
+    title: 'Later on, the level is a city',
+    lead: 'Stages five and six drop the chart and hand you streets.',
+    rows: [
+      {
+        key: 'Move anywhere',
+        what: 'No ground line and no forward. The map is in the bottom left corner.',
+      },
+      {
+        key: 'Take the car, or walk',
+        what: 'Twice your speed, heard from twice as far. Some gaps are too narrow for it.',
+      },
+      {
+        key: 'They have to notice you first',
+        what: 'Patrols walk their patch until they sense you. On foot you are quiet.',
+      },
+      {
+        key: 'Doors',
+        what: 'Some buildings open. A person fits, a car does not, and the medkits are inside.',
+      },
+      {
+        key: 'Read the panels',
+        what: 'Four posts that genuinely went out today. Pick the one that explains it.',
+      },
+    ],
+  },
+  {
+    title: 'The gun helps, and it helps more as you go',
+    lead: 'Aiming with a thumb is hard, so the gun helps.',
+    rows: [
+      {
+        key: 'Everyone gets it',
+        what: 'From your first run, the gun bends toward whatever you are nearly pointing at.',
+      },
+      {
+        key: 'It gets stronger',
+        what: 'Clear stages, win with a clan, or win challenges. The tier is shown top right.',
+      },
+      {
+        key: 'It will not cheat for you',
+        what: 'No lock-on, nothing through a wall, nothing behind your back.',
+      },
+      {
+        key: 'Staked runs are level',
+        what: 'A challenge puts both players on the same baseline, whatever either has earned.',
       },
     ],
   },
