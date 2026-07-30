@@ -505,6 +505,21 @@ export function renderResults(root: HTMLElement, options: ResultsOptions): void 
         : `${state.cachesTaken} of ${state.caches.length}`,
     ),
     row(t('attackers'), `${state.attackersCleared} × ${ATTACKER_SCORE}`),
+    /*
+     * Hull, because two stages are cleared or not on it.
+     *
+     * Reported from a playtest: somebody cleared twenty one attackers on a stage
+     * that asks for twelve, was told they had not cleared it, and had no way to
+     * find out why. The rule was working; the screen simply never said what the
+     * number it was judged on had been.
+     *
+     * Shown on every stage rather than only the ones that test it, so it is not
+     * a mysterious extra row that appears on the runs you failed.
+     */
+    row(
+      'Hull left',
+      `${Math.round(Math.max(0, state.player.health))}%`,
+    ),
     row(t('timeBonus'), timeBonus.toLocaleString()),
     row(t('bounty'), `×${state.mission.bountyMultiplier.toFixed(2)}`),
     row('Stage', `×${state.stage.bounty}`),
