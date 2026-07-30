@@ -132,17 +132,26 @@ export class Hud {
     else if (state.city) this.drawMap(ctx, state, height);
     else this.drawProgress(ctx, state, width, top + BAR_HEIGHT);
     /*
-     * Lifted clear of whichever map is showing.
+     * The bottom left is a stack, so the pill goes on top of all of it.
      *
-     * Both live in the bottom left, and the pill was landing inside the map's
-     * own frame: the map is 118 tall sitting 12 above the safe area, and the
-     * pill was centred 26 above it, which is squarely on top. Reported as the
-     * carrying strip covering the map, which is the one thing on a city stage
-     * you cannot play without.
+     * Three things want that corner: the movement pad when the fixed scheme is
+     * on, the map on a city or ring stage, and this. The maps already lift
+     * themselves clear of the pad, which the first version of this fix missed,
+     * so the pill cleared the map's usual height and landed back on the pad
+     * anyway on a chart stage where there is no map to clear at all.
+     *
+     * Adding both offsets stacks it correctly in all four combinations rather
+     * than in the one that happened to be on screen when it was checked.
      */
+    const padClearance = usingPads() ? 150 : 0;
     const mapHeight = state.rings ? 124 : state.city ? 118 : 0;
     const mapClearance = mapHeight > 0 ? mapHeight + 24 : 0;
-    this.drawCarrying(ctx, state, padX, height - this.insets.bottom - 26 - mapClearance);
+    this.drawCarrying(
+      ctx,
+      state,
+      padX,
+      height - this.insets.bottom - 26 - padClearance - mapClearance,
+    );
     this.drawStick(ctx, input);
     this.drawPads(ctx, state, input, width, height);
     this.drawSlotStrip(ctx, state, input, width, height);
@@ -955,9 +964,9 @@ export class Hud {
     ctx.save();
 
     if (snapsToDirections()) {
-      drawDpad(ctx, pads.move);
+      drawDpad(ctx, pads.move, input.move);
     } else {
-      drawRing(ctx, pads.move);
+      drawRing(ctx, pads.move, input.move);
     }
 
     // Fire. The one control that gets the accent, because it is the one you
@@ -1119,8 +1128,20 @@ function drawBuys(
   });
 }
 
-/** The analog ring: an outer bound and a resting centre. */
-function drawRing(ctx: CanvasRenderingContext2D, region: PadRegion): void {
+/**
+ * The analog ring: an outer bound and a knob that goes where the thumb goes.
+ *
+ * The knob used to be drawn at the centre of the region and left there, which
+ * made the whole control a picture of a stick rather than a stick. The ship was
+ * moving, so the input was arriving, but nothing under the thumb acknowledged
+ * it and the only reasonable reading is that the pad is broken. A stick that
+ * does not lean is the one part of a touch scheme players check first.
+ */
+function drawRing(
+  ctx: CanvasRenderingContext2D,
+  region: PadRegion,
+  move: { x: number; y: number },
+): void {
   ctx.globalAlpha = 0.28;
   ctx.strokeStyle = theme.ink;
   ctx.lineWidth = 3;
@@ -1128,19 +1149,34 @@ function drawRing(ctx: CanvasRenderingContext2D, region: PadRegion): void {
   ctx.arc(region.x, region.y, region.r, 0, Math.PI * 2);
   ctx.stroke();
 
-  ctx.globalAlpha = 0.34;
+  // Clamped to the ring rather than to the vector, so a hard push sits on the
+  // rim instead of climbing out of the control it belongs to.
+  const reach = Math.min(1, Math.hypot(move.x, move.y)) * region.r * 0.62;
+  const length = Math.hypot(move.x, move.y);
+  const knobX = length > 0.001 ? region.x + (move.x / length) * reach : region.x;
+  const knobY = length > 0.001 ? region.y + (move.y / length) * reach : region.y;
+
+  ctx.globalAlpha = length > 0.001 ? 0.5 : 0.34;
   ctx.fillStyle = theme.ink;
   ctx.beginPath();
-  ctx.arc(region.x, region.y, region.r * 0.3, 0, Math.PI * 2);
+  ctx.arc(knobX, knobY, region.r * 0.3, 0, Math.PI * 2);
   ctx.fill();
 }
 
 /** Four arms, so it reads as on-or-off rather than as a stick. */
-function drawDpad(ctx: CanvasRenderingContext2D, region: PadRegion): void {
+function drawDpad(
+  ctx: CanvasRenderingContext2D,
+  region: PadRegion,
+  move: { x: number; y: number },
+): void {
   const arm = region.r * 0.42;
   const thick = region.r * 0.34;
 
-  ctx.globalAlpha = 0.3;
+  // A d-pad does not lean, so it brightens instead. Same job as the knob: say
+  // out loud that the press landed.
+  const pressed = Math.hypot(move.x, move.y) > 0.001;
+
+  ctx.globalAlpha = pressed ? 0.5 : 0.3;
   ctx.fillStyle = theme.ink;
   ctx.beginPath();
   ctx.roundRect(region.x - thick / 2, region.y - arm - thick / 2, thick, arm * 2 + thick, 6);
