@@ -38,7 +38,16 @@ const MUZZLE_OFFSET = 20;
 /** Below this impact speed, touching the ground is free. */
 const SAFE_LANDING_SPEED = 260;
 const CRASH_DAMAGE_PER_SPEED = 0.14;
-const INVULNERABLE_SECONDS = 0.6;
+/*
+ * The window is what actually bounds the damage, not the per-bullet number.
+ *
+ * Several attackers firing at once land within a few frames of each other, so
+ * without a wide enough window a crossfire takes a third of the hull in an
+ * instant and there is no moment in which the player could have reacted. At
+ * 0.6 the ceiling was about eighteen a second; at 0.85 with the lower round it
+ * is about nine, which leaves time to get behind something.
+ */
+const INVULNERABLE_SECONDS = 0.85;
 
 /** Every carried face this heavy costs you this share of your thrust. */
 const HEAVY_THRUST_PENALTY = 0.22;

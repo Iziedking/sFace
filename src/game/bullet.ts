@@ -31,7 +31,17 @@ import { solidAt as solidInRings } from './rings';
  * number of decisions.
  */
 export const ENEMY_BULLET_SPEED = 258;
-export const ENEMY_BULLET_DAMAGE = 11;
+/*
+ * Eleven took a full hull down in ten hits, and with the old invulnerability
+ * window that was under six seconds of standing in the wrong place. Reported as
+ * health eating up fast, which it was: the level can have a dozen attackers
+ * awake and the player is one silhouette in the open.
+ *
+ * Eight, against a longer window, roughly halves the worst-case drain without
+ * making a firefight survivable by standing still. Getting shot still has to
+ * mean something.
+ */
+export const ENEMY_BULLET_DAMAGE = 8;
 export const BULLET_RADIUS = 4;
 
 /** Ceiling on live bullets, so a stuck fire input cannot grind a phone down. */

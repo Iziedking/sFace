@@ -29,7 +29,7 @@ import { updatePatrol } from './patrol';
 
 export const ENEMY_RADIUS = 16;
 export const TURRET_RADIUS = 19;
-export const DIVER_CONTACT_DAMAGE = 18;
+export const DIVER_CONTACT_DAMAGE = 14;
 
 /**
  * How far ahead of the player an enemy wakes up. Roughly one screen.
