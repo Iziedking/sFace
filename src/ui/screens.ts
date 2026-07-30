@@ -671,7 +671,18 @@ export function renderResults(root: HTMLElement, options: ResultsOptions): void 
       ),
       el(
         'div',
-        { class: 'col' },
+        /*
+         * Top aligned, because on this screen the actions ARE the column.
+         *
+         * The split layout bottom-aligns a column's actions so they sit under
+         * whatever is above them, which is right on the brief and wrong here:
+         * this column is a score card and four buttons, and against a left
+         * column running from the eyebrow down through eight breakdown rows to
+         * the rank bar, `margin-top: auto` opened a hand's depth of nothing
+         * between the card and Run it again. With no card to show it opened the
+         * whole column. Reported twice as an empty box on the results.
+         */
+        { class: 'col col--top' },
         options.cardUrl
           ? el('img', {
               class: 'card-preview',
