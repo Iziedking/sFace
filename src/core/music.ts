@@ -57,6 +57,8 @@ class Music {
    * anywhere. This flag is what lets the unlock know it has been overtaken.
    */
   private playRequested = false;
+  /** What was playing when the app was suspended, so resume can restore it. */
+  private wasPlaying = false;
 
   get on(): boolean {
     return this.enabled;
@@ -129,7 +131,46 @@ class Music {
 
   stop(): void {
     if (!this.theme) return;
+    this.playRequested = false;
     this.rampTo(0, () => this.theme?.pause());
+  }
+
+  /**
+   * Silence everything because the app is no longer on screen.
+   *
+   * Reported from a phone: the app was minimised and kept playing over
+   * everything else. A browser tab is allowed to do that and a game has no
+   * business doing it. Nothing else on a phone keeps talking after you leave it.
+   *
+   * Deliberately separate from `stop()`. Stop means the music is finished and
+   * forgets it was ever wanted; this remembers, so coming back restores exactly
+   * what was playing rather than starting the bed in a menu when the player was
+   * mid-run.
+   */
+  suspend(): void {
+    if (!this.theme) return;
+    this.wasPlaying = this.playRequested && !this.theme.paused;
+
+    // Cancel any fade in flight, or it keeps ticking against a paused element
+    // and restores a volume nobody asked for when the app comes back.
+    if (this.fade !== null) {
+      cancelAnimationFrame(this.fade);
+      this.fade = null;
+    }
+    if (this.settle !== null) {
+      window.clearTimeout(this.settle);
+      this.settle = null;
+    }
+
+    this.theme.pause();
+    this.theme.volume = 0;
+  }
+
+  /** Come back to whatever was playing when the app went away. */
+  resume(level: 'run' | 'menu'): void {
+    if (!this.wasPlaying) return;
+    this.wasPlaying = false;
+    this.play(level);
   }
 
   /** A short hit for the results screen. Never loops, never blocks. */

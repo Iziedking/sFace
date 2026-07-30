@@ -74,6 +74,11 @@ const OFFLINE: Omit<WalletSession, 'language'> = {
 };
 
 /** True when the host wallet is on anything other than the main network. */
+/** Records that a wallet host is present. Read by core/fullscreen.ts. */
+function markHost(): void {
+  (window as unknown as { __sfaceInHost?: boolean }).__sfaceInHost = true;
+}
+
 export function isTestnet(network: string | null): boolean {
   if (!network) return false;
   return /test|dev|albatross-test/i.test(network);
@@ -119,6 +124,16 @@ export async function connect(): Promise<WalletSession> {
 
   const nimiq = await getProvider();
   if (!nimiq) return { ...OFFLINE, language };
+
+  /*
+   * Remember that a host answered, for code that cannot ask asynchronously.
+   *
+   * The fullscreen control has to decide whether to exist while it is being
+   * drawn, and the wallet draws its own header that no web API can remove, so
+   * offering fullscreen there is offering a button that cannot work. A flag on
+   * window is the cheapest way to let a synchronous caller know.
+   */
+  markHost();
 
   // Read once at connect. It cannot change without the host restarting.
   let network: string | null = null;

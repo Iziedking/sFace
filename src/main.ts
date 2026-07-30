@@ -339,8 +339,32 @@ class App {
       if (this.screen === 'brief') this.showBrief();
     });
 
+    /*
+     * Leaving the app silences it. Coming back restores what was playing.
+     *
+     * Reported from a phone: minimising sFace left it playing over everything
+     * else. A browser tab is permitted to do that and a game has no business
+     * doing it, so the sound follows the app rather than the process.
+     *
+     * The run is paused as well, which it already was: a clock that keeps going
+     * while you are looking at something else is a run lost to a notification.
+     * Coming back deliberately does NOT unpause, because resuming automatically
+     * drops somebody into a fight they have not looked at yet.
+     */
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) this.setPaused(true);
+      if (document.hidden) {
+        this.setPaused(true);
+        music.suspend();
+        audio.silence();
+        return;
+      }
+
+      audio.wake();
+
+      // Paused screens are quiet on purpose, so a run that is still paused gets
+      // its music back only when the player actually resumes.
+      if (this.screen === 'run' && this.paused) return;
+      music.resume(this.screen === 'run' ? 'run' : 'menu');
     });
 
     this.onResize();

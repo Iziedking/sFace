@@ -28,8 +28,34 @@
  * Inside Nimiq Pay none of this arises. The WebView is already edge to edge.
  */
 
+/**
+ * True when the app is running inside a wallet's WebView rather than a browser.
+ *
+ * Detected from the host SDK having answered, which is the only honest signal:
+ * a WebView is a browser as far as feature detection is concerned, so nothing
+ * about the DOM distinguishes one.
+ */
+function inHostApp(): boolean {
+  return Boolean((window as unknown as { __sfaceInHost?: boolean }).__sfaceInHost);
+}
+
 export function fullscreenAvailable(): boolean {
   if (typeof document === 'undefined') return false;
+
+  /*
+   * Never offered inside Nimiq Pay.
+   *
+   * The wallet draws its own header above the WebView: a close button, the
+   * address, and navigation controls. Those belong to the host app and no web
+   * API can remove them, so the Fullscreen API here either fails silently or
+   * expands the page inside a frame that still has a bar on top of it.
+   *
+   * Reported as fullscreen not working in the Nimiq app, and it never could. A
+   * button that cannot do the thing it names is worse than no button, so it is
+   * not shown there.
+   */
+  if (inHostApp()) return false;
+
   /*
    * Feature detection, not device sniffing.
    *

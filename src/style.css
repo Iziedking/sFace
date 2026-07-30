@@ -4464,3 +4464,86 @@ body.is-fullscreen .foot,
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+/* Short viewports -------------------------------------------------------
+ *
+ * A phone held in landscape, and more importantly the Nimiq Pay WebView, which
+ * draws its own header above the page. That header is the host app's and no web
+ * API can remove it, so on a landscape phone the app gets a little under five
+ * hundred pixels of height and the layout has to earn every one of them.
+ *
+ * Reported as the app feeling cramped inside the wallet. Nothing here changes
+ * what is on screen: it tightens the vertical rhythm, which is where the space
+ * actually goes. Type stays large enough to read at arm's length.
+ */
+@media (max-height: 620px) {
+  .screen {
+    /* The bar still has to be cleared, but the breathing room under it does
+     * not need to be the same as on a laptop. */
+    padding-top: calc(env(safe-area-inset-top) + var(--bar-h) + 10px);
+    padding-bottom: calc(env(safe-area-inset-bottom) + 18px);
+    gap: 10px;
+  }
+
+  /*
+   * The headline is the biggest spender by far.
+   *
+   * At the wallet's landscape height it was taking more than half the viewport,
+   * which pushed the one button the screen exists for below the fold. Capped in
+   * VH rather than VW so it answers to the dimension that is actually scarce.
+   */
+  .screen h1 {
+    font-size: clamp(22px, 7vh, 34px);
+    line-height: 1.04;
+  }
+
+  .screen h1 + p,
+  .gate__lead,
+  .doc__lede {
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  /* Supporting bullet lists are the first thing worth losing height on: they
+   * explain a button that is already labelled. */
+  .gate__practice,
+  .gate__perks {
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .eyebrow {
+    margin-bottom: 2px;
+  }
+
+  /* The two biggest vertical spenders on the front door: the explanation under
+   * the headline, and the gap between the action cards. */
+  .gate__say,
+  .brief__say {
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .actions {
+    gap: 8px;
+  }
+
+  /* The wallet panel is the tallest block on the home screen and the one a
+   * player scrolls past most often. */
+  .wallet-cta {
+    padding: 12px 14px;
+  }
+
+  .doc__section {
+    margin-top: 24px;
+    padding-top: 12px;
+  }
+
+  .ending__canvas {
+    height: 130px;
+  }
+
+  .ending__head {
+    font-size: clamp(30px, 8vw, 60px);
+  }
+}

@@ -5,6 +5,11 @@
     "view": "wide"
   },
   {
+    "name": "home-wallet",
+    "caption": "Inside Nimiq Pay, landscape, with the wallet’s own header above.",
+    "view": "wallet"
+  },
+  {
     "name": "home",
     "caption": "The front door: today’s coin, its move, and the ways in.",
     "view": "wide"

@@ -36,6 +36,14 @@ const PORT = 9333;
 const VIEWPORTS = {
   wide: { width: 1360, height: 840, scale: 1, mobile: false },
   phone: { width: 390, height: 844, scale: 2, mobile: true },
+  /*
+   * A phone in landscape inside the Nimiq Pay WebView.
+   *
+   * The height is what the wallet actually leaves after its own header, which
+   * is the tightest box the app has to work in and the one worth checking a
+   * layout change against.
+   */
+  wallet: { width: 844, height: 480, scale: 2, mobile: true },
 };
 
 async function findChrome() {
@@ -124,6 +132,14 @@ const SHOTS = [
     skipIntro: false,
     async setup() {
       // Nothing. This shot IS the opening, so it is captured as it lands.
+    },
+  },
+  {
+    name: 'home-wallet',
+    view: 'wallet',
+    caption: 'Inside Nimiq Pay, landscape, with the wallet’s own header above.',
+    async setup(cdp) {
+      await cdp.eval(`window.sface.showBrief()`);
     },
   },
   {

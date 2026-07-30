@@ -95,6 +95,32 @@ class Audio {
     return this.enabled;
   }
 
+  /**
+   * Stop making noise because the app is no longer on screen.
+   *
+   * Suspending the whole context rather than muting the gain, so nothing is
+   * scheduled while the app is away and the browser can release the audio
+   * hardware. Muting alone leaves an active context, which on a phone is what
+   * keeps the media session alive and stops other apps taking it back.
+   *
+   * The enabled preference is untouched: this is about where the app is, not
+   * about what the player asked for.
+   */
+  silence(): void {
+    if (!this.ctx) return;
+    void this.ctx.suspend().catch(() => {
+      // Some WebViews refuse. The gain below is the fallback.
+    });
+    if (this.master) this.master.gain.value = 0;
+  }
+
+  /** Come back, if the player still wants sound at all. */
+  wake(): void {
+    if (!this.ctx) return;
+    if (this.ctx.state === 'suspended') void this.ctx.resume().catch(() => undefined);
+    if (this.master) this.master.gain.value = this.enabled ? 1 : 0;
+  }
+
   /** Call from a real tap. Safe to call repeatedly. */
   unlock(): void {
     if (this.ctx) {
