@@ -44,12 +44,35 @@ describe('the arc', () => {
       const next = STAGES[i]!;
 
       expect(next.density).toBeGreaterThan(prev.density);
-      expect(next.seconds).toBeLessThanOrEqual(prev.seconds);
       expect(next.span).toBeGreaterThan(prev.span);
       expect(next.bounty).toBeGreaterThan(prev.bounty);
       expect(next.minDifficulty).toBeGreaterThanOrEqual(prev.minDifficulty);
       expect(next.volley[1]).toBeGreaterThanOrEqual(prev.volley[1]);
+
+      /*
+       * A tighter clock was part of this, and stage seven is the exception.
+       *
+       * The clock was standing in for difficulty, and for six stages that held:
+       * same shape of run, less time to do it in. The finale is a different
+       * shape. It is a march through five sealed regions, and the seals rather
+       * than the clock are what make it hard. Squeezing it to under a hundred
+       * seconds would not raise the difficulty, it would make the stage
+       * impossible to attempt properly and turn a march into a sprint past the
+       * thing it is about.
+       *
+       * So the rule now covers the six that share a shape, and the finale is
+       * held to its own floor below.
+       */
+      if (next.n < 7) expect(next.seconds).toBeLessThanOrEqual(prev.seconds);
     }
+  });
+
+  it('gives the finale room to be walked', () => {
+    // It is the only stage that is longer than the one before it, and that has
+    // to be a deliberate margin rather than a number that drifted.
+    const last = STAGES[STAGES.length - 1]!;
+    const sixth = STAGES[STAGES.length - 2]!;
+    expect(last.seconds).toBeGreaterThan(sixth.seconds * 1.5);
   });
 
   it('never asks for more than three rounds a volley', () => {
@@ -136,7 +159,9 @@ describe('a stage is a different level', () => {
     expect(last.extractionX).toBeGreaterThan(first.extractionX);
     expect(last.enemies.length).toBeGreaterThan(first.enemies.length);
     expect(last.caches.length).toBeGreaterThan(first.caches.length);
-    expect(last.seconds).toBeLessThan(first.seconds);
+    // The finale is longer on purpose. See the note on the difficulty arc: its
+    // pressure comes from the sealed regions, not from the clock.
+    expect(last.seconds).toBeGreaterThan(first.seconds);
   });
 
   it('lays out a level worth flying even on the shortest stage', () => {

@@ -31,6 +31,7 @@ import { buildCity, openSpot, roomSpot, type City } from './city';
 import { makeCar, type Car } from './car';
 import { layOutNodes, type StoryNode } from './node';
 import { BASELINE_ASSIST, type AssistLevel } from './assist';
+import { layOutAllies, layOutSeals, type Ally, type Seal } from './ally';
 import { layOutRefills, REFILL_REACH, type Refill } from './refill';
 import { fallbackRoster, type DailyMission, type RosterEntry } from './mission';
 import { Terrain, EXTRACTION_X, WORLD_HEIGHT, CEILING } from './terrain';
@@ -341,6 +342,16 @@ export class RunState {
    * would have to invent an option. See game/node.ts.
    */
   readonly nodes: StoryNode[];
+  /**
+   * The projects that join you on the last stage, and the seals they open.
+   *
+   * Empty everywhere else. See game/ally.ts for why the final stage is a march
+   * through sealed regions rather than another lap of the chart.
+   */
+  readonly allies: Ally[];
+  readonly seals: Seal[];
+  /** Run clock of the last recruitment, so the HUD can call it out. */
+  lastJoinAt = -1;
   /** Id of the node whose question is up, or null. Set by proximity. */
   openNodeId: number | null = null;
   /** Reads landed. The stage's actual objective. */
@@ -495,6 +506,26 @@ export class RunState {
     // whether to walk to it at all rather than being handed it for free.
     this.car = this.city ? makeCar(this.city.startX + 260, this.city.startY - 120) : null;
     this.convoy = stage.convoy ? makeConvoy(this.terrain) : null;
+
+    /*
+     * The last stage, laid out before the relocation pass so nothing else
+     * shifts. Allies sit above the chart and the seals stand across it.
+     */
+    this.allies =
+      stage.allies > 0
+        ? layOutAllies(
+            levelRng,
+            mission.survivors,
+            stage.allies,
+            this.extractionX,
+            (x) => this.terrain.groundAt(x),
+            () => this.nextId++,
+          )
+        : [];
+    this.seals =
+      this.allies.length > 0
+        ? layOutSeals(this.allies, this.extractionX, () => this.nextId++)
+        : [];
 
     this.refills = layOutRefills(
       levelRng,

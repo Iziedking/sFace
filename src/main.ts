@@ -46,6 +46,7 @@ import { renderClan } from './ui/clan';
 import { renderCampaign } from './ui/campaign';
 import { renderAbout } from './ui/about';
 import { renderHandoff } from './ui/handoff';
+import { renderEnding } from './ui/ending';
 import { renderDispatch } from './ui/dispatch';
 import { renderSignals } from './ui/signals';
 import { SPLASH_FULL_MS, pause as splashPause, renderSplash } from './ui/splash';
@@ -215,6 +216,8 @@ class App {
    */
   /** Cancels a brief that is still on screen. See ui/brief.ts. */
   private briefing = false;
+  /** Latched for one clear, so the campaign ending cannot repeat. */
+  private endingShown = false;
   private cancelBrief: (() => void) | null = null;
   /**
    * True when the last refusal was "you need a wallet" rather than an error.
@@ -1328,6 +1331,7 @@ class App {
     this.rankedUp = null;
     this.unlockedWeapon = null;
     this.stageCleared = false;
+    this.endingShown = false;
     this.cardUrl = null;
     this.cardShareFile = null;
     this.postError = null;
@@ -1518,6 +1522,30 @@ class App {
      * real chart and the people in it, and what the run was worth is on the
      * other side of opening it properly.
      */
+    /*
+     * Clearing the last stage ends the campaign, not the run.
+     *
+     * Shown before the results card, because the results card is a score and
+     * this is the point of the whole thing. The score is still there behind it.
+     */
+    if (
+      run.stage.n === STAGES.length &&
+      run.phase === 'extracted' &&
+      !run.practice &&
+      !this.endingShown
+    ) {
+      // Once per clear. Without the latch, dismissing it would land back here
+      // and show it again, which is a loop with no way out.
+      this.endingShown = true;
+      this.ui.className = '';
+      this.screen = 'results';
+      renderEnding(this.ui, {
+        state: run,
+        onContinue: () => this.showResults(),
+      });
+      return;
+    }
+
     if (run.preview) {
       this.ui.className = '';
       this.screen = 'results';

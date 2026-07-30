@@ -59,27 +59,37 @@ export interface BriefCardOptions {
  * lines and little enough that it never becomes the thing you remember about
  * starting a stage. Nothing below is allowed to push past it.
  */
-const MAX_BRIEF_SECONDS = 5;
+const MAX_BRIEF_SECONDS = 6;
 
 /**
- * Preferred pace, in seconds between one word appearing and the next.
+ * Seconds between one word appearing and the next.
  *
- * Three hundred and forty words a minute: faster than reading aloud, slow enough
- * that the text is visibly being written rather than switched on. A long brief
- * compresses below this to fit the ceiling; a short one is never slowed down to
- * fill it.
+ * Brisk on purpose. The reveal exists to make the card read as being written
+ * rather than switched on, and every second it spends is a second the finished
+ * text is NOT on screen.
+ *
+ * An earlier version paced this at reading speed, which looked right on its own
+ * and left barely a second of complete text inside the ceiling. It was reported,
+ * correctly, as appearing and disappearing before anybody could read it. The
+ * sweep is quick now and the hold below is where the reading happens.
  */
-const WORD_IN_STAGGER = 60 / 340;
+const WORD_IN_STAGGER = 0.09;
 /** How long a single word takes to land. */
-const WORD_IN_SECONDS = 0.26;
+const WORD_IN_SECONDS = 0.24;
 
-/** How long the completed card sits there, once every word has landed. */
-const HOLD_SECONDS = 1.8;
+/**
+ * How long the finished card sits there, complete and still.
+ *
+ * This is the number that matters: time with every word on screen and nothing
+ * moving, which is the only part of the card anybody actually reads. Anyone who
+ * has seen it before can dismiss it early.
+ */
+const HOLD_SECONDS = 3.2;
 
 /** Seconds between words as the card empties. */
-const WORD_OUT_STAGGER = 0.03;
+const WORD_OUT_STAGGER = 0.025;
 /** How long one word takes to leave. */
-const WORD_OUT_SECONDS = 0.28;
+const WORD_OUT_SECONDS = 0.26;
 
 /**
  * Fit the reveal, the hold and the exit inside the ceiling.
@@ -89,9 +99,23 @@ const WORD_OUT_SECONDS = 0.28;
  * rather than brisk, while a tighter stagger just reads as someone typing
  * faster.
  */
-function timings(words: number): { inStagger: number; outStagger: number; total: number } {
+function timings(words: number): {
+  inStagger: number;
+  outStagger: number;
+  /** When the last word lands, so callers can time the hold from there. */
+  revealed: number;
+  total: number;
+} {
   const gaps = Math.max(1, words - 1);
   const fixed = WORD_IN_SECONDS + HOLD_SECONDS + WORD_OUT_SECONDS;
+  /*
+   * The hold is protected, not squeezed.
+   *
+   * Only the two staggers compete for what is left after the hold has taken its
+   * share. A longer brief therefore writes out faster rather than getting less
+   * time to be read, which is the right way round: the words appearing is
+   * decoration and the finished text is the content.
+   */
   const budget = Math.max(0, MAX_BRIEF_SECONDS - fixed);
 
   const wanted = (WORD_IN_STAGGER + WORD_OUT_STAGGER) * gaps;
@@ -106,6 +130,7 @@ function timings(words: number): { inStagger: number; outStagger: number; total:
   return {
     inStagger,
     outStagger,
+    revealed: inStagger * gaps + WORD_IN_SECONDS,
     // Clamped rather than trusted. A compressed brief works out to exactly the
     // ceiling, and floating point lands a hair either side of it, so the
     // guarantee is enforced here instead of being an emergent property.
@@ -213,11 +238,13 @@ export function showBriefCard(root: HTMLElement, options: BriefCardOptions): () 
   card.style.setProperty('--in-stagger', `${pace.inStagger}s`);
   card.style.setProperty('--out-stagger', `${pace.outStagger}s`);
 
-  // When the last word has landed. Everything after is measured from here.
-  const revealed = pace.inStagger * (order - 1) + WORD_IN_SECONDS;
-
+  // The exit starts a full hold after the LAST word lands, so the reading time
+  // is time the text is complete rather than time it is still arriving.
   timers.push(
-    window.setTimeout(() => card.classList.add('brief--out'), (revealed + HOLD_SECONDS) * 1000),
+    window.setTimeout(
+      () => card.classList.add('brief--out'),
+      (pace.revealed + HOLD_SECONDS) * 1000,
+    ),
   );
   timers.push(window.setTimeout(finish, pace.total * 1000));
 

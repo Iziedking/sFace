@@ -121,6 +121,8 @@ export class Renderer {
       this.drawWeather(state, camera);
       this.drawTerrain(state, camera);
     }
+    this.drawSeals(state, camera);
+    this.drawAllies(state, camera);
     this.drawExtraction(state, camera);
     this.drawConvoy(state, camera);
     this.drawRefills(state, camera);
@@ -1104,6 +1106,121 @@ private drawExtraction(state: RunState, camera: Camera): void {
     }
 
     ctx.restore();
+  }
+
+  /**
+   * The seals: what stops the last stage being a sprint.
+   *
+   * Drawn as a full-height barrier rather than a gate with a frame, because it
+   * has to read as impassable from any altitude. A closed one carries the count
+   * it is waiting for, so the answer to "why can I not get through" is written
+   * on the thing refusing to let you.
+   */
+  private drawSeals(state: RunState, camera: Camera): void {
+    if (state.seals.length === 0) return;
+
+    const ctx = this.ctx;
+    const have = state.allies.filter((a) => a.recruited).length;
+
+    for (const seal of state.seals) {
+      if (seal.open) continue;
+      if (!camera.visibleX(seal.x, 120)) continue;
+
+      ctx.save();
+
+      // The barrier itself. Hatched rather than solid so the level behind it
+      // stays visible: you are meant to want what is on the other side.
+      ctx.globalAlpha = 0.5;
+      ctx.strokeStyle = theme.danger;
+      ctx.lineWidth = 6;
+      ctx.setLineDash([22, 16]);
+      ctx.beginPath();
+      ctx.moveTo(seal.x, CEILING);
+      ctx.lineTo(seal.x, WORLD_HEIGHT);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.globalAlpha = 1;
+      const label = `${have} / ${seal.needs}`;
+      const y = state.player.y;
+
+      ctx.fillStyle = theme.danger;
+      ctx.beginPath();
+      ctx.roundRect(seal.x - 42, y - 44, 84, 30, 5);
+      ctx.fill();
+
+      ctx.fillStyle = theme.canvas;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = `700 15px ${MONO}`;
+      ctx.fillText(label, seal.x, y - 29);
+
+      ctx.font = `700 9px ${MONO}`;
+      ctx.fillText('SEALED', seal.x, y - 54);
+
+      ctx.restore();
+    }
+  }
+
+  /**
+   * The projects still standing, waiting to be picked up.
+   *
+   * A ticker on a plate, not a figure. These are not people being rescued and
+   * drawing them as one would put them in the same visual category as the cast,
+   * which is the one distinction the last stage rests on.
+   */
+  private drawAllies(state: RunState, camera: Camera): void {
+    if (state.allies.length === 0) return;
+
+    const ctx = this.ctx;
+
+    for (const ally of state.allies) {
+      if (!camera.visibleX(ally.x, 90)) continue;
+
+      ctx.save();
+      ctx.translate(ally.x, ally.y);
+
+      if (ally.recruited) {
+        // Smaller and quieter once they are with you. They are following, not
+        // asking to be found, and five full-size plates in a chain would drown
+        // out the cast the stage is actually about.
+        ctx.globalAlpha = 0.85;
+        ctx.scale(0.72, 0.72);
+      } else {
+        // A slow bob, so one still waiting reads as waiting rather than scenery.
+        ctx.translate(0, Math.sin(state.time * 1.6 + ally.rank) * 4);
+      }
+
+      ctx.font = `700 14px ${MONO}`;
+      const width = Math.max(56, ctx.measureText(ally.ticker).width + 22);
+
+      ctx.fillStyle = theme.canvas;
+      ctx.strokeStyle = theme.ink;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.roundRect(-width / 2, -19, width, 38, 5);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = theme.ink;
+      ctx.fillText(ally.ticker, 0, -4);
+
+      /*
+       * Its own day, under the ticker.
+       *
+       * Real, and often the opposite sign to the wreck you are standing in,
+       * which is the entire argument the last stage is making: these are the
+       * ones that were still up while today's coin fell apart.
+       */
+      const up = ally.changePct >= 0;
+      ctx.fillStyle = up ? theme.accent : theme.danger;
+      ctx.font = `700 10px ${MONO}`;
+      ctx.fillText(`${up ? '+' : ''}${ally.changePct.toFixed(1)}%`, 0, 10);
+
+      ctx.restore();
+    }
   }
 
   /** A small plate of text in the world. Shared by the car and the cells. */

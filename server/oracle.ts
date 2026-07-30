@@ -58,6 +58,47 @@ export interface MissionPayload {
   roster: XRosterEntry[];
   /** What crypto X is saying, or null when we could not read it. */
   story: MissionStory | null;
+  /**
+   * The ones still standing, biggest first. Allies on the last stage.
+   *
+   * Real rows from the same market call that finds the day's wreck, carried
+   * through rather than described. The final stage is about the projects that
+   * outlasted every cycle that killed something else, and the only honest way to
+   * name them is by market cap on the day you play, from the same source the
+   * rest of the mission comes from. Nothing here is a model's opinion of which
+   * projects matter.
+   */
+  survivors: Survivor[];
+  /**
+   * The whole market, for the ending of the last stage.
+   *
+   * The campaign spends seven stages inside one bad day. The point it closes on
+   * is that the bad day is small, and that only lands if the number is real and
+   * current rather than a figure written into the copy months ago.
+   */
+  market: MarketSize | null;
+}
+
+export interface MarketSize {
+  /** Total crypto market capitalisation in USD. */
+  totalUsd: number;
+  /** Its own 24 hour move, which is usually nothing like the wreck's. */
+  changePct: number;
+  /** Share held by the largest, as a percentage. */
+  btcDominance: number;
+  /** How many assets are tracked. A count of how much of this exists at all. */
+  assets: number;
+}
+
+/** A project still in the top ten by market cap, with its own day attached. */
+export interface Survivor {
+  /** Upper case, e.g. BTC. */
+  ticker: string;
+  name: string;
+  /** Place by market cap, 1 is the largest. */
+  rank: number;
+  /** Its own 24 hour change. Often green on a day the wreck is deep red. */
+  changePct: number;
 }
 
 const TERRAIN_POINTS = 240;
@@ -65,10 +106,12 @@ const TERRAIN_POINTS = 240;
 export async function composeMission(): Promise<MissionPayload> {
   const date = new Date().toISOString().slice(0, 10);
 
-  const [worst, fng] = await Promise.all([
-    fetchWorstPerformer(),
+  const [rows, fng, market] = await Promise.all([
+    fetchMarket(),
     fetchFearGreed(),
+    fetchMarketSize(),
   ]);
+  const { worst, survivors } = rows;
 
   const terrain = await fetchTerrain(worst.id);
   const difficulty = difficultyFromFear(fng.value);
@@ -180,7 +223,44 @@ export async function composeMission(): Promise<MissionPayload> {
           live: true,
         }
       : null,
+    survivors,
+    market,
   };
+}
+
+/**
+ * The size of the whole market.
+ *
+ * Its own call, and allowed to fail without taking the mission with it. The
+ * ending reads better with it and still works without it, so a mission must
+ * never be refused because one extra endpoint was slow.
+ */
+async function fetchMarketSize(): Promise<MarketSize | null> {
+  try {
+    const res = await fetch('https://api.coingecko.com/api/v3/global');
+    if (!res.ok) return null;
+
+    const body = (await res.json()) as {
+      data?: {
+        total_market_cap?: Record<string, number>;
+        market_cap_change_percentage_24h_usd?: number;
+        market_cap_percentage?: Record<string, number>;
+        active_cryptocurrencies?: number;
+      };
+    };
+
+    const totalUsd = body.data?.total_market_cap?.usd;
+    if (typeof totalUsd !== 'number' || totalUsd <= 0) return null;
+
+    return {
+      totalUsd,
+      changePct: body.data?.market_cap_change_percentage_24h_usd ?? 0,
+      btcDominance: body.data?.market_cap_percentage?.btc ?? 0,
+      assets: body.data?.active_cryptocurrencies ?? 0,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -208,8 +288,37 @@ interface Performer {
   changePct: number;
 }
 
+/**
+ * How many of the largest projects become allies.
+ *
+ * Ten is enough that the last stage can gate several regions behind different
+ * ones and still have spares, and few enough that every name on the list is one
+ * a player recognises without being told who it is.
+ */
+const SURVIVOR_COUNT = 10;
+
+/**
+ * Is this row a pegged asset rather than a project that survived anything?
+ *
+ * Four of the largest ten by market cap are usually stablecoins or wrapped
+ * deposits, and casting them as the ones that outlasted the cycle is nonsense:
+ * a peg is engineered not to move, so it has not withstood anything. It also
+ * ruins the one number the finale shows, since an ally whose day is always
+ * exactly zero per cent says nothing about how the market held up.
+ *
+ * Detected from the data rather than from a list of names we maintain. A token
+ * trading within a few per cent of a dollar and barely moving in a day is a peg,
+ * and no opinion about which projects deserve to be there is involved. A real
+ * project that happens to trade near a dollar is not excluded unless it is also
+ * flat, which over a full day is vanishingly unlikely.
+ */
+function isPeg(price: number | null, changePct: number | null): boolean {
+  if (typeof price !== 'number' || typeof changePct !== 'number') return false;
+  return Math.abs(price - 1) < 0.05 && Math.abs(changePct) < 0.5;
+}
+
 /** The biggest 24-hour loser in the top 100 by market cap. Today's wreck. */
-async function fetchWorstPerformer(): Promise<Performer> {
+async function fetchMarket(): Promise<{ worst: Performer; survivors: Survivor[] }> {
   const url =
     'https://api.coingecko.com/api/v3/coins/markets' +
     '?vs_currency=usd&order=market_cap_desc&per_page=100&page=1&sparkline=false';
@@ -221,6 +330,7 @@ async function fetchWorstPerformer(): Promise<Performer> {
     id: string;
     symbol: string;
     name: string;
+    current_price: number | null;
     price_change_percentage_24h: number | null;
   }>;
 
@@ -234,11 +344,36 @@ async function fetchWorstPerformer(): Promise<Performer> {
   const worst = ranked[0];
   if (!worst) throw new Error('No usable market rows returned.');
 
+  /*
+   * The survivors come off the ORIGINAL order, not the sorted one.
+   *
+   * CoinGecko returns the page already ranked by market cap, and sorting above
+   * destroyed that. Taking the head of `rows` is what makes these the largest
+   * projects rather than simply the ten that happened to be up today, which is a
+   * different and much less interesting list.
+   *
+   * The day's wreck is excluded. It can be a top-ten name, and casting it as
+   * both the disaster and the rescue party would be incoherent.
+   */
+  const survivors: Survivor[] = rows
+    .filter((r) => r.id !== worst.id)
+    .filter((r) => !isPeg(r.current_price, r.price_change_percentage_24h))
+    .slice(0, SURVIVOR_COUNT)
+    .map((r, index) => ({
+      ticker: r.symbol.toUpperCase(),
+      name: r.name,
+      rank: index + 1,
+      changePct: r.price_change_percentage_24h ?? 0,
+    }));
+
   return {
-    id: worst.id,
-    symbol: worst.symbol,
-    name: worst.name,
-    changePct: worst.price_change_percentage_24h ?? 0,
+    worst: {
+      id: worst.id,
+      symbol: worst.symbol,
+      name: worst.name,
+      changePct: worst.price_change_percentage_24h ?? 0,
+    },
+    survivors,
   };
 }
 

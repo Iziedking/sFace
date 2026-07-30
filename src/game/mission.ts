@@ -101,6 +101,32 @@ export interface DailyMission {
   roster: RosterEntry[];
   /** What crypto X is saying, or null when we could not read it. */
   story: MissionStory | null;
+  /**
+   * The largest projects still standing, biggest first. Allies on stage seven.
+   *
+   * Real market rows, never a curated opinion of which projects count. Empty is
+   * a normal state on a fallback mission and the last stage handles it.
+   */
+  survivors: Survivor[];
+  /** The size of the whole market, for the campaign's ending. Null if unknown. */
+  market: MarketSize | null;
+}
+
+/** How big crypto is today, from the same source as everything else here. */
+export interface MarketSize {
+  totalUsd: number;
+  changePct: number;
+  btcDominance: number;
+  assets: number;
+}
+
+/** A project in the top ten by market cap, with its own day attached. */
+export interface Survivor {
+  ticker: string;
+  name: string;
+  /** Place by market cap, 1 is the largest. */
+  rank: number;
+  changePct: number;
 }
 
 /*
@@ -111,6 +137,48 @@ export interface DailyMission {
  * used to live here now sits in net/mission.ts, which is client-only. See the
  * header of that file for the bug that separation exists to prevent.
  */
+
+/** The market size, or null. Optional everywhere it is read. */
+function parseMarket(raw: unknown): MarketSize | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const value = raw as Record<string, unknown>;
+
+  const totalUsd = num(value.totalUsd);
+  if (totalUsd === null || totalUsd <= 0) return null;
+
+  return {
+    totalUsd,
+    changePct: num(value.changePct) ?? 0,
+    btcDominance: num(value.btcDominance) ?? 0,
+    assets: num(value.assets) ?? 0,
+  };
+}
+
+/**
+ * The surviving projects, validated.
+ *
+ * Anything malformed drops out rather than failing the mission: a bad row costs
+ * the last stage one ally, while refusing the whole payload would cost every
+ * player their day over a field only one stage reads.
+ */
+function parseSurvivors(raw: unknown): Survivor[] {
+  if (!Array.isArray(raw)) return [];
+
+  const out: Survivor[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const value = entry as Record<string, unknown>;
+
+    const ticker = str(value.ticker);
+    const name = str(value.name);
+    const rank = num(value.rank);
+    const changePct = num(value.changePct);
+    if (!ticker || !name || rank === null || changePct === null) continue;
+
+    out.push({ ticker: ticker.toUpperCase().slice(0, 8), name: name.slice(0, 40), rank, changePct });
+  }
+  return out;
+}
 
 /**
  * Validate a payload off the wire. Anything unexpected returns null and we take
@@ -151,6 +219,8 @@ export function parseMission(raw: unknown): DailyMission | null {
     live: true,
     roster: parseRoster(value.roster),
     story: parseStory(value.story),
+    survivors: parseSurvivors(value.survivors),
+    market: parseMarket(value.market),
   };
 }
 
@@ -368,6 +438,10 @@ export function practiceMission(date = utcDate()): DailyMission {
     live: false,
     roster: fallbackRoster(),
     story: null,
+    // A practice day has no market behind it, so it has no survivors either.
+    // Stage seven falls back to its own roster of names when this is empty.
+    survivors: [],
+    market: null,
   };
 }
 

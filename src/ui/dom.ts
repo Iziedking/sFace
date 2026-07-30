@@ -39,6 +39,21 @@ export function clear(root: HTMLElement): void {
 
 export function mount(root: HTMLElement, ...nodes: Node[]): void {
   root.replaceChildren(...nodes);
+
+  /*
+   * A new screen starts at the top.
+   *
+   * The screen layer is its own scroll container, and replacing its children
+   * does not move it, so arriving from a page somebody had scrolled down leaves
+   * the new one already scrolled past its own heading. It is most obvious on the
+   * campaign ending, where the first thing a player sees after clearing the game
+   * is the middle of it.
+   *
+   * Both are reset because a tall screen can scroll the page as well as the
+   * layer, depending on the layout it ends up with.
+   */
+  root.scrollTop = 0;
+  if (typeof window !== 'undefined') window.scrollTo(0, 0);
 }
 
 export type ButtonVariant = 'primary' | 'ghost' | 'quiet' | 'x';

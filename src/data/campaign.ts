@@ -160,6 +160,11 @@ export interface Stage {
    * game/city.ts for why a heightmap cannot express a place.
    */
   /**
+   * How many projects join you on this stage, and therefore how many seals bar
+   * the way. Zero on every stage but the last.
+   */
+  allies: number;
+  /**
    * How many story nodes this stage plants. Zero on every stage but six.
    *
    * A node is captured by picking, from four posts that genuinely went out
@@ -209,6 +214,7 @@ export const STAGES: readonly Stage[] = [
     convoy: false,
     city: false,
     nodes: 0,
+    allies: 0,
     volley: [1, 1],
     span: 0.45,
     bounty: 1,
@@ -236,6 +242,7 @@ export const STAGES: readonly Stage[] = [
     convoy: false,
     city: false,
     nodes: 0,
+    allies: 0,
     volley: [1, 2],
     span: 0.6,
     bounty: 1.15,
@@ -266,6 +273,7 @@ export const STAGES: readonly Stage[] = [
     convoy: false,
     city: false,
     nodes: 0,
+    allies: 0,
     volley: [1, 2],
     span: 0.7,
     bounty: 1.3,
@@ -293,6 +301,7 @@ export const STAGES: readonly Stage[] = [
     convoy: false,
     city: false,
     nodes: 0,
+    allies: 0,
     volley: [2, 2],
     span: 0.8,
     bounty: 1.5,
@@ -320,6 +329,7 @@ export const STAGES: readonly Stage[] = [
     convoy: false,
     city: true,
     nodes: 0,
+    allies: 0,
     volley: [2, 3],
     span: 0.85,
     bounty: 1.7,
@@ -355,6 +365,7 @@ export const STAGES: readonly Stage[] = [
     convoy: false,
     city: true,
     nodes: 4,
+    allies: 0,
     volley: [2, 3],
     span: 0.92,
     bounty: 2,
@@ -388,12 +399,15 @@ export const STAGES: readonly Stage[] = [
   },
   {
     n: 7,
-    name: 'The Final Look',
-    restores: "The industry's collective dignity",
+    name: 'Save Face',
+    restores: 'The season itself',
     brief:
-      'Everything still held is in the last stretch, at the worst hour, behind every single thing that has already tried to stop you. No reinforcements. No second run. This is the one.',
-    objective: 'Everyone out, the relic recovered, and eight caches.',
-    seconds: 95,
+      'This is the one everything else was for. The road out is sealed into regions and nothing you carry will open them. What opens them is the projects that were here before this cycle and will be here after it, still holding while today falls apart. Find each one. Take them with you. Walk the whole wreck and get the doors open.',
+    objective: 'Recruit every project, then reach the pad.',
+    // The longest run in the game, by a distance. Five regions have to be
+    // crossed on foot, and a clock that fits stage six would make it a sprint
+    // past the thing the stage is about.
+    seconds: 180,
     density: 2,
     minDifficulty: 5,
     caches: 11,
@@ -402,14 +416,15 @@ export const STAGES: readonly Stage[] = [
     convoy: false,
     city: false,
     nodes: 0,
+    allies: 5,
     volley: [3, 3],
     span: 1,
     bounty: 2.5,
     runners: 0.34,
     look: { sky: '#e9cdba', ground: '#b8917a', hatch: 11, weather: 'ember', density: 1 },
     tease: {
-      scene: 'Embers over the entire day at its lowest point, with everything awake.',
-      threat: 'Every threat in the campaign at once, on the shortest clock in it.',
+      scene: 'The whole day, end to end, with the ones that outlasted it waiting in it.',
+      threat: 'Sealed regions, everything awake, and no way through without all five.',
     },
     clear: (r) => r.survived && r.extracted >= 5 && r.relic && r.caches >= 8,
   },

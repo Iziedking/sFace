@@ -18,11 +18,30 @@ const LIVE = { ...practiceMission('2026-07-30'), live: true, ticker: 'MEME', cha
 const PRACTICE = practiceMission('2026-07-30');
 
 describe('how long the game is held', () => {
-  it('never holds a run longer than five seconds, on any stage', () => {
+  it('never holds a run longer than six seconds, on any stage', () => {
     for (let n = 1; n <= STAGES.length; n++) {
       for (const mission of [LIVE, PRACTICE]) {
-        expect(briefSeconds(stageAt(n), mission)).toBeLessThanOrEqual(5);
+        expect(briefSeconds(stageAt(n), mission)).toBeLessThanOrEqual(6);
       }
+    }
+  });
+
+  it('leaves most of the card as finished text rather than animation', () => {
+    /*
+     * The property the first version got wrong.
+     *
+     * It paced the reveal at reading speed, which looked right on its own and
+     * left barely a second of complete text inside the ceiling, so the card was
+     * reported as appearing and disappearing before it could be read. The hold
+     * is now protected and only the staggers compete for what is left, so the
+     * still, finished text is always the majority of the card's life.
+     */
+    for (let n = 1; n <= STAGES.length; n++) {
+      const total = briefSeconds(stageAt(n), LIVE);
+      // The hold alone, before any reveal or exit.
+      expect(total).toBeGreaterThan(3.2);
+      // And the moving parts never take longer than the still part.
+      expect(total - 3.2).toBeLessThan(3.2);
     }
   });
 

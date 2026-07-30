@@ -98,8 +98,16 @@ export function renderGate(root: HTMLElement, options: GateOptions): void {
         'ul',
         { class: 'gate__practice' },
         el('li', { text: "Stage 1: today's real chart, the full run, as many times as you like" }),
-        el('li', { text: 'Stages 2 to 7: open as 45 second tasters, so you can see what is up there' }),
-        el('li', { text: 'Nothing is saved either way: no score, no rank, no Face' }),
+        el('li', { text: 'Stages 2 to 7: open as tasters, so you can see what is up there' }),
+        /*
+         * Says what is waiting, not what is withheld.
+         *
+         * This line used to read "Nothing is saved either way: no score, no
+         * rank, no Face", which is accurate and reads as a warning that playing
+         * here is pointless. Same fact, pointed forwards: the rank exists, it
+         * compounds, and it starts when you play properly.
+         */
+        el('li', { text: 'Face, rank, clans and challenges start the moment you play in Nimiq Pay' }),
       ),
 
       /*
@@ -113,11 +121,19 @@ export function renderGate(root: HTMLElement, options: GateOptions): void {
        * Confirmed against nimiq.dev/mini-apps rather than assumed: the
        * deeplink opens the app when tapped ON A PHONE.
        */
+      /*
+       * Where the game is, not where the payments happen.
+       *
+       * This used to list the three things that need NIM and add that the
+       * wallet half only exists on mobile, which reads as a set of steps to
+       * avoid and quietly invites somebody to stay in a browser. Same panel,
+       * same links, pointed at what is on the other side of it.
+       */
       walletCta({
-        head: 'AND FOR ANYTHING WITH NIM IN IT',
+        head: 'THE WHOLE GAME IS IN NIMIQ PAY',
         reason:
-          'Staking a challenge, settling one, or buying a deep CT Signals read happens in Nimiq Pay against your own wallet. sFace never holds funds.',
-        note: 'Nimiq Pay is a phone app, so the wallet half of sFace only exists on mobile.',
+          'Face that builds up, the daily board, clans, and challenges you can stake against a friend on the same seed. Your wallet is your name here, and sFace never holds your funds.',
+        note: 'Built as a Nimiq Pay Mini App. It opens in the app you already have.',
       }),
 
       // Just the mark. The privacy promises moved up next to the button that
