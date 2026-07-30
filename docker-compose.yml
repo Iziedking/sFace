@@ -15,8 +15,17 @@
 #      deletes deploy_default and takes this service down with it.
 services:
   api:
+    # Still here so `docker compose build` works on a laptop and on a box with
+    # no registry access. CI never uses it: the workflow builds on a runner and
+    # the server only ever pulls a finished image.
     build: .
-    image: sface-api:latest
+    # Overridden by the deploy with the exact commit that passed the tests, and
+    # falling back to the floating tag for a hand-run `up` on the box.
+    #
+    # Pinned by sha in CI rather than following latest, because "latest" cannot
+    # answer which build is actually running, which is the one question that
+    # matters when something is wrong.
+    image: ${SFACE_IMAGE:-ghcr.io/iziedking/sface-api:latest}
     # A stable name, because the shared Caddy reaches this by name and not by
     # port. Changing it means changing the Caddyfile in the other repo.
     container_name: sface-api

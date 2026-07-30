@@ -30,6 +30,7 @@ import { makeConvoy, type Convoy } from './convoy';
 import { buildCity, openSpot, roomSpot, type City } from './city';
 import { makeCar, type Car } from './car';
 import { layOutNodes, type StoryNode } from './node';
+import { BASELINE_ASSIST, type AssistLevel } from './assist';
 import { layOutRefills, REFILL_REACH, type Refill } from './refill';
 import { fallbackRoster, type DailyMission, type RosterEntry } from './mission';
 import { Terrain, EXTRACTION_X, WORLD_HEIGHT, CEILING } from './terrain';
@@ -320,6 +321,17 @@ export class RunState {
   remountAt = -1;
   /** Raised by the input layer for one step when the use key was pressed. */
   useRequested = false;
+
+  /**
+   * How much help the gun gets pointing, 0 to 3. See game/assist.ts.
+   *
+   * Mutable and set by the app after construction rather than passed in, because
+   * it belongs to the PLAYER rather than to the level: it must not touch either
+   * random stream, and the service rebuilds a run to bound a score without
+   * knowing or caring who is flying it. A staked challenge pins it to the
+   * baseline so a bet is not settled on who has played longer.
+   */
+  assist: AssistLevel = BASELINE_ASSIST;
 
   /**
    * The day's reads, on a stage that has them. Empty everywhere else.

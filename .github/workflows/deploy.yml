@@ -1,0 +1,191 @@
+# Build the API image, publish it to GHCR, and roll it out on the VPS.
+#
+# ## What this does and does not cover
+#
+# The API only. The client half is static and Vercel builds it straight from
+# main, so putting it in here would deploy it twice and the two would race.
+#
+# ## Why the image goes to a registry instead of being built on the box
+#
+# The VPS used to build from source in place, which meant a deploy was a git
+# pull and a docker build on a machine that is also serving traffic: minutes of
+# CPU contention, a half-built image if it ran out of memory, and no way back to
+# the previous version except rebuilding an older commit. Now the box only ever
+# pulls a finished image tagged with the commit that produced it, so a rollback
+# is one tag change and a deploy costs the server almost nothing.
+#
+# ## Order matters
+#
+# Tests gate the image, and the image gates the rollout. A red test never
+# becomes a published tag, and an unpublished tag never reaches production.
+name: Deploy API
+
+on:
+  push:
+    branches: [main]
+  # Manual runs, for a rollback or when a deploy needs repeating without a
+  # commit to hang it on.
+  workflow_dispatch:
+
+# One rollout at a time. Two overlapping deploys can leave the box running the
+# older of the two, because whichever `up -d` finishes last wins.
+concurrency:
+  group: deploy-api
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  # The only extra scope needed. Deliberately not `write-all`: this token can
+  # publish a package and read the repo, and nothing else.
+  packages: write
+
+jobs:
+  check:
+    name: Typecheck and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Matches the Dockerfile, so a thing that passes here cannot fail to
+          # run there for a version reason.
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # Three tsconfigs and the whole suite. This is the gate; everything below
+      # depends on it.
+      - run: npm run check
+
+  image:
+    name: Publish to GHCR
+    needs: check
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.name.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # GHCR rejects uppercase in a path, and the owner here is mixed case, so
+      # it has to be folded rather than interpolated raw.
+      - name: Work out the image name
+        id: name
+        run: echo "image=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/sface-api" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          # The job's own token. No long-lived PAT is stored anywhere for this.
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          # Two tags on purpose. The commit sha is what a rollback points at,
+          # and latest is what the compose file follows.
+          tags: |
+            ${{ steps.name.outputs.image }}:${{ github.sha }}
+            ${{ steps.name.outputs.image }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  rollout:
+    name: Roll out on the VPS
+    needs: image
+    runs-on: ubuntu-latest
+    # Mapped into env rather than tested directly in each `if`.
+    #
+    # The secrets context is not available to an `if` condition, at job or step
+    # level, so `if: secrets.X != ''` does not do what it reads like. Job-level
+    # env CAN see secrets, and a step `if` CAN see env, so this is the seam
+    # between the two. It resolves to the string 'true' or 'false'.
+    env:
+      HAS_TARGET: ${{ secrets.DEPLOY_HOST != '' }}
+    steps:
+      # Every step below is gated on the host secret being present.
+      #
+      # Without this the workflow would fail on any repo that has the code but
+      # not the infrastructure, which includes a fresh clone and anybody who
+      # forks it. A pipeline that is red for a reason nobody can fix teaches
+      # people to ignore red pipelines.
+      - name: Report whether a target is configured
+        if: env.HAS_TARGET == 'false'
+        run: echo "No DEPLOY_HOST secret, so there is nothing to roll out to. Image is published."
+
+      - name: Roll out
+        if: env.HAS_TARGET == 'true'
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          SHA: ${{ github.sha }}
+          REGISTRY_USER: ${{ github.actor }}
+          # The deploy directory and the registry path both live on the server in a
+          # root-owned config, deliberately. A path or an image supplied by CI is a
+          # path an attacker chooses if the secret ever leaks.
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+
+          # Pin the host key when one is provided. Falling back to accept-new
+          # keeps a first deploy working, but a pinned key is what stops a
+          # deploy being pointed at someone else's machine.
+          if [ -n "${KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+            chmod 600 ~/.ssh/known_hosts
+            STRICT=yes
+          else
+            STRICT=accept-new
+          fi
+
+          # CI sends a commit sha and a token, and nothing else.
+          #
+          # It does NOT send a script. The deploy key is pinned on the server to a
+          # forced command, so what runs there is a root-owned file that CI cannot
+          # change: see deploy/sface-deploy.sh. That is what keeps a leaked secret
+          # from being a root shell on a box that is shared ingress for several
+          # unrelated products.
+          #
+          # The sha travels as the command, which the far end validates against one
+          # shape before touching it. The registry user and token go over stdin, two
+          # lines, because anything in argv is visible in `ps` to every other tenant
+          # of that machine for as long as the process lives.
+          { echo "$REGISTRY_USER"; echo "$REGISTRY_TOKEN"; } | ssh -i ~/.ssh/id_deploy \
+            -o "StrictHostKeyChecking=$STRICT" \
+            -o BatchMode=yes \
+            "$USER@$HOST" "$SHA"
+
+      - name: Check it answers
+        if: env.HAS_TARGET == 'true'
+        env:
+          HEALTH_URL: ${{ secrets.DEPLOY_HEALTH_URL }}
+        run: |
+          set -euo pipefail
+          URL="${HEALTH_URL:-https://api.sface.site/health}"
+
+          # A deploy that finished is not a deploy that worked. Give the
+          # container a moment to bind, then insist on a 200 before calling this
+          # green, so a broken rollout fails here rather than in front of a user.
+          for attempt in 1 2 3 4 5 6; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$URL" || true)
+            if [ "$code" = "200" ]; then
+              echo "Healthy on attempt $attempt."
+              exit 0
+            fi
+            echo "Attempt $attempt: HTTP $code. Retrying."
+            sleep 5
+          done
+
+          echo "Never returned 200. The rollout is suspect; check the container."
+          exit 1

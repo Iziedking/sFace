@@ -23,6 +23,7 @@ import { PLAYER_MAX_HEALTH } from '../game/state';
 import { CONSUMABLES } from '../data/consumables';
 import { padLayout, type PadRegion } from '../core/pads';
 import { alerted } from '../game/sight';
+import { assistTier } from '../game/assist';
 import { CONVOY_MAX_HEALTH } from '../game/convoy';
 import { isCaged } from '../game/cell';
 import { snapsToDirections, usingPads } from '../core/scheme';
@@ -111,6 +112,7 @@ export class Hud {
     this.drawCargo(ctx, state, width / 2, mid);
     this.drawAlert(ctx, state, width, top + BAR_HEIGHT);
     this.drawReadTally(ctx, state, padX, top + BAR_HEIGHT + 16);
+    this.drawAssistMark(ctx, state, width - padX, top + BAR_HEIGHT + 16);
     this.drawRead(ctx, state, width, top + BAR_HEIGHT);
     // A city has no progress along a line, so it gets a map instead.
     if (state.city) this.drawMap(ctx, state, height);
@@ -371,6 +373,32 @@ export class Hud {
       ctx.font = `700 10px ${MONO}`;
       ctx.fillText('SEEN', width / 2, y + 15);
     }
+    ctx.restore();
+  }
+
+  /**
+   * Which aim tier is live, top right, small.
+   *
+   * An earned advantage the player cannot see is not an advantage they know they
+   * have, and worse, a staked run silently pinning them back to the baseline
+   * would feel like the gun had got worse for no reason. Naming the tier means
+   * both facts are visible at the moment they matter.
+   *
+   * Nothing at all when it is off, because a label reading OFF is noise.
+   */
+  private drawAssistMark(
+    ctx: CanvasRenderingContext2D,
+    state: RunState,
+    right: number,
+    y: number,
+  ): void {
+    if (state.assist <= 0) return;
+
+    ctx.save();
+    ctx.textAlign = 'right';
+    ctx.font = `700 10px ${MONO}`;
+    ctx.fillStyle = theme.inkFaint;
+    ctx.fillText(`AIM ${assistTier(state.assist).label.toUpperCase()}`, right, y);
     ctx.restore();
   }
 

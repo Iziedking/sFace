@@ -40,6 +40,7 @@ import { renderControls } from './ui/controls';
 import { renderGate } from './ui/gate';
 import { renderPause, renderRunOverlay } from './ui/pause';
 import { showBriefCard } from './ui/brief';
+import { earnedAssist } from './game/assist';
 import { renderLoadout } from './ui/loadout';
 import { renderClan } from './ui/clan';
 import { renderCampaign } from './ui/campaign';
@@ -1315,6 +1316,24 @@ class App {
     // that could change mid-run would make the recorded trace disagree with
     // the run that produced it.
     this.run = new RunState(mission, this.weapon().id, this.activeStage(), this.practice);
+
+    /*
+     * How much help the gun gets, decided here and nowhere else.
+     *
+     * Staked means a challenge is riding on this run, and a challenge is pinned
+     * to the baseline every player has: two people betting NIM on one seed must
+     * be playing the same game, the same reason the camera refuses to show a
+     * desktop more of the world than a phone. See game/assist.ts.
+     *
+     * A practice run is never staked and a player with no profile yet gets the
+     * baseline, so a first-timer on a phone still gets a gun that helps.
+     */
+    const staked = this.challenge !== null;
+    this.run.assist = earnedAssist(
+      { stagesCleared: this.profile?.stagesCleared ?? 0 },
+      staked,
+    );
+
     this.lastHealth = this.run.player.health;
     this.effects.clear();
     this.input.reset();

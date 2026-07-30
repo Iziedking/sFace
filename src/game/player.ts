@@ -13,6 +13,7 @@
  * you hit it, so brushing a hill is survivable and dropping onto one is not.
  */
 
+import { steerAim } from './assist';
 import { clamp, direction, groundPenetration } from './collision';
 import { updateConvoy } from './convoy';
 import { resolve as resolveCity } from './city';
@@ -339,8 +340,12 @@ function aim(state: RunState, command: PlayerCommand): void {
 
   if (command.aimX !== null && command.aimY !== null) {
     const unit = direction(player.x, player.y, command.aimX, command.aimY);
-    player.aimX = unit.x;
-    player.aimY = unit.y;
+    // Assist bends where you pointed toward what you were nearly pointing at. It
+    // is applied here, at the single place the gun's heading is decided, so every
+    // input path gets it and nothing else has to know it exists.
+    const helped = steerAim(state, unit.x, unit.y);
+    player.aimX = helped.x;
+    player.aimY = helped.y;
     return;
   }
 
@@ -356,8 +361,13 @@ function aim(state: RunState, command: PlayerCommand): void {
   const intent = Math.hypot(command.moveX, command.moveY);
   if (intent < AIM_INTENT) return;
 
-  player.aimX = command.moveX / intent;
-  player.aimY = command.moveY / intent;
+  // The fallback heading gets the same help. This is the path a keyboard player
+  // and a phone player who has not touched the fire pad are both on, so leaving
+  // it unassisted would mean assist only worked once you were already aiming
+  // well.
+  const drift = steerAim(state, command.moveX / intent, command.moveY / intent);
+  player.aimX = drift.x;
+  player.aimY = drift.y;
 }
 
 /**
