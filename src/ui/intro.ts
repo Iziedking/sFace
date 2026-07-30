@@ -52,9 +52,22 @@ function readingTime(text: string): number {
   return Math.min(3600, Math.max(1600, text.length * 46));
 }
 
+/**
+ * Has the opening already played in this session?
+ *
+ * Session storage, and the choice has been wrong in both directions.
+ *
+ * It was localStorage, which meant once EVER: the first person to open the site
+ * on a given browser saw the story and nobody ever saw it again, so the live
+ * site read as having no onboarding at all. Fixing that by playing it on every
+ * load went too far the other way, and a refresh replayed the whole thing.
+ *
+ * Per session is the answer. Somebody arriving gets the story, a refresh does
+ * not, and a new tab tomorrow gets it again because they are arriving again.
+ */
 export function introSeen(): boolean {
   try {
-    return localStorage.getItem(SEEN_KEY) === 'done';
+    return sessionStorage.getItem(SEEN_KEY) === 'done';
   } catch {
     return false;
   }
@@ -62,10 +75,10 @@ export function introSeen(): boolean {
 
 export function markIntroSeen(): void {
   try {
-    localStorage.setItem(SEEN_KEY, 'done');
+    sessionStorage.setItem(SEEN_KEY, 'done');
   } catch {
-    // Private mode. They will see it once more next session, which is a far
-    // smaller problem than failing to start.
+    // Private mode refuses storage. They see it once more on the next load,
+    // which is a far smaller problem than failing to start.
   }
 }
 

@@ -35,7 +35,7 @@ import { Effects } from './render/effects';
 import { renderBoard, renderBrief, renderResults, type BoardTab } from './ui/screens';
 import { initialSteps, renderLoading, type LoadStep } from './ui/loading';
 import { renderChallenge } from './ui/challenge';
-import { renderIntro } from './ui/intro';
+import { introSeen, renderIntro } from './ui/intro';
 import { takeInAppReload } from './core/network';
 import { accountKey } from './net/identity';
 import { mergeProfile } from './net/profile';
@@ -152,6 +152,27 @@ const DEFAULT_STAKE_NIM = 5;
  * a few hundred milliseconds and without this the screen is a flicker.
  */
 const MIN_LOADING_MS = 3200;
+
+const STAGE_KEY = 'sface.stage';
+
+/** The stage last selected, or one. Clamped, because storage is editable. */
+function readStage(): number {
+  try {
+    const raw = Number(localStorage.getItem(STAGE_KEY));
+    if (!Number.isFinite(raw)) return 1;
+    return Math.max(1, Math.min(STAGES.length, Math.floor(raw)));
+  } catch {
+    return 1;
+  }
+}
+
+function writeStage(stage: number): void {
+  try {
+    localStorage.setItem(STAGE_KEY, String(stage));
+  } catch {
+    // Private mode. The choice simply does not survive the session.
+  }
+}
 
 
 class App {
@@ -294,7 +315,19 @@ class App {
    * The stage about to be flown. Defaults to the next one not yet cleared, so
    * a returning player presses start and gets the thing they are up to.
    */
-  private stage = 1;
+  /**
+   * The stage the player has selected, remembered across loads.
+   *
+   * Reported as refreshing dropping them back to stage one. It used to live
+   * only in memory, so any reload lost the choice, and on the last stages that
+   * means walking back through the campaign screen every time. Somebody working
+   * on stage six should reload onto stage six.
+   *
+   * Stored rather than derived from progress, because they are different
+   * questions: what you have unlocked, and which one you are currently playing.
+   * A player replaying stage three to beat a score has not un-cleared anything.
+   */
+  private stage = readStage();
   /** Set when the run just finished cleared its stage. Cleared on the next run. */
   private stageCleared = false;
   /** Today's three jobs for the selected stage. Recomputed when either changes. */
@@ -477,18 +510,13 @@ class App {
     }
 
     /*
-     * The opening plays on every visit, not once ever.
+     * The opening plays once per session.
      *
-     * It used to be gated on a flag in localStorage, which meant it fired the
-     * first time somebody ever loaded the site and never again. On the live site
-     * that reads as no onboarding at all: you land straight on the sign-in page
-     * with no idea what the game is, and the voice never starts because the
-     * gesture that unlocks audio was on a screen you were never shown.
-     *
-     * So it plays every time. It is five short lines, it is skippable from the
-     * first frame, and the tap that starts it is what browsers require before
-     * any sound can play. Somebody arriving cold is exactly who this is for, and
-     * that is most people most days.
+     * The flag lives in session storage, so somebody arriving gets the story and
+     * a refresh does not replay it. Both extremes have been tried and both were
+     * wrong: once ever meant the live site had no onboarding at all for anybody
+     * but its first visitor, and every load meant refreshing sat you through it
+     * again. See ui/intro.ts.
      *
      * It sits after the loop has started so the chart is alive behind it, and
      * after the mission has loaded so nothing in it is a guess.
@@ -503,7 +531,7 @@ class App {
      */
     const returningFromX = this.cameBackFromX;
 
-    if (!this.pendingChallengeId && !returningFromX && !this.inAppReload) {
+    if (!introSeen() && !this.pendingChallengeId && !returningFromX && !this.inAppReload) {
       this.ui.className = '';
       this.screen = 'intro';
       renderIntro(this.ui, {
@@ -1229,6 +1257,7 @@ class App {
       onConnectX: this.xAvailable ? () => void this.doConnectX() : null,
       onSelect: (n) => {
         this.stage = n;
+        writeStage(n);
         audio.play('ui');
         this.showCampaign();
       },
@@ -1735,6 +1764,7 @@ class App {
           : null,
       onNextStage: () => {
         this.stage = Math.min(STAGES.length, run.stage.n + 1);
+        writeStage(this.stage);
         this.startRun();
       },
       onLoadout: () => this.showLoadout(),
