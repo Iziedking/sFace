@@ -59,10 +59,18 @@ describe('the arc', () => {
        * impossible to attempt properly and turn a march into a sprint past the
        * thing it is about.
        *
-       * So the rule now covers the six that share a shape, and the finale is
-       * held to its own floor below.
+       * Stage six is out for the same reason, one stage earlier.
+       *
+       * It was written as a movement stage and its clock came from that, but
+       * the stage that shipped asks you to stop at each panel and read four
+       * posts. A clock that punishes reading does not make the stage harder, it
+       * makes it a guess, which is the one thing this stage exists not to be.
+       * The tightening rule covers the five that are genuinely about flying.
+       *
+       * So the rule now covers the five that share a shape, and the two that
+       * are about working something out are held to their own floors below.
        */
-      if (next.n < 7) expect(next.seconds).toBeLessThanOrEqual(prev.seconds);
+      if (next.n < 6) expect(next.seconds).toBeLessThanOrEqual(prev.seconds);
 
       /*
        * Attacker density climbs for six stages, and the finale drops it hard.
@@ -77,12 +85,21 @@ describe('the arc', () => {
     }
   });
 
-  it('gives the finale room to be walked', () => {
-    // It is the only stage that is longer than the one before it, and that has
-    // to be a deliberate margin rather than a number that drifted.
+  it('gives the two thinking stages room, and the finale most of all', () => {
+    /*
+     * Both have to be deliberate margins rather than numbers that drifted.
+     *
+     * Six and seven are the stages you spend standing still, so each needs more
+     * clock than the flying stage before it, and the finale needs half again as
+     * much as six on top of that: it is five sealed regions walked rather than
+     * one district read.
+     */
     const last = STAGES[STAGES.length - 1]!;
     const sixth = STAGES[STAGES.length - 2]!;
-    expect(last.seconds).toBeGreaterThan(sixth.seconds * 1.5);
+    const fifth = STAGES[STAGES.length - 3]!;
+
+    expect(sixth.seconds).toBeGreaterThan(fifth.seconds);
+    expect(last.seconds).toBeGreaterThanOrEqual(sixth.seconds * 1.5);
   });
 
   it('never asks for more than three rounds a volley', () => {

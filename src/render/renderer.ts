@@ -966,8 +966,18 @@ private drawExtraction(state: RunState, camera: Camera): void {
 
     const inReach = cellInReach(state) === face;
     const afford = state.purse.held >= charge.cost;
+    /*
+     * Name the purchase, not just the price.
+     *
+     * This read NEED 90 M, where M is the day's ticker, and the question that
+     * came back was what it meant. Fair: a bare number and a one-letter
+     * currency beside a locked cell says nothing about what the number buys or
+     * why it is being mentioned. The affordable version of this label already
+     * ends in TO BLOW THE DOOR, so matching it makes the pair read as one
+     * thought at two prices.
+     */
     const label = !afford
-      ? `NEED ${charge.cost} ${state.purse.ticker}`
+      ? `NEED ${charge.cost} ${state.purse.ticker} TO BLOW THE DOOR`
       : inReach
         ? breachPrompt(charge.label)
         : 'GET CLOSER';

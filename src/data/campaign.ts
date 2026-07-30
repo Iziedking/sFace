@@ -368,7 +368,16 @@ export const STAGES: readonly Stage[] = [
     brief:
       'Everyone who spent last cycle saying we were early has gone quiet. What is left is the accounts with nothing to lose, and they are setting the terms. The panels in this district are still arguing about why today happened, and each one is showing four posts that genuinely went out. One of them is right. Pick it and the panel flips. Pick wrong and everyone within a street starts walking toward the noise.',
     objective: 'Read every panel, then get out.',
-    seconds: 100,
+    /*
+     * The longest stage before the finale, because it is the only one where
+     * standing still is the work.
+     *
+     * Every other stage spends its clock on movement, so a hundred seconds is a
+     * fair budget. This one asks you to stop at each panel and actually read
+     * four posts, and a timer that punishes reading turns the stage into
+     * guessing, which is the one thing it exists not to be.
+     */
+    seconds: 120,
     density: 1.8,
     minDifficulty: 4,
     caches: 10,
