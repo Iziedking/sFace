@@ -124,6 +124,18 @@ export interface Enemy {
    * to the driver, for a mechanic the stage does not need.
    */
   driving: boolean;
+
+  /**
+   * When this one can be hit by the car again.
+   *
+   * A drive-through is contact for several frames, and without a cooldown every
+   * one of those frames was a separate hit. That made a ram an instant kill no
+   * matter how it was tuned, which is the opposite of reading as being run over:
+   * nothing staggers, nothing gets back up, the attacker is simply gone.
+   *
+   * One pass, one hit. Coming back around for the second is the point.
+   */
+  rammedUntil: number;
 }
 
 export interface Face {
@@ -809,6 +821,7 @@ function layOutEnemies(
       // Set below, once the city is known. Rolled here anyway so the draw count
       // per attacker does not depend on which stage is being built.
       driving: false,
+      rammedUntil: -1,
     });
   }
 

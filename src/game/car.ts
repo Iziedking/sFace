@@ -88,8 +88,28 @@ export const CAR_REACH = 70;
  */
 const RAM_SPEED = 220;
 
-/** Damage at a dead stop, scaled by how much over RAM_SPEED you were. */
-const RAM_DAMAGE = 90;
+/**
+ * Sized so nobody goes down in one pass.
+ *
+ * The weakest attacker on foot has 18 health and the toughest 28, so 16 puts
+ * every one of them at two hits. That is the whole feel being asked for: the
+ * first pass takes them off their feet, and you have to come back around. A
+ * one-shot ram is not running somebody over, it is a delete button on wheels,
+ * and it would make the car strictly better than the gun in every street.
+ */
+const RAM_DAMAGE = 16;
+
+/**
+ * How long before the same attacker can be hit again.
+ *
+ * Long enough that one drive-through is one hit rather than one per frame of
+ * contact, and long enough that sitting on top of somebody with the throttle
+ * open is not a kill either. Turning around is the cost of the second hit.
+ */
+const RAM_COOLDOWN = 1.1;
+
+/** How hard a hit throws them, so the ram is visible and not just arithmetic. */
+const RAM_SHOVE = 190;
 
 /**
  * Speed kept through an impact.
@@ -166,18 +186,34 @@ function ram(state: RunState, speed: number): void {
   const car = state.car;
   if (!car || speed < RAM_SPEED) return;
 
-  // Linear in the speed above the floor, so a ram at the top of fourth is worth
-  // roughly twice one that barely qualified.
-  const force = RAM_DAMAGE * (speed / RAM_SPEED);
   let struck = false;
 
   for (const enemy of state.enemies) {
     if (!enemy.alive || enemy.driving || enemy.kind === 'turret') continue;
+    if (state.time < enemy.rammedUntil) continue;
 
     const reach = CAR_RADIUS + radiusOf(enemy);
-    if (Math.hypot(enemy.x - car.x, enemy.y - car.y) > reach) continue;
+    const dx = enemy.x - car.x;
+    const dy = enemy.y - car.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance > reach) continue;
 
-    damageEnemy(state, enemy, force);
+    enemy.rammedUntil = state.time + RAM_COOLDOWN;
+    damageEnemy(state, enemy, RAM_DAMAGE);
+
+    /*
+     * Thrown along the line of the impact.
+     *
+     * Without it a ram is a number changing somewhere off screen: the attacker
+     * stands exactly where they were and the only tell is a health bar you are
+     * not looking at while driving. Being knocked off the bonnet is what makes
+     * the hit legible, and it also breaks the contact so the cooldown is not
+     * the only thing keeping one pass to one hit.
+     */
+    const away = distance > 0.01 ? { x: dx / distance, y: dy / distance } : { x: 1, y: 0 };
+    enemy.x += away.x * RAM_SHOVE * 0.12;
+    enemy.y += away.y * RAM_SHOVE * 0.12;
+
     struck = true;
   }
 

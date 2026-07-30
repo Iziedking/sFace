@@ -238,6 +238,28 @@ describe('the car as a weapon', () => {
     expect(enemy.health).toBe(before);
   });
 
+  it('takes more than one pass to kill', () => {
+    /*
+     * The rule the mechanic is actually built around.
+     *
+     * Before the cooldown, contact was several frames and every one of them was
+     * a separate hit, so a ram was an instant kill however the damage was tuned.
+     * That does not read as running somebody over: nothing staggers and nothing
+     * gets back up, the attacker is simply gone. One pass, one hit.
+     */
+    const state = movingCity();
+    boardCar(state);
+    const enemy = planted(state);
+    const full = enemy.health;
+
+    for (let i = 0; i < 60; i++) step(state, 1 / 60, GO);
+
+    expect(enemy.alive).toBe(true);
+    expect(enemy.health).toBeLessThan(full);
+    // And still over half, or the second pass would be a formality.
+    expect(enemy.health).toBeGreaterThan(full / 2 - 1);
+  });
+
   it('does not flatten a turret', () => {
     // Bolted to the ground. If the car cleared emplacements too, driving would
     // answer every threat in the stage.
