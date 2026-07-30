@@ -135,8 +135,26 @@ jobs:
           set -euo pipefail
 
           mkdir -p ~/.ssh
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+
+          # Strip carriage returns on the way in.
+          #
+          # The secret is pasted by a human, and a key copied out of an editor on
+          # Windows carries CRLF. OpenSSH refuses such a file outright, and the
+          # only symptom at the far end is "Permission denied (publickey)", which
+          # points at the server and wastes an hour there. One `tr` removes a
+          # whole class of confusing failure.
+          printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/id_deploy
           chmod 600 ~/.ssh/id_deploy
+
+          # Print the FINGERPRINT, never the key. This is the one fact needed to
+          # tell "the secret is malformed" apart from "the server trusts a
+          # different key", and those two have identical symptoms otherwise.
+          if ! ssh-keygen -y -f ~/.ssh/id_deploy > ~/.ssh/id_deploy.pub 2>/dev/null; then
+            echo "The DEPLOY_SSH_KEY secret is not a valid private key. Re-copy it, including the BEGIN and END lines."
+            exit 1
+          fi
+          echo "Deploy key fingerprint:"
+          ssh-keygen -lf ~/.ssh/id_deploy.pub
 
           # Pin the host key when one is provided. Falling back to accept-new
           # keeps a first deploy working, but a pinned key is what stops a
