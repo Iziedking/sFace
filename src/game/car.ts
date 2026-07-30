@@ -29,6 +29,7 @@
 
 import { resolve } from './city';
 import type { RunState } from './state';
+import { damageEnemy, radiusOf } from './enemy';
 
 export interface Car {
   x: number;
@@ -76,6 +77,28 @@ export function carStopped(state: RunState): boolean {
 
 /** How close you have to be to get in. */
 export const CAR_REACH = 70;
+
+/**
+ * Below this the car is parked as far as anybody standing in front of it is
+ * concerned.
+ *
+ * Without a floor, rolling to a halt against somebody would grind them down at
+ * walking pace and every enemy the car happened to be resting on would die for
+ * free. A ram should be something you did on purpose.
+ */
+const RAM_SPEED = 220;
+
+/** Damage at a dead stop, scaled by how much over RAM_SPEED you were. */
+const RAM_DAMAGE = 90;
+
+/**
+ * Speed kept through an impact.
+ *
+ * A ram costs momentum, so ploughing a line of attackers slows you to a crawl
+ * and leaves you sitting still in the open. That is the trade: the car is a
+ * weapon, but using it as one takes away the thing that made it safe.
+ */
+const RAM_SLOWDOWN = 0.55;
 /** Seconds after getting out before the door works again. */
 const REENTRY_LOCKOUT = 0.6;
 
@@ -123,6 +146,46 @@ export function driveCar(state: RunState, dt: number, moveX: number, moveY: numb
   // Only turn while actually moving, or a stationary car spins to face whatever
   // the stick was last touching, which reads as broken.
   if (speed > 24) car.heading = Math.atan2(car.vy, car.vx);
+
+  ram(state, speed);
+}
+
+/**
+ * Two tonnes moving at speed is a weapon whether or not it was meant to be.
+ *
+ * Driving through somebody and having them stand there unharmed was the single
+ * loudest thing wrong with the city stages: the car reads as heavy, it is the
+ * fastest thing in the level, and it bounced off people like a shopping trolley.
+ *
+ * Deliberately only on foot patrols. A turret is bolted to the ground and a
+ * driven patrol is another car, so neither is something you flatten; leaving
+ * them out keeps the car from being a way to skip every threat in the stage
+ * without aiming at anything.
+ */
+function ram(state: RunState, speed: number): void {
+  const car = state.car;
+  if (!car || speed < RAM_SPEED) return;
+
+  // Linear in the speed above the floor, so a ram at the top of fourth is worth
+  // roughly twice one that barely qualified.
+  const force = RAM_DAMAGE * (speed / RAM_SPEED);
+  let struck = false;
+
+  for (const enemy of state.enemies) {
+    if (!enemy.alive || enemy.driving || enemy.kind === 'turret') continue;
+
+    const reach = CAR_RADIUS + radiusOf(enemy);
+    if (Math.hypot(enemy.x - car.x, enemy.y - car.y) > reach) continue;
+
+    damageEnemy(state, enemy, force);
+    struck = true;
+  }
+
+  if (struck) {
+    car.vx *= RAM_SLOWDOWN;
+    car.vy *= RAM_SLOWDOWN;
+    state.emit({ kind: 'hit', x: car.x, y: car.y });
+  }
 }
 
 /** Get in, if there is one and you are on it. */

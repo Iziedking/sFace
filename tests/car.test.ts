@@ -10,7 +10,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { practiceMission } from '../src/game/mission';
-import { RunState } from '../src/game/state';
+import { RunState, type Enemy } from '../src/game/state';
 import { step } from '../src/game/update';
 import { CAR_RADIUS, CAR_REACH } from '../src/game/car';
 import { PLAYER_RADIUS } from '../src/game/player';
@@ -176,5 +176,79 @@ describe('driving stays settleable', () => {
       traceB.push(`${b.car!.x.toFixed(4)}:${b.car!.y.toFixed(4)}`);
     }
     expect(traceA).toEqual(traceB);
+  });
+});
+
+/**
+ * Running somebody down.
+ *
+ * The car reads as heavy and is the fastest thing in the level, and until now
+ * it drove through people without touching them. These pin the two halves of
+ * making it a weapon: it has to be moving, and using it as one has to cost
+ * something, or it becomes a way to clear a stage without ever aiming.
+ */
+describe('the car as a weapon', () => {
+  /** Put a live attacker directly under the car's nose. */
+  function planted(state: RunState) {
+    const car = state.car!;
+    const enemy: Enemy = {
+      ...state.enemies[0]!,
+      x: car.x + CAR_RADIUS,
+      y: car.y,
+      alive: true,
+      driving: false,
+      kind: 'runner',
+      health: 40,
+    };
+    state.enemies.length = 0;
+    state.enemies.push(enemy);
+    return enemy;
+  }
+
+  function movingCity() {
+    const state = new RunState(practiceMission('2026-07-29'), 'sidearm', 5);
+    return state;
+  }
+
+  it('hurts an attacker it hits at speed', () => {
+    const state = movingCity();
+    boardCar(state);
+    const enemy = planted(state);
+    const before = enemy.health;
+
+    // Long enough to get well past the speed floor.
+    for (let i = 0; i < 60; i++) step(state, 1 / 60, GO);
+
+    expect(enemy.health).toBeLessThan(before);
+  });
+
+  it('leaves them alone when it is barely moving', () => {
+    /*
+     * The floor is what stops the car being a lawnmower. Without it, coasting
+     * to a halt against somebody grinds them down at walking pace and every
+     * attacker the car happens to rest on dies for free.
+     */
+    const state = movingCity();
+    boardCar(state);
+    const enemy = planted(state);
+    const before = enemy.health;
+
+    for (let i = 0; i < 30; i++) step(state, 1 / 60, STILL);
+
+    expect(enemy.health).toBe(before);
+  });
+
+  it('does not flatten a turret', () => {
+    // Bolted to the ground. If the car cleared emplacements too, driving would
+    // answer every threat in the stage.
+    const state = movingCity();
+    boardCar(state);
+    const enemy = planted(state);
+    enemy.kind = 'turret';
+    const before = enemy.health;
+
+    for (let i = 0; i < 60; i++) step(state, 1 / 60, GO);
+
+    expect(enemy.health).toBe(before);
   });
 });
