@@ -27,6 +27,22 @@ export class Rng {
     this.state = typeof seed === 'string' ? hashSeed(seed) : seed >>> 0;
   }
 
+  /**
+   * The whole generator, as one number.
+   *
+   * A run that survives a page refresh has to pick up the same random stream it
+   * was on, or the resumed half of the level behaves like a different level.
+   * The state is a single uint32, so this costs nothing and removes the only
+   * part of a snapshot that could not otherwise be rebuilt from the seed.
+   */
+  save(): number {
+    return this.state;
+  }
+
+  load(state: number): void {
+    this.state = state >>> 0;
+  }
+
   /** Next float in [0, 1). */
   next(): number {
     this.state = (this.state + 0x6d2b79f5) >>> 0;

@@ -115,6 +115,7 @@ import { el, button } from './ui/dom';
 import { connect, askDeviceId, hostLanguage, isTestnet, type WalletSession } from './nimiq/wallet';
 import { settle } from './nimiq/payments';
 import { challengeShareLink, clanShareLink, readChallengeId, readClanTag } from './nimiq/deeplink';
+import { capture, matches, restore, type RunSnapshot } from './game/snapshot';
 import { buy } from './game/consume';
 import { CONSUMABLES } from './data/consumables';
 import { signClaim } from './nimiq/wallet';
@@ -163,6 +164,45 @@ function readStage(): number {
     return Math.max(1, Math.min(STAGES.length, Math.floor(raw)));
   } catch {
     return 1;
+  }
+}
+
+/**
+ * The run in progress, kept for exactly as long as the tab is.
+ *
+ * sessionStorage rather than localStorage on purpose. A half-finished run is
+ * something you came back to, not something you keep: closing the tab and
+ * opening the game tomorrow should start tomorrow's mission, not resume a
+ * stage from a coin that is no longer the worst performer. A refresh, a
+ * reclaimed background tab and a WebView reload all keep the session, which is
+ * every case this exists for.
+ */
+const RUN_KEY = 'sface.run';
+
+function readSnapshot(): RunSnapshot | null {
+  try {
+    const raw = sessionStorage.getItem(RUN_KEY);
+    return raw ? (JSON.parse(raw) as RunSnapshot) : null;
+  } catch {
+    // Blocked storage, or a blob written by an older build. Either way there is
+    // no run to come back to, which is exactly where we were before this.
+    return null;
+  }
+}
+
+function writeSnapshot(snapshot: RunSnapshot): void {
+  try {
+    sessionStorage.setItem(RUN_KEY, JSON.stringify(snapshot));
+  } catch {
+    // Quota, or private mode. Losing the resume is not worth losing the run.
+  }
+}
+
+function clearSnapshot(): void {
+  try {
+    sessionStorage.removeItem(RUN_KEY);
+  } catch {
+    // As above.
   }
 }
 
@@ -417,8 +457,22 @@ class App {
      * Coming back deliberately does NOT unpause, because resuming automatically
      * drops somebody into a fight they have not looked at yet.
      */
+    /*
+     * A refresh is not a decision, so it must not cost the run.
+     *
+     * pagehide fires on reload, on close, and when a phone browser evicts the
+     * tab to reclaim memory. None of those are the player choosing to stop, and
+     * until now all three threw away everything since the stage began. On a
+     * phone the eviction case is the common one and there is nothing to blame:
+     * you come back and the run is simply gone.
+     */
+    window.addEventListener('pagehide', () => this.saveRun());
+
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
+        // Hidden is one step from evicted, so bank it here too rather than
+        // relying on pagehide firing at all. Some engines skip it.
+        this.saveRun();
         this.setPaused(true);
         music.suspend();
         audio.silence();
@@ -601,6 +655,11 @@ class App {
       this.openClan();
       return;
     }
+
+    // A run banked by a refresh comes back before anything else, because the
+    // player was in the middle of it and everything else can wait.
+    if (this.resumeRun()) return;
+
     this.showBrief();
   }
 
@@ -738,6 +797,64 @@ class App {
    * key held when the tab lost focus, is remembered across the pause and the
    * ship lurches the moment play resumes.
    */
+  /** Bank the run in progress, if there is one worth banking. */
+  private saveRun(): void {
+    const run = this.run;
+
+    // A finished run is a results screen, and a preview was never going to be
+    // kept. Neither is something to come back to.
+    if (!run || this.screen !== 'run' || run.finished || run.preview) {
+      return;
+    }
+
+    writeSnapshot(capture(run));
+  }
+
+  /**
+   * Pick a banked run back up, paused.
+   *
+   * Paused rather than running, for the same reason coming back from a
+   * notification does not unpause: dropping somebody straight into a fight they
+   * have not looked at yet is how you lose the run a second time.
+   */
+  private resumeRun(): boolean {
+    const mission = this.mission;
+    const snapshot = readSnapshot();
+
+    if (!mission || !snapshot || !matches(snapshot, mission.seed)) {
+      // A snapshot from a different mission describes a level that no longer
+      // exists. Midnight UTC redraws the world.
+      if (snapshot) clearSnapshot();
+      return false;
+    }
+
+    // A different gun is a different run. Rebuilding under the current loadout
+    // would hand back a run nobody played.
+    if (snapshot.weapon !== this.weapon().id) {
+      clearSnapshot();
+      return false;
+    }
+
+    this.stage = snapshot.stage;
+    this.practice = snapshot.practice;
+    this.contracts = this.todaysContracts();
+    this.prepareRun();
+
+    const run = this.run;
+    if (!run) {
+      clearSnapshot();
+      return false;
+    }
+
+    restore(run, snapshot);
+
+    this.firstRun = false;
+    this.screen = 'run';
+    this.paused = false;
+    this.setPaused(true);
+    return true;
+  }
+
   private setPaused(paused: boolean): void {
     if (this.screen !== 'run' || this.paused === paused) return;
 
@@ -751,6 +868,8 @@ class App {
         onQuit: () => {
           this.paused = false;
           this.ui.className = '';
+          // Deliberate, unlike a refresh, so the run is genuinely abandoned.
+          clearSnapshot();
           this.showBrief();
         },
       });
@@ -1511,6 +1630,9 @@ class App {
     this.postError = null;
     this.screen = 'run';
     this.paused = false;
+    // Starting deliberately discards whatever was banked. There is only ever
+    // one run to come back to and this is now it.
+    clearSnapshot();
     this.showStageBrief();
   }
 
@@ -1691,6 +1813,9 @@ class App {
   }
 
   private showResults(): void {
+    // The run is over. Whatever was banked describes a stage that has already
+    // been scored, and coming back to it would replay a run twice.
+    clearSnapshot();
     const run = this.run;
     if (!run) return;
 
