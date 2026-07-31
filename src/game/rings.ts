@@ -152,12 +152,27 @@ function angleGap(a: number, b: number): number {
  * reason to make you find the same gap again on the way back.
  */
 export function solidAt(city: RingCity, x: number, y: number): boolean {
-  const { r, a } = polar(city, x, y);
+  // The angle no longer comes into it: a locked ring is closed all the way
+  // round, gap included, because the gap is where the gate stands.
+  const { r } = polar(city, x, y);
 
   for (const ring of city.rings) {
-    if (!ring.locked) continue;
     if (Math.abs(r - ring.radius) > ring.thickness / 2) continue;
-    if (angleGap(a, ring.gapAt) <= ring.gapHalf) continue;
+
+    /*
+     * A locked ring is closed all the way round, gap included.
+     *
+     * The gap used to be walkable while the ring was still locked, which meant
+     * the entire stage could be spiralled to the core without answering a
+     * single gate. The one mechanic the finale is built on did nothing, and
+     * nothing about playing it would tell you: you just kept finding your way
+     * in, which is what the stage looks like when it is working.
+     *
+     * The gap is where the gate stands. Answering it unlocks the ring, and then
+     * the whole wall opens rather than just the hole, because at that point the
+     * wall has nothing left to ask.
+     */
+    if (!ring.locked) continue;
     return true;
   }
 

@@ -203,15 +203,29 @@ export function layOutGates(
   const gates: Gate[] = [];
   const band = extractionX / (allies.length + 1);
 
-  for (let i = 1; i < allies.length; i++) {
+  /*
+   * One gate per wall, and the first wall may only ask about the first project.
+   *
+   * This used to run from 1 to allies.length, which is one gate per ally rather
+   * than one per wall. With five projects and four walls every gate ended up
+   * asking about one project too deep: the outermost wall, the very first thing
+   * a player meets, asked about a project sealed behind itself. Unanswerable in
+   * order, on the first gate, on the finale.
+   *
+   * Counting from the wall instead. Gate j guards the jth wall from the outside,
+   * and may ask about exactly the j + 1 projects that sit outside it.
+   */
+  const walls = allies.length - 1;
+
+  for (let j = 0; j < walls; j++) {
     /*
      * Only projects the player could already have reached.
      *
-     * Asking about one further down the level would make the gate unanswerable
-     * by anybody playing it in order, which is not difficulty, it is a bug with
-     * a story attached.
+     * Asking about one further in would make the gate unanswerable by anybody
+     * playing it in order, which is not difficulty, it is a bug with a story
+     * attached.
      */
-    const behind = allies.slice(0, i + 1);
+    const behind = allies.slice(0, j + 1);
 
     // Alternate the two questions so a player cannot learn one answer shape and
     // stop reading, and draw from the stream so the order is fixed per seed.
@@ -239,12 +253,16 @@ export function layOutGates(
 
     gates.push({
       id: nextId(),
-      x: Math.round(Math.min(extractionX - 200, allies[i]!.x + band * 0.55)),
+      x: Math.round(Math.min(extractionX - 200, allies[j]!.x + band * 0.55)),
       /*
        * Gate 0 guards the outermost wall, because that is the first one a player
        * meets. The rings are numbered inward, so the index is flipped.
+       *
+       * `x` is only read on a level laid out along a line. On the ring city a
+       * gate belongs to a wall rather than to a point, and `ring` is what the
+       * world reads. See the Gate type.
        */
-      ring: allies.length - 1 - i,
+      ring: walls - 1 - j,
       options: options.map((a) => a.id),
       answer,
       ask,

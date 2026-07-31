@@ -201,6 +201,19 @@ describe('gathering intel', () => {
 
 describe('the gates', () => {
   /** Put the player in the open band outside a given wall. */
+  /**
+   * A wall whose gate is an actual choice.
+   *
+   * Gates ask about the projects outside the wall they guard, so the outermost
+   * one has a single option: you either met that project or you did not, and
+   * there is nothing to pick wrong. Anything testing a wrong answer has to be
+   * at a wall further in.
+   */
+  function ringWithAChoice(run: RunState): number {
+    const gate = [...run.gates].sort((a, b) => b.options.length - a.options.length)[0]!;
+    return gate.ring;
+  }
+
   function standOutside(run: RunState, ringIndex: number): void {
     const c = run.rings!;
     const ring = c.rings[ringIndex]!;
@@ -261,10 +274,11 @@ describe('the gates', () => {
 
   it('costs time and noise on a wrong answer, not score', () => {
     const run = finale();
-    standOutside(run, run.rings!.rings.length - 1);
+    standOutside(run, ringWithAChoice(run));
     step(run, 1 / 60, STILL);
 
     const gate = run.gates.find((g) => g.id === run.openGateId)!;
+    expect(gate.options.length).toBeGreaterThan(1);
     const before = run.nodeScore;
     expect(answerGate(run, (gate.answer + 1) % gate.options.length)).toBe('wrong');
 
@@ -277,7 +291,7 @@ describe('the gates', () => {
 
   it('closes the question either way, so it cannot be brute forced', () => {
     const run = finale();
-    standOutside(run, run.rings!.rings.length - 1);
+    standOutside(run, ringWithAChoice(run));
     step(run, 1 / 60, STILL);
 
     const gate = run.gates.find((g) => g.id === run.openGateId)!;
@@ -289,8 +303,9 @@ describe('the gates', () => {
 
   it('can be tried again by coming back to the wall', () => {
     const run = finale();
-    const outermost = run.rings!.rings.length - 1;
-    standOutside(run, outermost);
+    // A wall with more than one option, or there is no wrong answer to recover
+    // from. See ringWithAChoice.
+    standOutside(run, ringWithAChoice(run));
     step(run, 1 / 60, STILL);
 
     const gate = run.gates.find((g) => g.id === run.openGateId)!;
@@ -396,8 +411,17 @@ describe('rounds in the ring city', () => {
     expect(run.bullets).toHaveLength(0);
   });
 
-  it('lets a round through the gap', () => {
-    // Otherwise the one way in would also be the one place you cannot shoot.
+  it('stops a round at the gap of a wall still locked', () => {
+    /*
+     * The gap used to let rounds through, on the reasoning that the one way in
+     * should not also be the one place you cannot shoot. That reasoning came
+     * from a version where the gap was a hole you could walk through, and it
+     * was that hole which let the whole stage be finished without answering a
+     * single gate.
+     *
+     * A locked wall is now closed all the way round, so there is no way in to
+     * be shooting through. The gap is where the gate stands, not an opening.
+     */
     const run = finale();
     const c = run.rings!;
     const ring = c.rings[c.rings.length - 1]!;
@@ -414,7 +438,33 @@ describe('rounds in the ring city', () => {
     });
 
     updateBullets(run, 1 / 60);
-    expect(run.bullets).toHaveLength(1);
+    expect(run.bullets).toHaveLength(0);
+  });
+
+  it('lets a round through once the wall has been answered', () => {
+    // And then everywhere on it, not only at the gap. A wall with nothing left
+    // to ask is not a wall.
+    const run = finale();
+    const c = run.rings!;
+    const ring = c.rings[c.rings.length - 1]!;
+    ring.locked = false;
+
+    for (const angle of [ring.gapAt, ring.gapAt + Math.PI]) {
+      run.bullets.length = 0;
+      spawnBullet(run, {
+        x: c.cx + Math.cos(angle) * ring.radius,
+        y: c.cy + Math.sin(angle) * ring.radius,
+        vx: 10,
+        vy: 0,
+        life: 1.5,
+        damage: 10,
+        friendly: true,
+        pierce: 0,
+      });
+
+      updateBullets(run, 1 / 60);
+      expect(run.bullets).toHaveLength(1);
+    }
   });
 });
 
