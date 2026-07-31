@@ -273,6 +273,51 @@ const SHOTS = [
       await wait(400);
     },
   },
+  {
+    name: 'controls',
+    view: 'phone',
+    caption: 'Three control schemes, all live at once. This only picks the listener.',
+    async setup(cdp) {
+      // The boot paints the front door once the profile answers, so asking for
+      // a screen before that finishes gets it painted over.
+      await wait(1400);
+      await cdp.eval(`(() => {
+        document.querySelector('#ui').style.display = '';
+        window.sface.showSettings();
+        return 'ok';
+      })()`);
+      await wait(400);
+    },
+  },
+  {
+    name: 'testnet',
+    view: 'phone',
+    /*
+     * The faucet card only exists on testnet, so this shot asks to boot there.
+     * Declared rather than switched in setup: switching reloads, which would
+     * restart the opening and land the capture on the intro.
+     */
+    network: 'test',
+    caption: 'On testnet, the faucet claim lives in the app rather than behind a link.',
+    async setup(cdp) {
+      await wait(1400);
+      await cdp.eval(`(() => {
+        document.querySelector('#ui').style.display = '';
+        window.sface.showSettings();
+        return 'ok';
+      })()`);
+      // Long enough for the live /info call to land, so the card shows real
+      // numbers rather than "Checking the faucet...".
+      await wait(2600);
+      // The network block is the last thing on a long page, so a phone-shaped
+      // capture of the top would miss the whole point of this shot.
+      await cdp.eval(`(() => {
+        document.querySelector('.settings__net')?.scrollIntoView({ block: 'end' });
+        return 'ok';
+      })()`);
+      await wait(500);
+    },
+  },
 ];
 
 async function main() {
@@ -330,6 +375,32 @@ async function main() {
       mobile: view.mobile,
     });
 
+    /*
+     * The network, decided before the page loads rather than switched after.
+     *
+     * Switching in-app reloads on purpose, so doing it inside a shot's setup
+     * restarts the whole boot including the opening, and the capture lands on
+     * the intro instead of the screen it asked for. Seeding sessionStorage
+     * ahead of navigation is the only way to have the app come up already on
+     * the network the shot needs.
+     *
+     * Removed again after the shot, or it would leak into every later one.
+     */
+    const seeded = await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+      source: [
+        `sessionStorage.setItem('sface.network', ${JSON.stringify(shot.network ?? 'main')});`,
+        /*
+         * And the opening, marked seen unless this shot IS the opening.
+         *
+         * Clicking Skip after load works only while nothing else restarts the
+         * boot. Declaring a network does restart it, and the capture then lands
+         * on the intro. Marking it seen before the first script runs removes the
+         * timing question entirely rather than tuning a wait against it.
+         */
+        shot.skipIntro === false ? '' : `sessionStorage.setItem('sface.intro', 'done');`,
+      ].join(''),
+    });
+
     await cdp.send('Page.navigate', { url: ORIGIN });
     /*
      * Wait for the app to finish booting rather than for the load event.
@@ -374,6 +445,11 @@ async function main() {
     await writeFile(file, Buffer.from(data, 'base64'));
 
     captions.push({ name: shot.name, caption: shot.caption, view: shot.view });
+    // Or the next shot inherits this one's network.
+    await cdp.send('Page.removeScriptToEvaluateOnNewDocument', {
+      identifier: seeded.identifier,
+    });
+
     console.log(`  captured ${shot.name}.png (${view.width}x${view.height})`);
   }
 

@@ -131,8 +131,30 @@ the game.
   <img src="docs/shots/home-phone.png" width="270" alt="sFace on a phone">
   &nbsp;&nbsp;
   <img src="docs/shots/how-to-play.png" width="270" alt="The how to play guide on a phone">
-  <p><em>Phone first. Both thumbs, a fixed-pad option in settings, and a guide written for a thumb.</em></p>
+  <p><em>Phone first. Both thumbs, and a guide written for a thumb.</em></p>
 </div>
+
+## Three ways to hold it, all of them live
+
+Most games make you choose a control scheme and then punish you for choosing
+wrong. Here every scheme is listening on a phone at all times. The setting only
+decides which one is drawn.
+
+<div align="center">
+  <img src="docs/shots/controls.png" width="300" alt="The control settings, offering thumb anywhere, analog pad and direction pad">
+  <p><em>Pick one on a laptop and it is already waiting when you open the game on your phone.</em></p>
+</div>
+
+| | |
+|---|---|
+| **Thumb anywhere** | Nothing is drawn until your thumb lands, and then it lands wherever you put it. Left half flies, right half aims and fires. You never look down. |
+| **Analog pad** | A fixed ring and a fire button, with your bombs and charges on an arc above it. It reads how far you push, so a nudge is a nudge and a shove is full speed. |
+| **Direction pad** | The same layout with the left pad snapped to eight directions. On or off, nothing in between, for people who would rather know exactly what they are going to get. |
+
+The ring leans the way your thumb goes and the fire button shows where the gun
+is pointing, because a control that does not answer is a control you stop
+trusting. Turn the phone sideways and the level, which runs left to right, shows
+you more of what is coming.
 
 ## MAIN and TEST
 
@@ -149,6 +171,23 @@ intent and put it somewhere it does not count.
 Testnet also never triggers a metered X call. Declaring it can only ever make the
 service spend less or keep a row off the board, never unlock anything, which is
 why the client is allowed to declare it at all.
+
+<div align="center">
+  <img src="docs/shots/testnet.png" width="300" alt="The network panel on testnet, showing a faucet claim card with the live dispense amount and claims remaining">
+  <p><em>Every figure on that card is fetched live. Shoot it twice and the claim count has moved.</em></p>
+</div>
+
+**Rehearsing costs nothing, and getting the NIM to rehearse with takes one tap.**
+Testnet is where you try a staked challenge before there is money on it, so the
+thing standing between somebody and a rehearsal should not be a hunt for a
+faucet. The claim happens in the app: paste an address, or let it fill in from
+your wallet, and the NIM lands.
+
+The card shows what the faucet has left as well as what it pays, because a dry
+faucet and a refused address are entirely different problems, and somebody who
+can see which one they have stops debugging their own wallet. The faucet's own
+page is linked underneath. It is their faucet, and if this shortcut ever breaks
+the player can still walk to the source.
 
 ## How it is built
 

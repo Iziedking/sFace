@@ -48,5 +48,15 @@
     "name": "how-to-play",
     "caption": "The guide, written for a thumb first.",
     "view": "phone"
+  },
+  {
+    "name": "controls",
+    "caption": "Three control schemes, all live at once. This only picks the listener.",
+    "view": "phone"
+  },
+  {
+    "name": "testnet",
+    "caption": "On testnet, the faucet claim lives in the app rather than behind a link.",
+    "view": "phone"
   }
 ]
