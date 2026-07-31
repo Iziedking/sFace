@@ -376,8 +376,13 @@ export const STAGES: readonly Stage[] = [
      * fair budget. This one asks you to stop at each panel and actually read
      * four posts, and a timer that punishes reading turns the stage into
      * guessing, which is the one thing it exists not to be.
+     *
+     * Three minutes, because two was still being read against a stopwatch.
+     * There are ten panels and each holds four real posts; at two minutes that
+     * is twelve seconds a panel including getting to it, which is skimming for
+     * the shape of an answer rather than reading one.
      */
-    seconds: 120,
+    seconds: 180,
     density: 1.8,
     minDifficulty: 4,
     caches: 10,

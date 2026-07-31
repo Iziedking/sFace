@@ -89,17 +89,28 @@ describe('the arc', () => {
     /*
      * Both have to be deliberate margins rather than numbers that drifted.
      *
-     * Six and seven are the stages you spend standing still, so each needs more
-     * clock than the flying stage before it, and the finale needs half again as
-     * much as six on top of that: it is five sealed regions walked rather than
-     * one district read.
+     * The finale's margin used to be written as one and a half times stage six,
+     * which was a fair proxy while six was a movement stage on a hundred
+     * seconds. It stopped being one when six became a reading stage on three
+     * minutes: holding a ratio against a number that grew for an unrelated
+     * reason means every second added to six silently demands ninety more from
+     * seven, and the finale gets inflated by arithmetic rather than by anything
+     * about the finale.
+     *
+     * What was ever meant is that the last stage is plainly the longest run in
+     * the game. That is an absolute margin, so it is written as one.
      */
     const last = STAGES[STAGES.length - 1]!;
     const sixth = STAGES[STAGES.length - 2]!;
     const fifth = STAGES[STAGES.length - 3]!;
 
     expect(sixth.seconds).toBeGreaterThan(fifth.seconds);
-    expect(last.seconds).toBeGreaterThanOrEqual(sixth.seconds * 1.5);
+
+    // Longer than every other stage, by a minute or more.
+    for (const stage of STAGES) {
+      if (stage.n === last.n) continue;
+      expect(last.seconds).toBeGreaterThanOrEqual(stage.seconds + 60);
+    }
   });
 
   it('never asks for more than three rounds a volley', () => {
