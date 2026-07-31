@@ -145,6 +145,20 @@ class Audio {
     }
   }
 
+  /**
+   * How loud the effects sit against the music.
+   *
+   * The recipes below are a mix, not absolute levels: shoot is quieter than
+   * kill because a shot should be, and that relationship is right. What was
+   * wrong is where the whole set sat. A shot peaked at 0.05 while the theme ran
+   * at 0.34, so the loudest thing the player does was a fifth of the loudest
+   * thing the game does on its own, and firing simply disappeared under it.
+   *
+   * One number here rather than editing eleven recipes, so the balance between
+   * sounds survives any future change to how loud they are as a group.
+   */
+  private static readonly LEVEL = 2.1;
+
   play(voice: Voice): void {
     if (!this.enabled || !this.ctx || !this.master) return;
 
@@ -161,7 +175,16 @@ class Audio {
     osc.frequency.setValueAtTime(recipe.from, now);
     osc.frequency.exponentialRampToValueAtTime(Math.max(20, recipe.to), now + recipe.duration);
 
-    gain.gain.setValueAtTime(recipe.gain, now);
+    /*
+     * Headroom holds because the 40ms guard above is per voice.
+     *
+     * A bomb killing five attackers on one frame is one kill sound, not five,
+     * so the worst realistic stack is several DIFFERENT voices at once: a shot,
+     * a hit, a kill and a pickup comes to about 0.61 against the master's
+     * ceiling of one. Peaks are brief on top of that, since every recipe decays
+     * inside 0.6s.
+     */
+    gain.gain.setValueAtTime(recipe.gain * Audio.LEVEL, now);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + recipe.duration);
 
     osc.connect(gain);

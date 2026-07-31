@@ -31,8 +31,19 @@
 const THEME_SRC = '/audio/theme.mp3';
 const STING_SRC = '/audio/sting.mp3';
 
-/** Under a run. Loud enough to drive, quiet enough to hear a hit. */
-const RUN_VOLUME = 0.34;
+/**
+ * Under a run, where it is the least important thing playing.
+ *
+ * It was 0.34, which is louder than every effect in the game, so shooting,
+ * hits and rescues all sat underneath the soundtrack. That is backwards: the
+ * theme is there to carry the run, and the moment the player does something the
+ * thing they did should be the thing they hear.
+ *
+ * Halved rather than removed. A run with no bed under it feels thin, and the
+ * effects were raised to meet this in the same change, so the gap between them
+ * is now wider than the number alone suggests.
+ */
+const RUN_VOLUME = 0.17;
 /** Under a menu, where the player is reading rather than flying. */
 const MENU_VOLUME = 0.16;
 const STING_VOLUME = 0.5;
