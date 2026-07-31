@@ -291,3 +291,108 @@ describe('the bottom row of buys', () => {
     expect(slotStrip(PHONE.w, PHONE.h, 0)).toHaveLength(0);
   });
 });
+
+/**
+ * The floating stick, which is the default and which a regression already hit.
+ *
+ * A stick is an offset from a fixed point. The origin was briefly dragged along
+ * behind the thumb to stop a hard push saturating, and that made the distance
+ * from origin to thumb permanently equal to the radius: the knob pinned at the
+ * rim and the ring travelled with it, so the pair slid across the screen as one
+ * rigid shape and nothing ever leaned. Every number below still looked healthy.
+ * The offset relative to the ring is the one that says whether it leans.
+ */
+describe('the floating stick behaves like a stick', () => {
+  function floating() {
+    type Handler = (event: unknown) => void;
+    const handlers = new Map<string, Handler[]>();
+    const target = {
+      addEventListener: (type: string, fn: Handler) => {
+        handlers.set(type, [...(handlers.get(type) ?? []), fn]);
+      },
+      removeEventListener: () => {},
+      clientWidth: PHONE.w,
+      clientHeight: PHONE.h,
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: PHONE.w, height: PHONE.h }),
+      matchMedia: () => ({ matches: true }),
+    };
+
+    const previous = (globalThis as Record<string, unknown>).window;
+    (globalThis as Record<string, unknown>).window = target;
+
+    const input = new Input(target as unknown as HTMLCanvasElement);
+    setScheme('touch');
+
+    const send = (type: string, id: number, x: number, y: number): void => {
+      for (const fn of handlers.get(type) ?? []) {
+        fn({ pointerId: id, clientX: x, clientY: y, preventDefault: () => {} });
+      }
+    };
+
+    return {
+      input,
+      send,
+      restore: () => {
+        (globalThis as Record<string, unknown>).window = previous;
+      },
+    };
+  }
+
+  it('keeps the ring where the thumb landed and leans the knob out of it', () => {
+    const { input, send, restore } = floating();
+    try {
+      send('pointerdown', 1, 120, 300);
+      const origin = { ...input.stick!.origin };
+
+      const offsets: number[] = [];
+      for (const drag of [12, 30, 60]) {
+        send('pointermove', 1, 120 + drag, 300);
+        const stick = input.stick!;
+
+        // The ring has not moved. This is the assertion the regression failed.
+        expect(stick.origin.x).toBeCloseTo(origin.x, 5);
+        expect(stick.origin.y).toBeCloseTo(origin.y, 5);
+
+        offsets.push(Math.hypot(stick.current.x - origin.x, stick.current.y - origin.y));
+      }
+
+      // And the knob got further out each time, rather than sitting at one
+      // distance the whole way.
+      expect(offsets[1]!).toBeGreaterThan(offsets[0]!);
+      expect(offsets[2]!).toBeGreaterThan(offsets[1]!);
+    } finally {
+      restore();
+    }
+  });
+
+  it('pins the knob at the rim rather than letting it leave the ring', () => {
+    const { input, send, restore } = floating();
+    try {
+      send('pointerdown', 1, 120, 300);
+      send('pointermove', 1, 120 + 400, 300);
+      const stick = input.stick!;
+
+      expect(stick.origin.x).toBeCloseTo(120, 5);
+      const offset = Math.hypot(stick.current.x - stick.origin.x, stick.current.y - stick.origin.y);
+      expect(offset).toBeLessThanOrEqual(64.001);
+      expect(Math.hypot(input.move.x, input.move.y)).toBeCloseTo(1, 5);
+    } finally {
+      restore();
+    }
+  });
+
+  it('settles back to the centre when the thumb lifts', () => {
+    const { input, send, restore } = floating();
+    try {
+      send('pointerdown', 1, 120, 300);
+      send('pointermove', 1, 180, 340);
+      send('pointerup', 1, 180, 340);
+
+      expect(input.stick).toBeNull();
+      expect(input.move.x).toBe(0);
+      expect(input.move.y).toBe(0);
+    } finally {
+      restore();
+    }
+  });
+});

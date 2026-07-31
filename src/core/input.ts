@@ -369,30 +369,23 @@ export class Input {
 
     if (event.pointerId === this.movePointer) {
       /*
-       * The origin follows the thumb once the thumb outruns it.
+       * The origin stays exactly where the thumb first landed.
        *
-       * With the origin pinned where the finger first landed, a thumb dragged
-       * past the radius saturates: every further millimetre of travel changes
-       * nothing, and swinging left to right sweeps through a dead arc before
-       * the ship turns, because the vector is measured from a point the hand
-       * left behind. Reported as the analog not going the way the hand goes.
+       * It briefly did not. To stop a hard push saturating, the origin was
+       * dragged along to sit one radius behind the thumb, and that quietly
+       * destroyed the one thing a stick is for. Past the radius the distance is
+       * then always exactly the radius, so the knob sits pinned at the rim and
+       * the ring travels with it: the pair slides across the screen as one
+       * rigid shape and the knob never moves RELATIVE to the ring it is in.
+       * Reported as the hand moving while nothing happens, which is precisely
+       * what it looks like.
        *
-       * Dragging the origin along keeps it exactly one radius behind, so the
-       * direction is always the direction of the last radius of travel and the
-       * stick answers immediately however far the thumb has wandered.
+       * The saturation it was solving is not real either. With a fixed origin a
+       * thumb swung from one side to the other passes through the origin, so the
+       * direction turns continuously the whole way. A stick is an offset from a
+       * fixed point; the moment that point chases the finger, there is no
+       * offset left to read.
        */
-      const rawX = point.x - this.stickOrigin.x;
-      const rawY = point.y - this.stickOrigin.y;
-      const reach = Math.hypot(rawX, rawY);
-
-      if (reach > STICK_RADIUS) {
-        const pull = (reach - STICK_RADIUS) / reach;
-        this.stickOrigin = {
-          x: this.stickOrigin.x + rawX * pull,
-          y: this.stickOrigin.y + rawY * pull,
-        };
-      }
-
       const dx = point.x - this.stickOrigin.x;
       const dy = point.y - this.stickOrigin.y;
       const distance = Math.hypot(dx, dy);
