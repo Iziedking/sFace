@@ -40,6 +40,10 @@ const CARD: CardData = {
 interface Fake {
   opened: string[];
   sheets: unknown[];
+  /** Where the CURRENT page was sent, if anywhere. Empty means it stayed put. */
+  navigated: string;
+  /** Whether the new tab had its opener severed. */
+  severed: boolean;
 }
 
 /**
@@ -48,16 +52,37 @@ interface Fake {
  * Those two being independent is the entire point. Every real failure came from
  * code that assumed the API existing meant the sheet was the right destination.
  */
-function browser(options: { coarse: boolean; hasShare: boolean }): Fake {
-  const fake: Fake = { opened: [], sheets: [] };
+function browser(options: {
+  coarse: boolean;
+  hasShare: boolean;
+  /** Simulate a popup blocker, which is the only thing that should fall back. */
+  blocked?: boolean;
+}): Fake {
+  const fake: Fake = { opened: [], sheets: [], navigated: '', severed: false };
 
   const win = {
     open: (url: string) => {
       fake.opened.push(String(url));
-      return { focus() {}, closed: false };
+      if (options.blocked) return null;
+      const tab = { focus() {}, closed: false, opener: {} as unknown };
+      Object.defineProperty(tab, 'opener', {
+        set: (value: unknown) => {
+          if (value === null) fake.severed = true;
+        },
+        get: () => null,
+        configurable: true,
+      });
+      return tab;
     },
     matchMedia: () => ({ matches: options.coarse }),
-    location: { href: '' },
+    location: {
+      get href() {
+        return fake.navigated;
+      },
+      set href(value: string) {
+        fake.navigated = value;
+      },
+    },
   };
 
   const nav: Record<string, unknown> = {
@@ -148,7 +173,7 @@ describe('no share API at all', () => {
 describe('a dismissed sheet is not a failure', () => {
   it('does not then open a window behind the person who cancelled', async () => {
     // They said no. Opening the composer anyway is arguing with them.
-    const fake: Fake = { opened: [], sheets: [] };
+    const fake: Fake = { opened: [], sheets: [], navigated: '', severed: false };
     vi.stubGlobal('window', {
       open: (url: string) => {
         fake.opened.push(String(url));
@@ -166,5 +191,57 @@ describe('a dismissed sheet is not a failure', () => {
     await shareLink(TEXT, LINK);
 
     expect(fake.opened).toHaveLength(0);
+  });
+});
+
+/**
+ * One share, one destination.
+ *
+ * openIntent opened the tab with 'noopener' and then treated a null return as a
+ * blocked popup, falling back to navigating the current page. But noopener makes
+ * window.open return null even on success, by specification, so the fallback
+ * fired every time: a composer opened in a new tab AND the game page took itself
+ * to X as well. Two tabs, and the run gone with the page that held it.
+ *
+ * The old stub returned a truthy window, which is why the tests above never
+ * caught it. These pin the count.
+ */
+describe('sharing sends you to exactly one place', () => {
+  it('opens a tab and leaves the game where it was', () => {
+    const fake = browser({ coarse: false, hasShare: true });
+
+    void shareLink(TEXT, LINK);
+
+    expect(fake.opened).toHaveLength(1);
+    // The one that matters. A non-empty value here is the game page navigating
+    // itself to X on top of the tab it just opened.
+    expect(fake.navigated).toBe('');
+  });
+
+  it('severs the new tab from the page that opened it', () => {
+    // The reason 'noopener' was there. Reverse tabnabbing is closed either way,
+    // but only one of the two ways leaves a usable return value.
+    const fake = browser({ coarse: false, hasShare: true });
+
+    void shareLink(TEXT, LINK);
+
+    expect(fake.severed).toBe(true);
+  });
+
+  it('falls back to this tab only when the popup was genuinely blocked', () => {
+    const fake = browser({ coarse: false, hasShare: true, blocked: true });
+
+    void shareLink(TEXT, LINK);
+
+    expect(fake.navigated).toBe(xIntent(TEXT, LINK));
+  });
+
+  it('holds for the run share too, which is the other half of the pair', () => {
+    const fake = browser({ coarse: false, hasShare: true });
+
+    void shareRun(CARD, null, LINK);
+
+    expect(fake.opened).toHaveLength(1);
+    expect(fake.navigated).toBe('');
   });
 });

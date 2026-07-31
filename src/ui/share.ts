@@ -290,12 +290,39 @@ function activated(): boolean {
 }
 
 function openIntent(text: string, linkUrl: string): void {
-  const opened = window.open(xIntent(text, linkUrl), '_blank', 'noopener,noreferrer');
+  const url = xIntent(text, linkUrl);
 
-  // Popup blockers can still refuse. Falling back to the current tab is better
-  // than a button that does nothing: the game is a mini app, and coming back is
-  // one tap.
-  if (!opened) window.location.href = xIntent(text, linkUrl);
+  /*
+   * Opened WITHOUT 'noopener', on purpose, and the opener severed by hand.
+   *
+   * `window.open(url, '_blank', 'noopener')` returns null even when it worked.
+   * That is specified behaviour, not a quirk: with noopener there is no handle
+   * to give back. The fallback below reads null as "the popup was blocked", so
+   * it fired on every single share. A tab opened, and then the game page
+   * navigated itself to X as well. Two composers, and the run gone with the
+   * page that was holding it.
+   *
+   * Dropping the flag gives back a real handle, so the null check means what it
+   * says again. The reason the flag was there in the first place is reverse
+   * tabnabbing, and setting `opener` to null closes that just as completely.
+   */
+  const opened = window.open(url, '_blank');
+
+  if (opened) {
+    try {
+      opened.opener = null;
+    } catch {
+      // Some engines refuse to let the opener be reassigned. The tab is open,
+      // which is the part that matters, and X is not a page worth worrying
+      // about navigating us.
+    }
+    return;
+  }
+
+  // A genuine block, which now really is the only way to get here. Falling back
+  // to this tab beats a button that does nothing, and since a run in progress
+  // is banked on pagehide there is something to come back to.
+  window.location.href = url;
 }
 
 /**
