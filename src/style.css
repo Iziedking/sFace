@@ -1672,6 +1672,76 @@ p.quiet {
   background: var(--accent);
 }
 
+/* The receipts under the narration. Real posts, linked to the originals; see
+   data/collapse.ts for the rule about never paraphrasing them. */
+.intro__receipts {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  max-width: 46ch;
+  margin: 6px 0 4px;
+}
+
+.intro__receiptshead {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--ink-muted);
+  margin: 0;
+}
+
+.intro__post {
+  display: block;
+  position: relative;
+  border: 2px solid var(--ink);
+  /* The screenshots are tall and the opening is not a reading screen. A crop
+     with the top kept shows the author and the first line, which is enough to
+     decide whether to open it. */
+  max-height: 132px;
+  overflow: hidden;
+  text-decoration: none;
+  background: var(--canvas);
+}
+
+.intro__postshot {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* No fallback styling beyond this. If the image fails, the handle below and
+     the link itself are what remain, which is the honest minimum. */
+}
+
+.intro__posthandle {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  padding: 3px 8px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--canvas);
+  background: var(--ink);
+}
+
+/* Fading the crop rather than cutting it dead, so it reads as "there is more
+   here" instead of a broken image. */
+.intro__post::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 34px;
+  background: linear-gradient(to bottom, transparent, var(--canvas));
+  pointer-events: none;
+}
+
+@media (max-height: 620px) {
+  /* A landscape phone has no room for these under the narration, and the
+     narration is the thing that has to be readable. */
+  .intro__receipts {
+    display: none;
+  }
+}
+
 .intro__foot {
   display: flex;
   align-items: center;

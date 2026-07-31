@@ -23,6 +23,7 @@
 
 import { button, el, mount } from './dom';
 import { INTRO_BEATS } from '../data/story';
+import { pickPosts, type CollapsePost } from '../data/collapse';
 import { narrator } from '../core/voice';
 
 const SEEN_KEY = 'sface.intro';
@@ -127,12 +128,28 @@ export function renderIntro(root: HTMLElement, options: IntroOptions): void {
 
   const skip = button('Skip', () => finish(), 'quiet');
 
+  /*
+   * The receipts, under the narration.
+   *
+   * The opening asserts that crypto is having a bad year. Two real posts saying
+   * so, from people who are not us, turn that from a mood into something the
+   * player can check while the voice is still talking. Two rather than ten, and
+   * a different two every load. See data/collapse.ts.
+   */
+  const receipts = el(
+    'div',
+    { class: 'intro__receipts' },
+    el('p', { class: 'intro__receiptshead', text: 'THEY ARE NOT MAKING IT UP' }),
+    ...pickPosts().map(postCard),
+  );
+
   const stage = el(
     'div',
     { class: 'intro' },
     el('p', { class: 'eyebrow', text: 'The Face Collapse' }),
     line,
     dots,
+    receipts,
     el('div', { class: 'intro__foot' }, el('p', { class: 'intro__hint', text: 'Tap to continue' }), skip),
   );
 
@@ -218,4 +235,39 @@ export function renderIntro(root: HTMLElement, options: IntroOptions): void {
     markIntroSeen();
     options.onDone();
   };
+}
+
+/**
+ * One post, as a card that opens the real thing.
+ *
+ * An anchor rather than a click handler, so it behaves like the link it is:
+ * long press, open in background, copy address, all of it free. The stage
+ * around this advances on click, so the card stops the event from reaching it.
+ * Reading somebody's post should not skip you past the narration.
+ *
+ * The image carries no fallback text beyond the handle on purpose. If the
+ * screenshot fails to load, what is left is a link to the post itself, which is
+ * the honest minimum: never our words standing in for theirs.
+ */
+function postCard(post: CollapsePost): HTMLElement {
+  const card = el(
+    'a',
+    {
+      class: 'intro__post',
+      href: post.url,
+      target: '_blank',
+      rel: 'noopener noreferrer',
+      'aria-label': `Post by @${post.handle} on X, opens in a new tab`,
+    },
+    el('img', {
+      class: 'intro__postshot',
+      src: post.image,
+      alt: `Screenshot of a post by @${post.handle}`,
+      loading: 'lazy',
+    }),
+    el('span', { class: 'intro__posthandle', text: `@${post.handle}` }),
+  );
+
+  card.addEventListener('click', (event) => event.stopPropagation());
+  return card;
 }

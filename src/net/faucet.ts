@@ -48,7 +48,16 @@ export interface FaucetInfo {
 }
 
 export type ClaimResult =
-  | { ok: true; nim: number }
+  /**
+   * `nim` is null when the faucet did not say how much it sent.
+   *
+   * It usually does not. The success body is `{ success: true }` and nothing
+   * else, and reading a missing `amount` as zero produced "Sent 0 NIM. It lands
+   * in a moment.", which is both wrong and alarming: it reads as a claim that
+   * silently failed. Null means we were not told, and the caller says the
+   * amount it already knows from /info rather than inventing one.
+   */
+  | { ok: true; nim: number | null }
   | { ok: false; reason: string };
 
 async function ask(path: string, init?: RequestInit): Promise<unknown | null> {
@@ -121,7 +130,8 @@ export async function claimFaucet(address: string): Promise<ClaimResult> {
   const body = raw as Record<string, unknown>;
 
   if (body.success === true) {
-    const amount = typeof body.amount === 'number' ? body.amount / 100_000 : 0;
+    // Taken only when it is actually there. See the note on ClaimResult.
+    const amount = typeof body.amount === 'number' ? body.amount / 100_000 : null;
     return { ok: true, nim: amount };
   }
 
