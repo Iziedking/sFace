@@ -117,6 +117,7 @@ import { settle } from './nimiq/payments';
 import { challengeShareLink, clanShareLink, readChallengeId, readClanTag } from './nimiq/deeplink';
 import { capture, matches, restore, type RunSnapshot } from './game/snapshot';
 import { buy } from './game/consume';
+import { slotIntent } from './game/intent';
 import { CONSUMABLES } from './data/consumables';
 import { signClaim } from './nimiq/wallet';
 import { renderSettings } from './ui/settings';
@@ -683,11 +684,48 @@ class App {
     then();
   }
 
+  /**
+   * A path somebody can be sent to, rather than a screen they have to find.
+   *
+   * "Open the game, tap the footer, then How to play" is three instructions and
+   * a hope. A link is a link. These are the two worth having: one for what the
+   * game is, one for how to play it.
+   *
+   * Read once at boot and then cleared out of the address bar with replaceState,
+   * so a refresh later does not drag somebody back to the docs when they are
+   * halfway through a run.
+   */
+  private routeFromPath(): boolean {
+    const path = window.location.pathname.replace(/\/+$/, '').toLowerCase();
+    const target =
+      path === '/docs' || path === '/about'
+        ? 'about'
+        : path === '/how-to-play' || path === '/play' || path === '/controls'
+          ? 'controls'
+          : null;
+
+    if (!target) return false;
+
+    try {
+      window.history.replaceState(null, '', '/');
+    } catch {
+      // A browser that will not rewrite the bar still gets the right screen.
+    }
+
+    if (target === 'about') void this.cross(() => this.showAbout());
+    else this.showControls();
+    return true;
+  }
+
   private landing(): void {
     if (this.invitedTag && !this.profile?.clanTag) {
       this.openClan();
       return;
     }
+
+    // A shared link wins over everything except a clan invite, because somebody
+    // following one asked for that page specifically.
+    if (this.routeFromPath()) return;
 
     // A run banked by a refresh comes back before anything else, because the
     // player was in the middle of it and everything else can wait.
@@ -2325,20 +2363,33 @@ class App {
        * that only exists on one stage. The HUD swaps with it, so what the slots
        * do is always what is drawn under your thumb.
        */
-      const reading = run.openNodeId !== null;
-      const atGate = run.openGateId !== null;
-
       for (const slot of this.input.takeBuys()) {
-        if (reading) {
+        // What a number key means here. The rule lives in game/intent.ts so it
+        // can be tested; it used to be inline and was wrong for a whole stage.
+        const intent = slotIntent(run, slot);
+
+        if (intent === 'answer-node') {
           const outcome = answerNode(run, slot);
           if (outcome === 'captured') audio.play('relic');
           else if (outcome === 'wrong') audio.play('down');
           continue;
         }
 
-        // The same four inputs answer the last stage's gates. One act, one set
-        // of buttons, decided by what is in front of you.
-        if (atGate) {
+        /*
+         * A cell you are standing at outranks a gate you are merely near.
+         *
+         * On the ring city a gate counts as open for the whole band outside its
+         * wall, which is most of the stage, and while it is open every number
+         * key answers it. So standing at a cage that says PRESS 1 TO BLOW THE
+         * DOOR and pressing 1 answered the gate instead, wrongly, and left the
+         * cage shut. The game told the player to press a key that something
+         * else had taken.
+         *
+         * Being in reach of a cell is a precise, local thing: you are next to
+         * it. Being at a gate is a whole region. The precise one wins, and only
+         * for the charge, so the other three still answer the wall.
+         */
+        if (intent === 'answer-gate') {
           const outcome = answerGate(run, slot);
           if (outcome === 'open') audio.play('relic');
           else if (outcome === 'wrong') audio.play('down');
