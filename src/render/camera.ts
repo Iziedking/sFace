@@ -129,19 +129,28 @@ export class Camera {
    * both devices by the same factor, so the fairness the caps protect is
    * untouched.
    *
-   * It was 2.6, and that was too far by a long way. Everything drew at under
-   * forty per cent: people became specks, and telling an ally you have to walk
-   * to from an attacker you have to avoid meant squinting at two four-pixel
-   * shapes. A stage about going and looking at things does not survive not
-   * being able to see them, and a phone had it worst because the same fraction
-   * of a smaller screen is a smaller number of actual pixels.
+   * ## Worked out from what a person ends up being, not chosen by eye
    *
-   * The overview job belongs to the ring map in the corner, which draws every
-   * wall, every gap and where you are, and does it without shrinking the world
-   * you are standing in. This only has to pull back far enough that a wall
-   * reads as curved rather than straight.
+   * The player is 17 units in radius, so at scale s they are 34s pixels tall.
+   * On the Nimiq Pay viewport, which is the smallest screen this has to work
+   * on and therefore the one that decides:
+   *
+   *   zoom 2.6   12px    the shipped value, and simply not visible
+   *   zoom 1.75  18px    better, still reported as tiny and tiring
+   *   zoom 1.2   27px    legible
+   *   zoom 1.0   32px    the same size as every other stage
+   *
+   * Twice reported as characters too small to make out, and both times the
+   * honest measure was the phone rather than the laptop it was checked on: the
+   * same fraction of a smaller screen is a smaller number of actual pixels.
+   *
+   * 1.2 keeps a little more of the world than a normal stage, which is worth
+   * having because seeing two walls at once is what tells you the place is
+   * concentric. Past that the ring map in the corner does the job better: it
+   * draws every wall, every gap and where you are, without shrinking the world
+   * you are standing in.
    */
-  static readonly RING_ZOOM_OUT = 1.75;
+  static readonly RING_ZOOM_OUT = 1.2;
 
   /** Widen the view for a world that has to be read at a distance. */
   zoomOut(factor: number): void {
