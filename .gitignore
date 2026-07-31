@@ -74,3 +74,9 @@ id_rsa*
 # Throwaway browser profile from scripts/shoot.mjs. Regenerated on every run and
 # full of cache nobody wants in a diff.
 .shoot-profile/
+
+# The launch video's working directory: captured frames, encoded shots, the
+# narration clips and the export. Hundreds of megabytes of PNGs and MP4s that
+# are all rebuildable from scripts/record.mjs, build-video.mjs and
+# finish-video.mjs, so the recipe is tracked and the output is not.
+.video/

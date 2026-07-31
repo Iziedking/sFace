@@ -1,0 +1,132 @@
+{
+  "_": [
+    "The narration, cut into lines. One line is one caption and one TTS clip,",
+    "which is what keeps the two in sync: the caption cannot drift from the",
+    "audio because they are built from the same array.",
+    "",
+    "`scene` names the footage the line plays over. `hold` is extra seconds of",
+    "footage after the line finishes, for shots that need to breathe.",
+    "",
+    "Read at about 145 words a minute. Timings are derived from the rendered",
+    "audio, never guessed, so a rewrite reflows the whole video automatically."
+  ],
+  "lines": [
+    {
+      "scene": "title",
+      "text": "Every day, crypto has a worst performer.",
+      "hold": 0.3
+    },
+    {
+      "scene": "hook",
+      "text": "In sFace, that coin becomes the level. This ground is its real twenty four hour chart.",
+      "hold": 0.6
+    },
+    {
+      "scene": "hook2",
+      "text": "Nobody drew this. The market did, at midnight, and it will draw a different one tomorrow.",
+      "hold": 0.8
+    },
+
+    {
+      "scene": "problem",
+      "text": "This cycle has been a long run of things going quiet.",
+      "hold": 0.2
+    },
+    {
+      "scene": "problem",
+      "text": "Projects winding down, tokens going to nothing, and another thread every week explaining why it was always going to happen.",
+      "hold": 0.4
+    },
+    {
+      "scene": "home",
+      "text": "sFace is what you would rather look at. A rescue game where the wreck is the market, and the people trapped in it are the accounts who were arguing about it hours ago.",
+      "hold": 0.8
+    },
+
+    {
+      "scene": "chart",
+      "text": "It plays as a twin stick shooter. Fly the day's chart, pull people out, reach extraction before the clock.",
+      "hold": 0.5
+    },
+    {
+      "scene": "chart",
+      "text": "Fear and Greed decides how crowded the sky is, so a fearful market is a genuinely harder level.",
+      "hold": 0.6
+    },
+    {
+      "scene": "city",
+      "text": "Halfway through, the chart leaves. The same price data, drawn as bars, is already a skyline, so the gaps between the bars become streets.",
+      "hold": 0.7
+    },
+    {
+      "scene": "city",
+      "text": "There is a car. It is twice as fast and heard from twice as far.",
+      "hold": 0.6
+    },
+
+    {
+      "scene": "panel",
+      "text": "Then the game stops asking you to shoot, and starts asking you to read.",
+      "hold": 0.5
+    },
+    {
+      "scene": "panel",
+      "text": "Four posts that genuinely went out today. One of them explains the day. Pick it and the panel flips. Pick wrong and the whole street starts walking toward you.",
+      "hold": 0.8
+    },
+    {
+      "scene": "panel2",
+      "text": "Every post links back to the original. Nothing here is written by us and put in somebody's mouth.",
+      "hold": 0.7
+    },
+
+    {
+      "scene": "rings",
+      "text": "The finale is a third kind of world. Concentric walls around a core, worked inward.",
+      "hold": 0.5
+    },
+    {
+      "scene": "rings",
+      "text": "No weapon opens a gate. Each wall asks about the projects that were here before this cycle and will be here after it.",
+      "hold": 0.6
+    },
+    {
+      "scene": "rings2",
+      "text": "Reach one and it tells you how it is holding up. Fly past it and you can still reach the wall. You simply cannot answer it.",
+      "hold": 0.8
+    },
+
+    {
+      "scene": "clan",
+      "text": "It is built for Nimiq Pay. Your wallet is your name, so a score belongs to an address instead of a device anyone can throw away.",
+      "hold": 0.5
+    },
+    {
+      "scene": "clan",
+      "text": "Every run is signed, and every row on the board publishes its signature, so anyone can check it without trusting us.",
+      "hold": 0.6
+    },
+    {
+      "scene": "clan2",
+      "text": "Pull your closest mutuals into a clan and pool your Face. Stake a friend on the exact same seed and settle it in NIM, wallet to wallet. sFace never holds funds.",
+      "hold": 0.8
+    },
+
+    {
+      "scene": "ending",
+      "text": "Clear all seven stages and the camera pulls back, until the day you just fought through is a notch on a long climb.",
+      "hold": 0.6
+    },
+    {
+      "scene": "ending",
+      "text": "Two trillion is still early. That is the only thing this game argues, and it waits until you have earned it.",
+      "hold": 1.0
+    },
+
+    {
+      "scene": "close",
+      "text": "sFace. The market builds the level. Play it at sface dot site, and the code is on GitHub.",
+      "hold": 1.6
+    }
+  ]
+}
