@@ -135,22 +135,27 @@ export class Camera {
    * On the Nimiq Pay viewport, which is the smallest screen this has to work
    * on and therefore the one that decides:
    *
-   *   zoom 2.6   12px    the shipped value, and simply not visible
-   *   zoom 1.75  18px    better, still reported as tiny and tiring
-   *   zoom 1.2   27px    legible
-   *   zoom 1.0   32px    the same size as every other stage
+   *   zoom 2.6   12px   the shipped value, and simply not visible
+   *   zoom 1.75  18px   still reported as tiny and tiring to look at
+   *   zoom 1.45  22px   what is set here
+   *   zoom 1.2   27px   legible, but too close to read the place
+   *   zoom 1.0   32px   the same size as every other stage
    *
    * Twice reported as characters too small to make out, and both times the
    * honest measure was the phone rather than the laptop it was checked on: the
    * same fraction of a smaller screen is a smaller number of actual pixels.
    *
-   * 1.2 keeps a little more of the world than a normal stage, which is worth
-   * having because seeing two walls at once is what tells you the place is
-   * concentric. Past that the ring map in the corner does the job better: it
-   * draws every wall, every gap and where you are, without shrinking the world
-   * you are standing in.
+   * Then reported the other way at 1.2, as too close. Both complaints are real
+   * and they pull against each other, so this sits between them: 2.5 ring
+   * spacings across a phone, which is enough to see one wall curve away and the
+   * next one behind it, with people still large enough to tell apart.
+   *
+   * Past this the ring map in the corner does the job better. It draws every
+   * wall, every gap and where you are, without shrinking the world you are
+   * standing in, and the point of keeping the camera close is that the map
+   * stays the thing you read the place with.
    */
-  static readonly RING_ZOOM_OUT = 1.2;
+  static readonly RING_ZOOM_OUT = 1.45;
 
   /** Widen the view for a world that has to be read at a distance. */
   zoomOut(factor: number): void {

@@ -28,6 +28,12 @@ docs/*
 # scripts/shoot.mjs, and the README is unreadable without them.
 !docs/shots/
 
+# The stage guide, which the README links to. It is the overflow for the part of
+# the README that would otherwise be seven long sections, so it is as public as
+# the README is. Without this line the link is a 404 for everybody but us, and
+# nothing about the local checkout would show it.
+!docs/stage-1-to-7.md
+
 # Editor and OS noise.
 .DS_Store
 Thumbs.db

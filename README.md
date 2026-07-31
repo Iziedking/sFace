@@ -11,7 +11,7 @@ whoever crypto X spent that day arguing about.
 
 Nobody draws the level. The market does, every morning, at midnight UTC.
 
-[Play](https://sface.site) · [What you are flying](#what-you-are-actually-flying) · [The seven stages](#seven-stages-seven-different-games) · [How it is built](#how-it-is-built) · [Run it](#run-it)
+[Play](https://sface.site) · [What you are flying](#what-you-are-actually-flying) · [The seven stages](docs/stage-1-to-7.md) · [How it is built](#how-it-is-built) · [Run it](#run-it)
 
 </div>
 
@@ -61,6 +61,9 @@ the others do not.
 | **5** | A city | Drive, or walk. The car is twice as fast and heard from twice as far. |
 | **6** | A downtown | Read. Four posts that genuinely went out today, one explains it. |
 | **7** | A ring city | Work it out. No weapon opens a gate. |
+
+**[The stages explained](docs/stage-1-to-7.md)** goes through all seven: what each
+one is for, what it asks, and the clock and crowding it runs at.
 
 ### Stages five and six: the city
 
