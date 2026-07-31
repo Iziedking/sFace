@@ -15,8 +15,21 @@
  * unverifiable claim on a leaderboard costs less than a false one.
  */
 
+import { STAGES } from '../src/data/campaign';
+
 /**
- * Above any possible run, and far below what a fabricated score looks like.
+ * A coarse outer bound, not the real check.
+ *
+ * verify.ts builds the actual level from the seed and refuses anything that
+ * level cannot pay, which is exact and per-seed. This exists only to throw out
+ * numbers that are not worth building a level for.
+ *
+ * It used to be 60,000, which is BELOW what a good stage seven run can legally
+ * earn: the per-level ceiling for that stage comes out near 70,000. Its own
+ * comment records this exact mistake happening once before, when the ceiling
+ * was 30,000 and honest runs were being refused. A static ceiling set near the
+ * real maximum will always eventually cross it, so this one is set far above
+ * anything reachable and left to do the only job it is good for.
  *
  * Worked out rather than guessed, because the old value was wrong. Every
  * person out, every cache including the relic, every attacker a busy level
@@ -26,9 +39,23 @@
  * the moment caches started paying Face and nobody had scored highly enough
  * to trip it yet.
  */
-export const SCORE_CEILING = 60_000;
-/** A run is 110 seconds. Allow a little slack for frame timing. */
-export const MAX_DURATION = 118;
+export const SCORE_CEILING = 250_000;
+
+/**
+ * The longest stage in the campaign, plus slack for the frame it ends on.
+ *
+ * Derived, because the hand-written version was wrong and wrong silently. It
+ * was 118, from a comment reading "a run is 110 seconds", which was true when
+ * stage one was the longest thing in the game. Stages then grew: the finale is
+ * a march through five sealed regions and stage six is a reading stage, both
+ * far longer than 110. Nothing failed at build time. The zod schema simply
+ * refused every long run with a 400 before it ever reached the verifier, so
+ * clearing stage six or seven and posting the score became impossible while
+ * every test stayed green.
+ *
+ * Reading it off STAGES means the next clock change carries this with it.
+ */
+export const MAX_DURATION = Math.max(...STAGES.map((stage) => stage.seconds)) + 8;
 const BOARD_LIMIT = 100;
 
 export interface Entry {

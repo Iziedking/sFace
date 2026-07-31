@@ -9,6 +9,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { levelFacts, refuse, type ClaimedRun } from '../server/verify';
+import { MAX_DURATION, SCORE_CEILING } from '../server/leaderboard';
+import { STAGES } from '../src/data/campaign';
 import { practiceMission } from '../src/game/mission';
 import { RunState } from '../src/game/state';
 
@@ -101,5 +103,44 @@ describe('the level is the ceiling', () => {
   it('returns null rather than throwing on a malformed payload', () => {
     expect(levelFacts(null, 1)).toBeNull();
     expect(levelFacts({ terrain: 'nope' }, 1)).toBeNull();
+  });
+});
+
+/**
+ * The caps in front of the verifier have to let a legal run through.
+ *
+ * These sit before levelFacts/refuse ever run: a zod schema and a coarse
+ * plausibility check. Both were hand-written constants sized when stage one was
+ * the longest thing in the game, and both silently went out of date as the
+ * campaign grew. The result was a 400 on every stage six and seven run, before
+ * the verifier saw the claim, with the whole suite green.
+ *
+ * A ceiling that has to be edited by hand whenever a number elsewhere changes
+ * is a ceiling that will be wrong again. These pin it to the campaign.
+ */
+describe('the coarse caps do not refuse legal runs', () => {
+  it('allows the longest stage to run its full clock', () => {
+    const longest = Math.max(...STAGES.map((stage) => stage.seconds));
+
+    expect(MAX_DURATION).toBeGreaterThanOrEqual(longest);
+    // Plus room for the frame the run ends on, which the client counts.
+    expect(MAX_DURATION).toBeGreaterThan(longest);
+  });
+
+  it('sits above what any stage can legitimately pay', () => {
+    /*
+     * The mistake this catches has now been made twice: the ceiling was 30,000
+     * while honest runs earned 36,000, then 60,000 while a stage seven run can
+     * legally reach around 70,000. Both times an excellent run was refused and
+     * never reached the board.
+     */
+    const mission = practiceMission('2026-07-31');
+    const payload = JSON.parse(JSON.stringify(mission));
+
+    for (const stage of STAGES) {
+      const facts = levelFacts(payload, stage.n);
+      expect(facts).not.toBeNull();
+      expect(SCORE_CEILING).toBeGreaterThan(facts!.maxScore);
+    }
   });
 });
