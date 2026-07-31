@@ -201,6 +201,8 @@ function faucetCard(address: string | null): HTMLElement {
    * is a completely different problem from "your address was refused". Someone
    * who can see the difference stops debugging their own wallet.
    */
+  let dispenseNim: number | null = null;
+
   void faucetInfo().then((info: FaucetInfo | null) => {
     if (!info) {
       status.textContent = 'Could not reach the faucet just now. The link below still works.';
@@ -210,6 +212,7 @@ function faucetCard(address: string | null): HTMLElement {
       status.textContent = 'The faucet is not serving this region.';
       return;
     }
+    dispenseNim = info.dispenseNim;
     status.textContent = `Pays ${info.dispenseNim} NIM. ${info.remaining.toLocaleString()} claims left.`;
   });
 
@@ -219,10 +222,23 @@ function faucetCard(address: string | null): HTMLElement {
 
     const result = await claimFaucet(field.value);
 
+    /*
+     * The amount comes from whichever source actually knows it.
+     *
+     * The faucet's success body is usually just `{ success: true }`, so the
+     * figure comes from the dispense amount it published a moment ago. If
+     * neither is available the sentence simply does not carry a number, which
+     * is better than the "Sent 0 NIM" this used to print when it read a missing
+     * field as zero.
+     */
+    const sent = result.ok ? (result.nim ?? dispenseNim) : null;
+
     // Its own words when it refused. The faucet knows why far better than we
     // can guess, and its reasons are specific enough to act on.
     status.textContent = result.ok
-      ? `Sent ${result.nim} NIM. It lands in a moment.`
+      ? sent === null
+        ? 'Sent. It lands in a moment.'
+        : `Sent ${sent} NIM. It lands in a moment.`
       : result.reason;
 
     action.removeAttribute('disabled');

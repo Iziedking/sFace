@@ -631,22 +631,37 @@ export class Hud {
     const gate = state.gates.find((g) => g.id === state.openGateId);
     if (!gate) return;
 
-    const cardW = Math.min(width - 24, 620);
+    /*
+     * Compact, and you can see through it.
+     *
+     * It was 620 wide by roughly 130 tall, sitting in the middle of the screen
+     * at nearly full opacity. On a landscape phone that is a third of the view,
+     * over the exact band the player and whatever is shooting at them occupy,
+     * and it is up for as long as you stand at a gate. Reported as blocking the
+     * game, which it was.
+     *
+     * The rows are short: a ticker and two words. Nothing here needed the width
+     * it was taking. Narrower, tighter rows and enough transparency to track
+     * something moving behind it costs nothing in legibility and hands most of
+     * that band back.
+     */
+    const cardW = Math.min(width - 24, 430);
     const x = (width - cardW) / 2;
-    const rowH = 34;
-    const headH = 34;
+    const rowH = 26;
+    const headH = 28;
     // Room for the price line when there is one to show.
     const unknownCount = gate.options.filter((id) => {
       const ally = state.allies.find((a) => a.id === id);
       return ally !== undefined && !ally.known;
     }).length;
-    const cardH = headH + gate.options.length * rowH + (unknownCount > 0 ? 26 : 10);
-    const y = top + 48;
+    const cardH = headH + gate.options.length * rowH + (unknownCount > 0 ? 22 : 8);
+    // Clear of the pause control, which owns the top centre.
+    const y = top + 44;
 
     ctx.save();
 
     ctx.fillStyle = theme.ink;
-    ctx.globalAlpha = 0.93;
+    ctx.globalAlpha = 0.82;
     ctx.beginPath();
     ctx.roundRect(x, y, cardW, cardH, 10);
     ctx.fill();
@@ -660,13 +675,13 @@ export class Hud {
 
     ctx.textAlign = 'left';
     ctx.fillStyle = theme.accent;
-    ctx.font = `700 12px ${MONO}`;
-    ctx.fillText(gateQuestion(gate, state.mission.ticker), x + 14, y + 21);
+    ctx.font = `700 11px ${MONO}`;
+    ctx.fillText(gateQuestion(gate, state.mission.ticker), x + 12, y + 18);
 
     ctx.textAlign = 'right';
     ctx.fillStyle = gate.missed > 0 ? theme.danger : theme.inkFaint;
     ctx.font = `600 10px ${MONO}`;
-    ctx.fillText(gate.missed > 0 ? 'WRONG ONCE' : 'WRONG WAKES THEM', x + cardW - 14, y + 21);
+    ctx.fillText(gate.missed > 0 ? 'WRONG ONCE' : 'WRONG WAKES THEM', x + cardW - 12, y + 18);
 
     /*
      * The price of a read, when there is anything left to buy.
