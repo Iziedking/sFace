@@ -28,6 +28,9 @@ export interface StickView {
 const STICK_RADIUS = 64;
 /** Inside this, treat it as no input, so a resting thumb does not drift. */
 const STICK_DEADZONE = 8;
+
+/** How long a released heading keeps outranking the direction of flight. */
+const AIM_GRACE_MS = 900;
 /** How long a mouse position keeps counting as an aim after it stops moving. */
 const MOUSE_AIM_TTL_MS = 1200;
 
@@ -75,7 +78,60 @@ export class Input {
    * sixty degrees are available from a thumb that never moves more than a
    * centimetre.
    */
-  aimVector: Vec2 | null = null;
+  private aimHeading: Vec2 | null = null;
+
+  /**
+   * When the held heading stops overriding the direction of flight.
+   *
+   * Infinity while a thumb is down. A short grace after it lifts, then zero.
+   */
+  private aimHeldUntil = 0;
+
+  /**
+   * The heading the gun is being pointed in, or null to follow the flight.
+   *
+   * ## Why this expires
+   *
+   * It used to be a plain field, set on a drag and never cleared: lifting the
+   * thumb deliberately kept it, so the gun would not snap back mid-fight. What
+   * that missed is that it outranks the fallback in main.ts, and the fallback is
+   * what makes a character face the way they are moving. So one drag, ever,
+   * pinned the facing for the rest of the run. Fly right, still shooting left,
+   * and no amount of moving fixes it because moving is not an aim source while
+   * this holds a value.
+   *
+   * Reported after a whole stage played backwards, which is exactly what it
+   * does: the very first touch of the fire pad sets a heading and nothing ever
+   * takes it away.
+   *
+   * A grace window gets both things. Lift your thumb to reposition and the gun
+   * holds where you left it. Stop aiming and go somewhere, and after a beat the
+   * character faces the way they are travelling again, which is what makes an
+   * analog stick feel like it covers all three hundred and sixty degrees rather
+   * than one.
+   */
+  get aimVector(): Vec2 | null {
+    if (!this.aimHeading) return null;
+    return performance.now() <= this.aimHeldUntil ? this.aimHeading : null;
+  }
+
+  /** Point the gun, and hold it there for as long as the thumb is down. */
+  private setHeading(x: number, y: number): void {
+    this.aimHeading = { x, y };
+    this.aimHeldUntil = Number.POSITIVE_INFINITY;
+  }
+
+  /**
+   * Let go, but not instantly.
+   *
+   * Long enough to survive lifting a thumb to reposition it, short enough that
+   * somebody who has stopped aiming and started flying does not notice the gun
+   * catching up.
+   */
+  private releaseHeading(): void {
+    if (this.aimHeading) this.aimHeldUntil = performance.now() + AIM_GRACE_MS;
+  }
+
   /** True while the fire thumb is held. */
   firing = false;
 
@@ -116,7 +172,8 @@ export class Input {
     this.move.y = 0;
     this.aimPoint = null;
     this.aimAt = 0;
-    this.aimVector = null;
+    this.aimHeading = null;
+    this.aimHeldUntil = 0;
     this.firing = false;
     this.stick = null;
     this.aimStick = null;
@@ -356,7 +413,7 @@ export class Input {
       const distance = Math.hypot(dx, dy);
 
       if (distance >= STICK_DEADZONE) {
-        this.aimVector = { x: dx / distance, y: dy / distance };
+        this.setHeading(dx / distance, dy / distance);
       }
 
       const scale = distance > STICK_RADIUS ? STICK_RADIUS / distance : 1;
@@ -418,7 +475,7 @@ export class Input {
       // Below the deadzone the thumb has not chosen a direction yet, so hold
       // the last one rather than snapping the gun to a jitter.
       if (distance >= STICK_DEADZONE) {
-        this.aimVector = { x: dx / distance, y: dy / distance };
+        this.setHeading(dx / distance, dy / distance);
       }
 
       const scale = distance > STICK_RADIUS ? STICK_RADIUS / distance : 1;
@@ -455,9 +512,11 @@ export class Input {
         this.move.y = 0;
       } else {
         this.firing = false;
-        // The stick graphic goes, the heading stays. Lifting the thumb should
-        // stop the shooting, not spin the gun back to some default.
+        // The stick graphic goes and the heading starts its grace. Lifting the
+        // thumb stops the shooting; it does not spin the gun back instantly,
+        // and it does not pin the facing forever either. See aimVector.
         this.aimStick = null;
+        this.releaseHeading();
       }
       return;
     }
@@ -474,8 +533,9 @@ export class Input {
       this.aimPointer = null;
       this.aimStick = null;
       this.firing = false;
-      // Keep aimVector so the gun holds its last heading instead of snapping
-      // back to facing right the instant the thumb lifts.
+      // Held briefly, then handed back to the direction of flight. See
+      // aimVector for the run this used to cost.
+      this.releaseHeading();
     }
   };
 

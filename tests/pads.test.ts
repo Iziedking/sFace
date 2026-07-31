@@ -226,6 +226,89 @@ describe('aiming with a thumb', () => {
       restore();
     }
   });
+
+  /**
+   * The heading has to let go.
+   *
+   * A whole stage was played facing backwards. The fire pad sets a heading on
+   * drag, and lifting the thumb deliberately kept it so the gun would not snap
+   * back mid-fight. What that missed is that a held heading outranks the
+   * direction-of-flight fallback in main.ts, and that fallback is the only thing
+   * that makes a character face the way they are moving.
+   *
+   * So the very first touch of the fire pad pinned the facing for the rest of the
+   * run. Fly right, keep shooting left, and no amount of moving fixes it, because
+   * while a heading is held movement is not an aim source at all.
+   */
+  describe('the gun stops aiming when you stop aiming', () => {
+    it('holds the heading while the thumb is down', () => {
+      const { input, send, restore, pads } = harness();
+      try {
+        send('pointerdown', 1, pads.fire.x, pads.fire.y);
+        send('pointermove', 1, pads.fire.x - 60, pads.fire.y);
+
+        expect(input.aimVector).not.toBeNull();
+        expect(input.aimVector?.x).toBeLessThan(0);
+      } finally {
+        restore();
+      }
+    });
+
+    it('still holds it briefly after the thumb lifts', () => {
+      // Lifting to reposition is not a decision to stop aiming, and a gun that
+      // spins back the instant a thumb leaves the glass is unusable.
+      const { input, send, restore, pads } = harness();
+      try {
+        send('pointerdown', 1, pads.fire.x, pads.fire.y);
+        send('pointermove', 1, pads.fire.x - 60, pads.fire.y);
+        send('pointerup', 1, pads.fire.x - 60, pads.fire.y);
+
+        expect(input.aimVector).not.toBeNull();
+      } finally {
+        restore();
+      }
+    });
+
+    it('hands the facing back once the grace has passed', async () => {
+      /*
+       * The assertion the bug would have failed. Null here means main.ts falls
+       * through to the direction of flight, which is what turns the character
+       * around when they fly somewhere else.
+       */
+      const { input, send, restore, pads } = harness();
+      try {
+        send('pointerdown', 1, pads.fire.x, pads.fire.y);
+        send('pointermove', 1, pads.fire.x - 60, pads.fire.y);
+        send('pointerup', 1, pads.fire.x - 60, pads.fire.y);
+
+        const start = performance.now();
+        // The window is 900ms. Waiting it out for real rather than mocking the
+        // clock, because the expiry reads performance.now directly and a fake
+        // timer would prove something about the mock instead.
+        while (performance.now() - start < 1000) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+
+        expect(input.aimVector).toBeNull();
+      } finally {
+        restore();
+      }
+    }, 5000);
+
+    it('forgets the heading entirely on reset', () => {
+      // Between runs. A new stage must not start pointing where the last one did.
+      const { input, send, restore, pads } = harness();
+      try {
+        send('pointerdown', 1, pads.fire.x, pads.fire.y);
+        send('pointermove', 1, pads.fire.x - 60, pads.fire.y);
+        input.reset();
+
+        expect(input.aimVector).toBeNull();
+      } finally {
+        restore();
+      }
+    });
+  });
 });
 
 /**
