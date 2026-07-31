@@ -706,15 +706,36 @@ class App {
 
     if (!target) return false;
 
-    try {
-      window.history.replaceState(null, '', '/');
-    } catch {
-      // A browser that will not rewrite the bar still gets the right screen.
-    }
-
+    /*
+     * The path stays in the address bar.
+     *
+     * It used to be cleared straight away, which made the link uncopyable the
+     * moment it worked and made a successful route look like a failed one: you
+     * open /docs, the docs open, and the bar says the bare domain. A refresh
+     * also reopened the site rather than the page the URL named.
+     *
+     * It is cleared when a run starts instead, so somebody who reads the docs,
+     * plays, and then reloads gets their run back rather than the docs again.
+     * See clearRoutedPath.
+     */
     if (target === 'about') void this.cross(() => this.showAbout());
     else this.showControls();
     return true;
+  }
+
+  /**
+   * Drop a routed path once the player has moved on from it.
+   *
+   * Called when a run starts. Until then the URL is left alone so it can be
+   * copied and shared, which is the entire point of having the route.
+   */
+  private clearRoutedPath(): void {
+    if (window.location.pathname === '/') return;
+    try {
+      window.history.replaceState(null, '', '/');
+    } catch {
+      // A browser that will not rewrite the bar loses nothing that matters.
+    }
   }
 
   private landing(): void {
@@ -1709,6 +1730,8 @@ class App {
     // Starting deliberately discards whatever was banked. There is only ever
     // one run to come back to and this is now it.
     clearSnapshot();
+    // And drops /docs off the URL, so a refresh mid-run resumes the run.
+    this.clearRoutedPath();
     this.showStageBrief();
   }
 
