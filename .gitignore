@@ -34,6 +34,11 @@ docs/*
 # nothing about the local checkout would show it.
 !docs/stage-1-to-7.md
 
+# The 250 word description the submission portal asks for. Kept in the repo so
+# the text that was submitted is the text in version control, rather than a
+# paragraph that only ever existed in a form field.
+!docs/description.md
+
 # Editor and OS noise.
 .DS_Store
 Thumbs.db
