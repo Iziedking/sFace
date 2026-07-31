@@ -132,26 +132,27 @@ export class Hud {
     else if (state.city) this.drawMap(ctx, state, height);
     else this.drawProgress(ctx, state, width, top + BAR_HEIGHT);
     /*
-     * The bottom left is a stack, so the pill goes on top of all of it.
+     * Where the carried count goes, which is not next to the thumb.
      *
-     * Three things want that corner: the movement pad when the fixed scheme is
-     * on, the map on a city or ring stage, and this. The maps already lift
-     * themselves clear of the pad, which the first version of this fix missed,
-     * so the pill cleared the map's usual height and landed back on the pad
-     * anyway on a chart stage where there is no map to clear at all.
+     * The bottom left corner is contested: the movement pad wants it, the map
+     * wants it, and this wants it. Stacking them worked arithmetically and
+     * still put a status readout inside the zone the left hand lives in, on top
+     * of the control that matters most. Lifting it higher only pushes it
+     * further into the level.
      *
-     * Adding both offsets stacks it correctly in all four combinations rather
-     * than in the one that happened to be on screen when it was checked.
+     * On a touch device it moves to the top strip instead, into the space the
+     * four buys used to occupy before they went to the thumb. That is where
+     * every other status already is, and it is the one part of the screen no
+     * hand covers. Desktop keeps the corner: there are no thumbs there, and the
+     * strip is still holding the priced row.
      */
-    const padClearance = usingPads() ? 150 : 0;
-    const mapHeight = state.rings ? 124 : state.city ? 118 : 0;
-    const mapClearance = mapHeight > 0 ? mapHeight + 24 : 0;
-    this.drawCarrying(
-      ctx,
-      state,
-      padX,
-      height - this.insets.bottom - 26 - padClearance - mapClearance,
-    );
+    if (touchCapable()) {
+      this.drawCarrying(ctx, state, scripRight + 14, mid);
+    } else {
+      const mapHeight = state.rings ? 124 : state.city ? 118 : 0;
+      const mapClearance = mapHeight > 0 ? mapHeight + 24 : 0;
+      this.drawCarrying(ctx, state, padX, height - this.insets.bottom - 26 - mapClearance);
+    }
     this.drawStick(ctx, input);
     this.drawPads(ctx, state, input, width, height);
     this.drawSlotStrip(ctx, state, input, width, height);
@@ -980,6 +981,40 @@ export class Hud {
     ctx.strokeStyle = theme.ink;
     ctx.lineWidth = 3;
     ctx.stroke();
+
+    /*
+     * Where the gun is pointing, on the button that points it.
+     *
+     * The fire pad aims as well as fires: push the thumb and the shot follows
+     * the push. Nothing said so. drawStick, which draws the leaning puck on the
+     * floating scheme, returns early when the pads are on, so the one scheme
+     * built around a fixed button was the one with no aim readout at all.
+     *
+     * That is the whole point of a stick over a d-pad. You sweep the thumb
+     * around and fire in every direction as you go, and you can only learn to
+     * do that if the control shows you which direction you are asking for.
+     */
+    const aim = input.aimStick;
+    if (aim) {
+      const dx = aim.current.x - aim.origin.x;
+      const dy = aim.current.y - aim.origin.y;
+      const length = Math.hypot(dx, dy);
+
+      if (length > 0.001) {
+        const reach = Math.min(length, pads.fire.r * 0.6);
+        ctx.globalAlpha = 0.75;
+        ctx.fillStyle = theme.canvas;
+        ctx.beginPath();
+        ctx.arc(
+          pads.fire.x + (dx / length) * reach,
+          pads.fire.y + (dy / length) * reach,
+          pads.fire.r * 0.34,
+          0,
+          Math.PI * 2,
+        );
+        ctx.fill();
+      }
+    }
 
     /*
      * At a node these same buttons are the four answers.
