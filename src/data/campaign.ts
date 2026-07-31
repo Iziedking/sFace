@@ -377,12 +377,12 @@ export const STAGES: readonly Stage[] = [
      * four posts, and a timer that punishes reading turns the stage into
      * guessing, which is the one thing it exists not to be.
      *
-     * Three minutes, because two was still being read against a stopwatch.
-     * There are ten panels and each holds four real posts; at two minutes that
-     * is twelve seconds a panel including getting to it, which is skimming for
-     * the shape of an answer rather than reading one.
+     * Two and a half minutes. There are ten panels and each holds four real
+     * posts; at two minutes that was twelve seconds a panel including getting
+     * to it, which is skimming for the shape of an answer rather than reading
+     * one. Fifteen is enough to read without being enough to dawdle.
      */
-    seconds: 180,
+    seconds: 150,
     density: 1.8,
     minDifficulty: 4,
     caches: 10,
