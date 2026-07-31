@@ -17,6 +17,7 @@
  */
 
 import { theme, MONO } from './theme';
+import { hintFor } from './hints';
 import type { Input, StickView } from '../core/input';
 import type { RunState } from '../game/state';
 import { PLAYER_MAX_HEALTH } from '../game/state';
@@ -125,6 +126,7 @@ export class Hud {
     this.drawAlert(ctx, state, width, top + BAR_HEIGHT);
     this.drawReadTally(ctx, state, padX, top + BAR_HEIGHT + 16);
     this.drawAssistMark(ctx, state, width - padX, top + BAR_HEIGHT + 16);
+    this.drawHint(ctx, state, width / 2, top + BAR_HEIGHT + 62);
     this.drawRead(ctx, state, width, top + BAR_HEIGHT);
     this.drawGate(ctx, state, width, top + BAR_HEIGHT);
     // A city has no progress along a line, so it gets a map instead.
@@ -386,6 +388,46 @@ export class Hud {
    * that never moves teaches a player to stop looking at that part of the
    * screen, and stage four needs them looking.
    */
+  /**
+   * One rule, restated at the moment it starts to matter.
+   *
+   * Placed under the pause control rather than beside anything. That band is
+   * the only part of the screen with nothing permanent in it: the strip owns
+   * the top, the read tally and the assist mark sit at the far left and right
+   * of the row above this, and the maps and pads own the bottom. The node and
+   * gate cards do come through here, which is why hints.ts stands down whenever
+   * one is open rather than this trying to dodge them.
+   */
+  private drawHint(
+    ctx: CanvasRenderingContext2D,
+    state: RunState,
+    centre: number,
+    y: number,
+  ): void {
+    const hint = hintFor(state);
+    if (!hint) return;
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `700 10px ${MONO}`;
+
+    const width = ctx.measureText(hint.text).width + 22;
+    const height = 22;
+
+    ctx.globalAlpha = hint.alpha * 0.82;
+    ctx.fillStyle = theme.ink;
+    ctx.beginPath();
+    ctx.roundRect(centre - width / 2, y - height / 2, width, height, 5);
+    ctx.fill();
+
+    ctx.globalAlpha = hint.alpha;
+    ctx.fillStyle = theme.canvas;
+    ctx.fillText(hint.text, centre, y + 0.5);
+
+    ctx.restore();
+  }
+
   private drawAlert(
     ctx: CanvasRenderingContext2D,
     state: RunState,
