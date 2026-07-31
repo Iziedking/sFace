@@ -16,6 +16,7 @@
     "preview": "vite preview",
     "server": "tsx --env-file-if-exists=.env server/index.ts",
     "server:dev": "tsx watch --env-file-if-exists=.env server/index.ts",
+    "prove": "tsx scripts/prove.ts",
     "icons": "node scripts/make-icons.mjs",
     "brand": "node scripts/make-brand.mjs"
   },

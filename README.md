@@ -259,8 +259,14 @@ every stage is playable. The service is what makes it today's real market.
 ```bash
 npm run check            # three tsconfigs and the whole suite
 npm test                 # 483 tests
+npm run prove            # run the two honesty claims and print what they return
 node scripts/shoot.mjs   # re-shoot the screenshots above
 ```
+
+`npm run prove` is worth thirty seconds. It calls the same `levelFacts`,
+`refuse` and `verifyClaim` the service calls, prints each seed's real ceiling,
+and then signs a claim with a real Ed25519 keypair and tries to tamper with it
+six different ways. Every refusal is printed with the reason.
 
 Copy `.env.example` to `.env`. Every key is optional, and each one degrades a
 feature rather than breaking the app.

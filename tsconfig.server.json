@@ -18,5 +18,5 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["server"]
+  "include": ["server", "scripts/prove.ts"]
 }
