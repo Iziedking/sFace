@@ -201,15 +201,33 @@ export function renderIntro(root: HTMLElement, options: IntroOptions): void {
     if (timer !== null) clearTimeout(timer);
 
     if (options.voice) {
-      // Advance when the narrator finishes, so the pacing follows the reading
-      // rather than a guessed timeout. The narrator resolves on failure too,
-      // so a device with no voices simply advances immediately, which is why
-      // the floor below exists.
+      /*
+       * Advance when the narrator finishes, with a floor under it.
+       *
+       * The pacing follows the reading rather than a guessed timeout, which is
+       * right when there is a voice. The narrator also resolves on failure, and
+       * for a long time the comment here claimed a floor existed to catch that.
+       * It did not. So inside Nimiq Pay, where the WebView exposes no speech
+       * voices at all, every beat resolved instantly and advanced after one
+       * breath: the entire opening played in a couple of seconds, silently,
+       * and read as being fast forwarded past.
+       *
+       * Timing the call is what tells the two apart. Speech that really
+       * happened took about as long as the line takes to say. Speech that never
+       * started comes back in a few milliseconds, and that beat is then held
+       * for as long as it would take somebody to read it.
+       */
       const at = index;
+      const startedAt = performance.now();
+
       void narrator.say(text).then(() => {
         if (finished || index !== at) return;
-        // One breath, not a pad back up to a fixed beat length.
-        timer = window.setTimeout(next, BREATH_MS);
+
+        const spoken = performance.now() - startedAt;
+        const floor = readingTime(text);
+
+        // One breath after real speech; the full read when there was none.
+        timer = window.setTimeout(next, spoken < floor ? floor - spoken : BREATH_MS);
       });
     } else {
       timer = window.setTimeout(next, readingTime(text));
