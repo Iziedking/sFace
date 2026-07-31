@@ -53,11 +53,32 @@ interface Row {
   what: string;
 }
 
+interface Shot {
+  /** In public/guide, written by scripts/shoot.mjs from the real game. */
+  src: string;
+  alt: string;
+  /** One line under it. Says what to look at, not what the picture is. */
+  caption: string;
+}
+
 interface Chapter {
   title: string;
   /** One line under the title, in the voice of the game rather than a manual. */
   lead: string;
   rows: Row[];
+  /**
+   * A picture of the thing this chapter is about.
+   *
+   * Not decoration. Read cold, this guide was a list of mechanics nobody had
+   * seen yet: "four posts, one explains the day" means nothing until you have
+   * looked at the card, and "the pads put your buys on an arc" means nothing
+   * until you have seen the arc. One screenshot per chapter turns each of them
+   * from a definition into a thing you recognise when it appears.
+   *
+   * Captured from the running game by scripts/shoot.mjs rather than drawn, so
+   * the guide cannot end up describing a build that no longer exists.
+   */
+  shot?: Shot;
 }
 
 const TOUCH: Row[] = [
@@ -110,6 +131,11 @@ const CHAPTERS: Chapter[] = [
         what: "Fear and Greed decides how crowded the sky is. The chart's own volatility decides where the attackers sit.",
       },
     ],
+    shot: {
+      src: '/guide/chart.webp',
+      alt: 'Stage one, flying over the day’s real price chart',
+      caption: 'That ridge is a real price move. Nobody drew it.',
+    },
   },
   {
     title: 'Get them out',
@@ -168,6 +194,11 @@ const CHAPTERS: Chapter[] = [
         what: 'Scrip dies with the run and the ticker changes tomorrow. Nobody accumulates an advantage, and none of it is for sale.',
       },
     ],
+    shot: {
+      src: '/guide/pads.webp',
+      alt: 'The fixed pads in play: a stick, a fire button and four priced buys',
+      caption: 'Your four buys sit beside the fire button, priced in the day’s own ticker.',
+    },
   },
   {
     title: 'What you are climbing',
@@ -212,6 +243,11 @@ const CHAPTERS: Chapter[] = [
         what: 'Four posts that genuinely went out today. Pick the one that explains it.',
       },
     ],
+    shot: {
+      src: '/guide/city.webp',
+      alt: 'A city stage, with streets built from the day’s price bars',
+      caption: 'The same numbers as the chart, drawn as bars. The gaps are the streets.',
+    },
   },
   {
     title: 'The gun helps, and it helps more as you go',
@@ -234,6 +270,11 @@ const CHAPTERS: Chapter[] = [
         what: 'A challenge puts both players on the same baseline, whatever either has earned.',
       },
     ],
+    shot: {
+      src: '/guide/panel.webp',
+      alt: 'A stage six panel showing four real posts to choose between',
+      caption: 'Stage six asks you to read. Four posts that genuinely went out, one is right.',
+    },
   },
   {
     title: 'Why a bet on this is fair',
@@ -252,6 +293,11 @@ const CHAPTERS: Chapter[] = [
         what: 'A challenge settles wallet to wallet in Nimiq Pay. sFace never holds funds, and cannot: there is no pot.',
       },
     ],
+    shot: {
+      src: '/guide/rings.webp',
+      alt: 'Stage seven, a ring city with a gate question',
+      caption: 'The finale. No weapon opens a gate, so the answer is the only key.',
+    },
   },
 ];
 
@@ -322,6 +368,19 @@ function renderChapter(chapter: Chapter, index: number, quiet: boolean): HTMLEle
         el('p', { class: 'chapter__lead', text: chapter.lead }),
       ),
     ),
+    chapter.shot
+      ? el(
+          'figure',
+          { class: 'chapter__shot' },
+          el('img', {
+            src: chapter.shot.src,
+            alt: chapter.shot.alt,
+            loading: 'lazy',
+            decoding: 'async',
+          }),
+          el('figcaption', { text: chapter.shot.caption }),
+        )
+      : null,
     el(
       'div',
       { class: 'keys' },

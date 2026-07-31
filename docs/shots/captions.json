@@ -40,6 +40,16 @@
     "view": "wallet"
   },
   {
+    "name": "guide-panel",
+    "caption": "Stage six. Four posts that genuinely went out, one explains the day.",
+    "view": "wallet"
+  },
+  {
+    "name": "guide-pads",
+    "caption": "The fixed pads: stick, fire, and your four buys on the arc.",
+    "view": "wallet"
+  },
+  {
     "name": "ending",
     "caption": "Clearing the campaign: the day you flew, against everything before it.",
     "view": "wide"

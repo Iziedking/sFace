@@ -1674,6 +1674,28 @@ p.quiet {
 
 /* The receipts under the narration. Real posts, linked to the originals; see
    data/collapse.ts for the rule about never paraphrasing them. */
+/* A picture of the thing each chapter describes. Captured from the running
+   game by scripts/shoot.mjs, so the guide cannot describe a build that is gone. */
+.chapter__shot {
+  margin: 0 0 14px;
+  max-width: var(--measure);
+}
+
+.chapter__shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 2px solid var(--ink);
+}
+
+.chapter__shot figcaption {
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+  margin-top: 6px;
+}
+
 .intro__receipts {
   display: grid;
   gap: 10px;

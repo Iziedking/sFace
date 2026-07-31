@@ -23,13 +23,15 @@
  */
 
 import { spawn } from 'node:child_process';
-import { mkdir, writeFile, readdir } from 'node:fs/promises';
+import { mkdir, writeFile, readdir, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
 const ORIGIN = process.env.SHOOT_ORIGIN ?? 'http://localhost:5173';
 const OUT = join(process.cwd(), 'docs', 'shots');
+/* Served, unlike docs/shots. The in-app guide reads from here. */
+const GUIDE_OUT = join(process.cwd(), 'public', 'guide');
 const PORT = 9333;
 
 /** Desktop, and a phone in portrait. The mini app lives on the second one. */
@@ -160,6 +162,7 @@ const SHOTS = [
   },
   {
     name: 'chart-run',
+    guide: 'chart',
     view: 'wide',
     caption: 'Stage one. The ground is today’s real 24 hour chart.',
     async setup(cdp) {
@@ -175,6 +178,7 @@ const SHOTS = [
   },
   {
     name: 'city',
+    guide: 'city',
     view: 'wide',
     caption: 'Stage five leaves the chart for streets built from the day’s bars.',
     async setup(cdp) {
@@ -228,6 +232,7 @@ const SHOTS = [
   },
   {
     name: 'rings-wallet',
+    guide: 'rings',
     view: 'wallet',
     caption: 'On a phone in Nimiq Pay. Stage seven: concentric walls around a core, worked inward.',
     async setup(cdp) {
@@ -246,6 +251,71 @@ const SHOTS = [
         const { Camera } = await import('/src/render/camera.ts');
         a.camera.zoomOut(Camera.RING_ZOOM_OUT);
         a.camera.jumpToFree(run.player, c);
+        a.renderer.draw(run, a.camera, a.effects);
+        a.hud.measure();
+        a.hud.draw(a.renderer.context, run, a.input, a.renderer.width, a.renderer.height);
+        return 'ok';
+      })()`);
+      await wait(500);
+    },
+  },
+  {
+    /*
+     * Stage six with a panel open, for the guide.
+     *
+     * Reading is the one verb no other stage has, and a sentence about four
+     * posts means nothing until somebody has seen the card. Wallet viewport,
+     * because that is the screen the guide is read on.
+     */
+    name: 'guide-panel',
+    view: 'wallet',
+    guide: 'panel',
+    caption: 'Stage six. Four posts that genuinely went out, one explains the day.',
+    async setup(cdp) {
+      await cdp.eval(`(async () => {
+        const a = window.sface;
+        const { RunState } = await import('/src/game/state.ts');
+        const run = new RunState(a.mission, 'sidearm', 6, true);
+        const node = run.nodes[0];
+        if (node) {
+          run.player.x = node.x;
+          run.player.y = node.y;
+          run.openNodeId = node.id;
+        }
+        a.run = run;
+        a.screen = 'run';
+        document.querySelector('#ui').style.display = 'none';
+        a.renderer.resize();
+        a.camera.resize(a.renderer.width, a.renderer.height);
+        a.camera.jumpToFree(run.player, run.city);
+        a.renderer.draw(run, a.camera, a.effects);
+        a.hud.measure();
+        a.hud.draw(a.renderer.context, run, a.input, a.renderer.width, a.renderer.height);
+        return 'ok';
+      })()`);
+      await wait(500);
+    },
+  },
+  {
+    /* The pads, in play, so the guide can point at the thing it describes. */
+    name: 'guide-pads',
+    view: 'wallet',
+    guide: 'pads',
+    scheme: 'analog',
+    caption: 'The fixed pads: stick, fire, and your four buys on the arc.',
+    async setup(cdp) {
+      await cdp.eval(`(async () => {
+        const a = window.sface;
+        const { RunState } = await import('/src/game/state.ts');
+        const run = new RunState(a.mission, 'sidearm', 5, true);
+        run.purse.held = 400;
+        a.run = run;
+        a.screen = 'run';
+        a.input.slotCount = 4;
+        document.querySelector('#ui').style.display = 'none';
+        a.renderer.resize();
+        a.camera.resize(a.renderer.width, a.renderer.height);
+        a.camera.jumpToFree(run.player, run.city);
         a.renderer.draw(run, a.camera, a.effects);
         a.hud.measure();
         a.hud.draw(a.renderer.context, run, a.input, a.renderer.width, a.renderer.height);
@@ -426,6 +496,9 @@ async function main() {
          * timing question entirely rather than tuning a wait against it.
          */
         shot.skipIntro === false ? '' : `sessionStorage.setItem('sface.intro', 'done');`,
+        // A shot that needs the pads on screen says so, rather than depending
+        // on whatever the previous one left in storage.
+        shot.scheme ? `localStorage.setItem('sface.controls', ${'JSON.stringify(shot.scheme)'});` : `localStorage.removeItem('sface.controls');`,
       ].join(''),
     });
 
@@ -478,10 +551,24 @@ async function main() {
       identifier: seeded.identifier,
     });
 
+    /*
+     * A copy for the in-app guide.
+     *
+     * docs/shots is for the README and is not served. The guide is read inside
+     * the running app, so anything it points at has to be in public/. Written
+     * from the same capture rather than shot twice, so the two can never drift.
+     */
+    if (shot.guide) {
+      await mkdir(GUIDE_OUT, { recursive: true });
+      await writeFile(join(GUIDE_OUT, `${shot.guide}.png`), Buffer.from(data, 'base64'));
+    }
+
     console.log(`  captured ${shot.name}.png (${view.width}x${view.height})`);
   }
 
   await writeFile(join(OUT, 'captions.json'), `${JSON.stringify(captions, null, 2)}\n`);
+
+  await packGuide();
 
   ws.close();
   chrome.kill();
@@ -492,3 +579,42 @@ main().catch((error) => {
   console.error(error);
   process.exit(1);
 });
+
+/**
+ * Turn the guide copies into something worth shipping.
+ *
+ * These go into the bundle and are downloaded by anybody who opens How to Play,
+ * so they are not allowed to be full-size PNGs. WebP at 760 wide takes the set
+ * from about 200KB to 60KB with the text still legible, which matters because
+ * the whole point is that somebody can read the panel in the screenshot.
+ *
+ * Done here rather than by hand, or the next run of this script quietly leaves
+ * PNGs beside the .webp paths the guide is asking for and every image in it
+ * breaks at once.
+ */
+async function packGuide() {
+  const { existsSync } = await import('node:fs');
+  if (!existsSync(GUIDE_OUT)) return;
+
+  const files = (await readdir(GUIDE_OUT)).filter((f) => f.endsWith('.png'));
+  if (files.length === 0) return;
+
+  for (const file of files) {
+    const from = join(GUIDE_OUT, file);
+    const to = join(GUIDE_OUT, `${file.slice(0, -4)}.webp`);
+
+    await new Promise((resolve, reject) => {
+      const ff = spawn(
+        'ffmpeg',
+        ['-v', 'error', '-i', from, '-vf', "scale='min(760,iw)':-1:flags=lanczos", '-q:v', '86', to, '-y'],
+        { stdio: 'inherit' },
+      );
+      ff.on('error', reject);
+      ff.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}`))));
+    });
+
+    await rm(from);
+  }
+
+  console.log(`guide: ${files.length} images packed to public/guide`);
+}
