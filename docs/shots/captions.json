@@ -35,6 +35,11 @@
     "view": "wide"
   },
   {
+    "name": "rings-wallet",
+    "caption": "On a phone in Nimiq Pay. Stage seven: concentric walls around a core, worked inward.",
+    "view": "wallet"
+  },
+  {
     "name": "ending",
     "caption": "Clearing the campaign: the day you flew, against everything before it.",
     "view": "wide"

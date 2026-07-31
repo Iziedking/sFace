@@ -227,6 +227,34 @@ const SHOTS = [
     },
   },
   {
+    name: 'rings-wallet',
+    view: 'wallet',
+    caption: 'On a phone in Nimiq Pay. Stage seven: concentric walls around a core, worked inward.',
+    async setup(cdp) {
+      await cdp.eval(`(async () => {
+        const a = window.sface;
+        const { RunState } = await import('/src/game/state.ts');
+        const run = new RunState(a.mission, 'sidearm', 7, true);
+        const c = run.rings;
+        run.player.x = c.cx;
+        run.player.y = c.cy - (c.rings[c.rings.length - 1].radius + 260);
+        a.run = run;
+        a.screen = 'run';
+        document.querySelector('#ui').style.display = 'none';
+        a.renderer.resize();
+        a.camera.resize(a.renderer.width, a.renderer.height);
+        const { Camera } = await import('/src/render/camera.ts');
+        a.camera.zoomOut(Camera.RING_ZOOM_OUT);
+        a.camera.jumpToFree(run.player, c);
+        a.renderer.draw(run, a.camera, a.effects);
+        a.hud.measure();
+        a.hud.draw(a.renderer.context, run, a.input, a.renderer.width, a.renderer.height);
+        return 'ok';
+      })()`);
+      await wait(500);
+    },
+  },
+  {
     name: 'ending',
     view: 'wide',
     caption: 'Clearing the campaign: the day you flew, against everything before it.',

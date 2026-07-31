@@ -128,8 +128,20 @@ export class Camera {
    * exist to stop a desktop seeing more of a LEVEL than a phone. This changes
    * both devices by the same factor, so the fairness the caps protect is
    * untouched.
+   *
+   * It was 2.6, and that was too far by a long way. Everything drew at under
+   * forty per cent: people became specks, and telling an ally you have to walk
+   * to from an attacker you have to avoid meant squinting at two four-pixel
+   * shapes. A stage about going and looking at things does not survive not
+   * being able to see them, and a phone had it worst because the same fraction
+   * of a smaller screen is a smaller number of actual pixels.
+   *
+   * The overview job belongs to the ring map in the corner, which draws every
+   * wall, every gap and where you are, and does it without shrinking the world
+   * you are standing in. This only has to pull back far enough that a wall
+   * reads as curved rather than straight.
    */
-  static readonly RING_ZOOM_OUT = 2.6;
+  static readonly RING_ZOOM_OUT = 1.75;
 
   /** Widen the view for a world that has to be read at a distance. */
   zoomOut(factor: number): void {
