@@ -475,7 +475,7 @@ class App {
     // Relabel the toggle when the browser changes it from under us, which it
     // does every time somebody leaves fullscreen with Escape.
     onFullscreenChange(() => {
-      this.onResize();
+      this.applyResize();
       if (this.screen === 'brief') this.showBrief();
     });
 
@@ -521,7 +521,7 @@ class App {
       music.resume(this.screen === 'run' ? 'run' : 'menu');
     });
 
-    this.onResize();
+    this.applyResize();
   }
 
   async boot(): Promise<void> {
@@ -2621,11 +2621,41 @@ class App {
     };
   }
 
+  /** Set while a resize is already queued, so a burst collapses into one. */
+  private resizePending = false;
+
+  /**
+   * Resize once per frame, however many events arrive.
+   *
+   * A fullscreen transition fires resize continuously while the window
+   * animates, and orientation changes on a phone do the same. Each event was
+   * doing the full job: reallocate the canvas, recompute the camera, remeasure
+   * the HUD. Coalescing to one per frame turns a storm into a single piece of
+   * work, and the frame it lands on is the one that was going to draw anyway.
+   */
   private onResize = (): void => {
+    if (this.resizePending) return;
+    this.resizePending = true;
+
+    requestAnimationFrame(() => {
+      this.resizePending = false;
+      this.applyResize();
+    });
+  };
+
+  /**
+   * The resize itself, done now.
+   *
+   * Boot calls this directly rather than going through the coalescing path.
+   * Waiting a frame for the first sizing would draw one frame at whatever the
+   * canvas happened to be, which is a visible flash on the very first thing
+   * anybody sees.
+   */
+  private applyResize(): void {
     this.renderer.resize();
     this.camera.resize(this.renderer.width, this.renderer.height);
     this.hud.measure();
-  };
+  }
 }
 
 /** The player's current pose, in the shape squadmates are drawn from. */

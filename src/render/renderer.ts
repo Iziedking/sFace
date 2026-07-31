@@ -75,20 +75,72 @@ export class Renderer {
   }
 
   /**
+   * How many pixels the renderer is willing to fill each frame.
+   *
+   * Canvas 2D redraws the whole world every frame, so cost is the area of the
+   * backing store and nothing else. A laptop going fullscreen takes the canvas
+   * from something like 1150 by 720 to 2560 by 1440, and at a 2x buffer that is
+   * 3.3 million pixels becoming 14.7 million. The same drawing four and a half
+   * times over, which is why fullscreen dragged so badly that the only way to
+   * keep playing was to leave it.
+   *
+   * Four million is comfortably above 1080p at a 1.4x buffer and well inside
+   * what a browser can fill at sixty frames. Small screens never come near it:
+   * a phone in the wallet is around 1.6 million at its full 2x, so nothing about
+   * a phone changes.
+   */
+  private static readonly PIXEL_BUDGET = 4_000_000;
+
+  /**
+   * The ratio actually in use, worked out in resize and read everywhere else.
+   *
+   * It used to be recomputed independently in draw, which was harmless only
+   * because both copies agreed. The moment one of them is capped and the other
+   * is not, the transform stops matching the backing store and everything is
+   * drawn at the wrong scale.
+   */
+  private dpr = 1;
+
+  /**
    * Match the backing store to the device pixel ratio, then work in CSS pixels
-   * everywhere above this line. Capped at 2 because a 3x buffer on a phone
-   * costs more than it shows.
+   * everywhere above this line.
+   *
+   * Capped at 2, because a 3x buffer on a phone costs more than it shows, and
+   * capped again by area so a large window cannot ask for more pixels than can
+   * be filled in a frame.
    */
   resize(): void {
     const rect = this.canvas.getBoundingClientRect();
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
 
     this.width = Math.max(1, Math.round(rect.width));
     this.height = Math.max(1, Math.round(rect.height));
-    this.canvas.width = Math.round(this.width * dpr);
-    this.canvas.height = Math.round(this.height * dpr);
 
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const wanted = Math.min(window.devicePixelRatio || 1, 2);
+    const area = this.width * this.height;
+    // Scale the ratio down, never the layout: the world on screen stays the
+    // same size and the buffer behind it simply has fewer pixels in it.
+    const affordable = Math.sqrt(Renderer.PIXEL_BUDGET / Math.max(1, area));
+
+    this.dpr = Math.max(1, Math.min(wanted, affordable));
+
+    const bufferW = Math.round(this.width * this.dpr);
+    const bufferH = Math.round(this.height * this.dpr);
+
+    /*
+     * Only touch the buffer when it actually has to change.
+     *
+     * Assigning canvas.width reallocates and clears the backing store even when
+     * the value assigned is the one already there. Entering fullscreen fires a
+     * burst of resize events while the window animates, and every one of them
+     * was throwing away and rebuilding a buffer of up to fifteen million
+     * pixels. That is the drag: not the drawing, the reallocating.
+     */
+    if (this.canvas.width !== bufferW || this.canvas.height !== bufferH) {
+      this.canvas.width = bufferW;
+      this.canvas.height = bufferH;
+    }
+
+    this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
   }
 
   draw(
@@ -99,10 +151,10 @@ export class Renderer {
     me?: PlayerIdentity,
   ): void {
     const ctx = this.ctx;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
 
     ctx.save();
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // The ratio resize settled on, not a fresh guess. See the note on dpr.
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
 
     // The sky belongs to the stage. Seven stages on the same chart would
     // otherwise be seven identical pictures with a different number on them.
