@@ -426,10 +426,17 @@ export const STAGES: readonly Stage[] = [
     brief:
       'This is the one everything else was for. The road out is sealed into regions and no weapon opens a gate. Each gate asks a question about the projects that were here before this cycle and will be here after it. Go and find them. Learn where each one sits and how it is holding up while today falls apart. Then answer, and walk out.',
     objective: 'Learn every project, answer every gate.',
-    // The longest run in the game, by a distance. Five rings have to be circled
-    // and read, and a clock that fits stage six would make it a sprint past the
-    // thing the stage is about.
-    seconds: 180,
+    /*
+     * The longest run in the game, by a distance.
+     *
+     * Five rings have to be circled and read, and a clock that fits stage six
+     * would make it a sprint past the thing the stage is about. When stage six
+     * went to two minutes this sat at a hundred and eighty, which is exactly
+     * one and a half times it and therefore exactly on the floor the suite
+     * holds it to. A margin that has been eaten down to zero is not a margin,
+     * it is the next thing to break silently.
+     */
+    seconds: 250,
     /*
      * A fraction of what the stage used to field.
      *
