@@ -119,6 +119,22 @@ function sceneLengths(timings) {
  */
 let handCursor = 0;
 
+/**
+ * How much reel every gameplay shot wants, worked out before any are cut.
+ *
+ * The cursor used to walk forward and wrap to the start when it ran past the
+ * end, which is a hard jump back in time in the middle of the video: the same
+ * stage appears again from an earlier moment and it reads as a seam. The
+ * recording is 163 seconds and the gameplay slots want about 170, so it always
+ * wrapped exactly once.
+ *
+ * Knowing the total up front means the starts can be spread across the whole
+ * recording instead. The shots stay in the order they were played and the
+ * cursor never has to go backwards.
+ */
+let handNeed = 0;
+let handTaken = 0;
+
 /*
  * Screens that must show the screen they are about.
  *
@@ -138,11 +154,22 @@ async function buildShot(scene, seconds) {
 
   if (existsSync(reel) && !(PREFER_CAPTURE.has(scene) && existsSync(frames))) {
     const have = await duration(reel);
-    // Wrap rather than run dry, and start a little in so the first shot is not
-    // somebody still finding the keyboard.
-    if (handCursor + seconds > have) handCursor = 2;
-    const from = handCursor;
-    handCursor += seconds;
+
+    /*
+     * Spread across the recording rather than marched through it.
+     *
+     * Each shot starts at its share of the way in, so the sequence covers the
+     * whole run and the last shot lands at the end rather than the cursor
+     * running out and jumping back. Two seconds of lead in, because the first
+     * moments are somebody finding the keyboard.
+     */
+    const lead = 2;
+    const span = Math.max(1, have - lead - seconds);
+    const share = handNeed > 0 ? handTaken / handNeed : 0;
+    const from = lead + span * share;
+
+    handTaken += seconds;
+    handCursor = from + seconds;
 
     await ff([
       '-ss', from.toFixed(2),
@@ -158,9 +185,21 @@ async function buildShot(scene, seconds) {
        * never enlarged into the output, and the game fills the frame the way it
        * would have if fullscreen had behaved.
        */
-      `crop=iw:ih-45:0:45,scale=${W}:${H}:force_original_aspect_ratio=increase:flags=lanczos,crop=${W}:${H},fps=${FPS},format=yuv420p`,
+      /*
+       * Cropped, upscaled, then sharpened.
+       *
+       * The recording is 1152 by 720 and the output is 1080p, so this is a 1.67
+       * times enlargement and no filter puts back detail that was never
+       * captured. What it can do is restore the edges, and this game is flat
+       * fills with hard black outlines, which is the one kind of picture where
+       * an unsharp mask genuinely helps rather than just adding halos.
+       *
+       * The only real fix is a 1080p recording. This makes a 720p one look as
+       * close as it is going to get.
+       */
+      `crop=iw:ih-45:0:45,scale=${W}:${H}:force_original_aspect_ratio=increase:flags=lanczos,crop=${W}:${H},unsharp=5:5:0.9:5:5:0.0,fps=${FPS},format=yuv420p`,
       '-an',
-      '-c:v', 'libx264', '-preset', 'medium', '-crf', '18',
+      '-c:v', 'libx264', '-preset', 'slow', '-crf', '15',
       out, '-y',
     ]);
     return out;

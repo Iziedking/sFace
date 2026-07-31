@@ -106,7 +106,23 @@ async function buildNarration() {
   await writeFile(listFile, parts.map((p) => `file '${p.file.replace(/\\/g, '/')}'`).join('\n'));
 
   const track = join(WORK, 'narration.wav');
-  await ff(['-f', 'concat', '-safe', '0', '-i', listFile, '-c', 'copy', track, '-y']);
+
+  /*
+   * Re-encoded across the join, not stream copied.
+   *
+   * Copying PCM through the concat demuxer glues the payloads together and
+   * trusts every part to have an identical header. They do not always, and the
+   * mismatch lands as a tick or a swallowed syllable at a join, which is heard
+   * as the voice tripping partway through a sentence.
+   *
+   * Decoding and re-encoding the whole thing costs a second of build time and
+   * makes the boundaries stop existing.
+   */
+  await ff([
+    '-f', 'concat', '-safe', '0', '-i', listFile,
+    '-c:a', 'pcm_s16le', '-ar', '48000', '-ac', '2',
+    track, '-y',
+  ]);
 
   const total = await duration(track);
   const spoke = parts.filter((_, i) => i % 1 === 0).length;
@@ -207,7 +223,7 @@ async function main() {
     '-filter_complex', filter,
     '-map', '[v]', '-map', '[a]',
     '-t', String(length),
-    '-c:v', 'libx264', '-preset', 'slow', '-crf', '18',
+    '-c:v', 'libx264', '-preset', 'slow', '-crf', '16',
     '-pix_fmt', 'yuv420p', '-r', '30',
     '-c:a', 'aac', '-b:a', '256k', '-ar', '48000',
     '-movflags', '+faststart',
