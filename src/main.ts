@@ -619,7 +619,26 @@ class App {
      */
     const returningFromX = this.cameBackFromX;
 
-    if (!introSeen() && !this.pendingChallengeId && !returningFromX && !this.inAppReload) {
+    /*
+     * And not when a link named a page.
+     *
+     * Somebody opening sface.site/docs has asked for the docs. Playing the
+     * opening at them first is answering a different question, and it made a
+     * shared link look broken: you follow it, get five beats of story, and land
+     * on the front door instead of the page you were sent.
+     *
+     * The opening is for arriving at the game with no destination in mind. A
+     * deep link is the opposite of that.
+     */
+    const followedLink = this.routedTarget() !== null;
+
+    if (
+      !introSeen() &&
+      !this.pendingChallengeId &&
+      !returningFromX &&
+      !this.inAppReload &&
+      !followedLink
+    ) {
       this.ui.className = '';
       this.screen = 'intro';
       renderIntro(this.ui, {
@@ -695,14 +714,24 @@ class App {
    * so a refresh later does not drag somebody back to the docs when they are
    * halfway through a run.
    */
-  private routeFromPath(): boolean {
+  /**
+   * Which screen the address bar is asking for, or null for the front door.
+   *
+   * Read rather than acted on, so the boot sequence can ask the same question
+   * the landing does. They have to agree: if boot does not know a link was
+   * followed it plays the opening first, and somebody who clicked a link to the
+   * docs sits through the whole pitch before arriving.
+   */
+  private routedTarget(): 'about' | 'controls' | null {
     const path = window.location.pathname.replace(/\/+$/, '').toLowerCase();
-    const target =
-      path === '/docs' || path === '/about'
-        ? 'about'
-        : path === '/how-to-play' || path === '/play' || path === '/controls'
-          ? 'controls'
-          : null;
+
+    if (path === '/docs' || path === '/about') return 'about';
+    if (path === '/how-to-play' || path === '/play' || path === '/controls') return 'controls';
+    return null;
+  }
+
+  private routeFromPath(): boolean {
+    const target = this.routedTarget();
 
     if (!target) return false;
 
