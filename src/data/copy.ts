@@ -82,7 +82,19 @@ const en = {
   // Honest failure states, one sentence each
   errorMissionOffline:
     'Could not reach the market. Playing an offline mission instead.',
-  errorBoardPost: 'Score could not be posted. It is still saved here.',
+  /*
+   * Says what was actually kept, because the old line did not.
+   *
+   * "It is still saved here" was not true. Nothing local was written when a
+   * post failed: no Face, no rank, and until this was fixed not even the
+   * cleared stage. Telling somebody their run was saved when it was not is
+   * worse than telling them it was lost, because they find out later.
+   *
+   * What IS kept is the campaign progress, which is now recorded before any
+   * network call. The Face is genuinely gone and the sentence says so. The
+   * specific reason is appended by the caller.
+   */
+  errorBoardPost: 'Score did not reach the board, so no Face from this run. Stage progress is kept.',
   errorGeneric: 'Something went wrong. Try that again.',
 } as const;
 

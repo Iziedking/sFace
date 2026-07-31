@@ -177,6 +177,39 @@ function readStage(): number {
  * reclaimed background tab and a WebView reload all keep the session, which is
  * every case this exists for.
  */
+/**
+ * How far the campaign has been taken, on this device.
+ *
+ * Progression used to be read only from the server profile, which meant a
+ * cleared stage that failed to post left the player on Run it again with no
+ * way forward: they had beaten the stage, the game had judged it beaten, and
+ * the button still would not appear because a leaderboard had not confirmed it.
+ * A campaign is single player. It has no business waiting on a network.
+ *
+ * The board is still the authority on Face and rank, which are competitive and
+ * verified. This is only the answer to which stages are open, and the two are
+ * reconciled by taking whichever has seen more.
+ */
+const CLEARED_KEY = 'sface.cleared';
+
+function readCleared(): number {
+  try {
+    const raw = Number(localStorage.getItem(CLEARED_KEY));
+    return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeCleared(stage: number): void {
+  try {
+    // Never downward. Re-running an early stage is not losing the later ones.
+    if (stage > readCleared()) localStorage.setItem(CLEARED_KEY, String(stage));
+  } catch {
+    // Blocked storage. The server profile still carries it when it can.
+  }
+}
+
 const RUN_KEY = 'sface.run';
 
 function readSnapshot(): RunSnapshot | null {
@@ -1189,7 +1222,10 @@ class App {
 
   /** Highest stage cleared, from the record. Zero for a new pilot. */
   private cleared(): number {
-    return Math.max(0, Math.min(STAGES.length, this.profile?.stagesCleared ?? 0));
+    // Whichever has seen more. The profile leads on a fresh device that has
+    // played elsewhere; the local record leads when a post could not be made.
+    const known = Math.max(this.profile?.stagesCleared ?? 0, readCleared());
+    return Math.max(0, Math.min(STAGES.length, known));
   }
 
   /**
@@ -1754,6 +1790,16 @@ class App {
     // only asks it. See src/data/campaign.ts.
     const progress = stageProgressOf(run, PLAYER_MAX_HEALTH);
     this.stageCleared = run.stage.clear(progress);
+
+    /*
+     * Banked here, before a single network call.
+     *
+     * The stage has been judged beaten by the rule the stage itself owns. That
+     * is the whole basis for opening the next one, and nothing that happens to
+     * a leaderboard afterwards can make it less true.
+     */
+    if (this.stageCleared && !this.practice) writeCleared(run.stage.n);
+
     this.contractsMet = metContracts(this.contracts, progress);
     // Contracts pay on top of the market and the stage. Applied to the run so
     // the number on the results screen is the number that gets posted.
@@ -2039,7 +2085,16 @@ class App {
       void this.prepareCardFile(run.mission.date);
       this.postError = null;
     } else {
-      this.postError = t('errorBoardPost');
+      /*
+       * The reason, not a shrug.
+       *
+       * This used to show one sentence for every failure, so "the service is
+       * unreachable" and "the service refused this score" were indistinguishable
+       * from the outside. They call for completely different responses: one is
+       * wait and try later, the other is a bug worth reporting. The reason was
+       * there in the result the whole time and was being thrown away.
+       */
+      this.postError = `${t('errorBoardPost')} ${result.error}`;
     }
   }
 
