@@ -11,6 +11,7 @@
  */
 
 import { networkLabel, onTestnet, setNetwork, TESTNET_FAUCET } from '../core/network';
+import { claimFaucet, faucetInfo, type FaucetInfo } from '../net/faucet';
 import { button, el, mount } from './dom';
 import {
   SCHEME_LABEL,
@@ -25,6 +26,14 @@ export interface SettingsOptions {
   onBack: () => void;
   /** Re-render, so the chosen row updates under the thumb that chose it. */
   onChange: () => void;
+  /**
+   * The connected wallet's address, when there is one.
+   *
+   * Prefilled into the faucet field so the common case is one tap. Somebody
+   * playing in a browser can still paste an address in by hand, which is the
+   * whole reason the field is a field and not a label.
+   */
+  address?: string | null;
 }
 
 const ORDER: Scheme[] = ['touch', 'analog', 'dpad'];
@@ -97,18 +106,7 @@ export function renderSettings(root: HTMLElement, options: SettingsOptions): voi
             ? 'Testnet. The game is identical, but NIM here is worth nothing, scores stay off the daily board, and CT Signals is off because it reads live X. Use it to rehearse a challenge without spending anything.'
             : 'Mainnet. Real NIM, the real daily board, and live reads of crypto X. This is the game.',
         }),
-        onTestnet()
-          ? el(
-              'a',
-              {
-                class: 'settings__faucet',
-                href: TESTNET_FAUCET,
-                target: '_blank',
-                rel: 'noopener noreferrer',
-              },
-              'Get testnet NIM from the Nimiq faucet',
-            )
-          : null,
+        onTestnet() ? faucetCard(options.address ?? null) : null,
         button(
           onTestnet() ? 'Switch to Mainnet' : 'Switch to Testnet',
           () => setNetwork(onTestnet() ? 'main' : 'test'),
@@ -146,4 +144,89 @@ function schemeRow(id: Scheme, active: boolean, options: SettingsOptions): HTMLE
   });
 
   return node;
+}
+
+/**
+ * Claim testnet NIM without leaving the game.
+ *
+ * This replaced a link out to the faucet's own page, which serves a twelve byte
+ * body and renders blank. Following our own link and finding nothing is worse
+ * than not offering it, so the claim happens here against the same API that
+ * page would have used. See net/faucet.ts.
+ */
+function faucetCard(address: string | null): HTMLElement {
+  const field = el('input', {
+    class: 'settings__faucetfield',
+    type: 'text',
+    spellcheck: 'false',
+    autocomplete: 'off',
+    placeholder: 'NQ...',
+    value: address ?? '',
+    'aria-label': 'Address to receive testnet NIM',
+  }) as HTMLInputElement;
+
+  const status = el('p', { class: 'settings__faucetsay', text: 'Checking the faucet...' });
+  const action = button('Claim testnet NIM', () => void claim(), 'ghost');
+
+  const card = el(
+    'div',
+    { class: 'settings__faucet' },
+    el('p', { class: 'settings__faucethead', text: 'TESTNET NIM' }),
+    field,
+    action,
+    status,
+    /*
+     * Their page is still linked, quietly, at the bottom.
+     *
+     * It is broken today and may not be tomorrow, and it is their faucet: if
+     * this stops working, the honest thing is that the player can still go
+     * straight to the source rather than being stuck behind our copy of it.
+     */
+    el(
+      'a',
+      {
+        class: 'settings__faucetlink',
+        href: TESTNET_FAUCET,
+        target: '_blank',
+        rel: 'noopener noreferrer',
+      },
+      'Or open the Nimiq faucet directly',
+    ),
+  );
+
+  /*
+   * What the faucet has left, asked once when the card is built.
+   *
+   * Worth showing rather than hiding: a faucet runs dry, and "none left today"
+   * is a completely different problem from "your address was refused". Someone
+   * who can see the difference stops debugging their own wallet.
+   */
+  void faucetInfo().then((info: FaucetInfo | null) => {
+    if (!info) {
+      status.textContent = 'Could not reach the faucet just now. The link below still works.';
+      return;
+    }
+    if (!info.available) {
+      status.textContent = 'The faucet is not serving this region.';
+      return;
+    }
+    status.textContent = `Pays ${info.dispenseNim} NIM. ${info.remaining.toLocaleString()} claims left.`;
+  });
+
+  async function claim(): Promise<void> {
+    action.setAttribute('disabled', 'true');
+    status.textContent = 'Asking the faucet...';
+
+    const result = await claimFaucet(field.value);
+
+    // Its own words when it refused. The faucet knows why far better than we
+    // can guess, and its reasons are specific enough to act on.
+    status.textContent = result.ok
+      ? `Sent ${result.nim} NIM. It lands in a moment.`
+      : result.reason;
+
+    action.removeAttribute('disabled');
+  }
+
+  return card;
 }

@@ -1120,6 +1120,8 @@ class App {
     renderSettings(this.ui, {
       onBack: () => this.showBrief(),
       onChange: () => this.showSettings(),
+      // Prefills the faucet field, so claiming inside the wallet is one tap.
+      address: this.session?.address ?? null,
     });
   }
 

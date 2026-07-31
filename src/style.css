@@ -4457,10 +4457,53 @@ body.is-fullscreen .foot,
   max-width: 56ch;
 }
 
+/* The faucet claim card, on testnet only. The link it replaced went to a page
+   that renders blank; see net/faucet.ts. */
 .settings__faucet {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  padding: 12px;
+  border: 2px solid var(--ink);
+  background: var(--panel, transparent);
+  max-width: 44ch;
+  width: 100%;
+}
+
+.settings__faucethead {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  margin: 0;
+  opacity: 0.7;
+}
+
+.settings__faucetfield {
   font-family: var(--mono);
   font-size: 12px;
+  width: 100%;
+  /* A Nimiq address is 36 characters and gets pasted, not typed, so it has to
+     fit rather than scroll under the cursor. */
+  min-width: 0;
+  padding: 10px;
+  border: 2px solid var(--ink);
+  background: var(--canvas);
   color: var(--ink);
+}
+
+.settings__faucetsay {
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 0;
+  opacity: 0.8;
+}
+
+.settings__faucetlink {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink);
+  opacity: 0.65;
   text-decoration: underline;
   text-underline-offset: 3px;
 }
