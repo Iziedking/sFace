@@ -199,7 +199,27 @@ function flyRings(state: RunState, dt: number, command: PlayerCommand): void {
   player.x = Math.max(20, Math.min(rings.width - 20, player.x));
   player.y = Math.max(20, Math.min(rings.height - 20, player.y));
 
-  player.facing = player.vx >= 0 ? 1 : -1;
+  // The same threshold every other movement function uses. Without it a player
+  // standing still is forced to face right, which on a stage spent stopped at
+  // gates is most of the stage.
+  if (Math.abs(player.vx) > 12) player.facing = player.vx > 0 ? 1 : -1;
+
+  /*
+   * Aiming and shooting, which this function simply did not do.
+   *
+   * Every other movement path ends with these three. This one ended at the
+   * facing and returned, so on stage seven the gun never fired and the aim
+   * never updated: attackers shot at the player and the player could not shoot
+   * back, all run. The aim staying at its initial heading is the same omission,
+   * which is why the character also faced one way regardless of where they were
+   * pointing.
+   *
+   * The stage is deliberately light on shooting, and that is a matter of how
+   * many attackers it fields, not of quietly removing the trigger.
+   */
+  aim(state, command);
+  fire(state, dt, command);
+  recordTrail(state);
 }
 
 function walkCity(state: RunState, dt: number, command: PlayerCommand): void {
