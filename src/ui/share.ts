@@ -365,7 +365,23 @@ export async function shareRun(
 
 /** Share a link with no card behind it, for a challenge or a clan invite. */
 export async function shareLink(text: string, linkUrl: string): Promise<void> {
-  if (!navigator.share) {
+  /*
+   * ## The fourth report, on the button next to the one that was fixed
+   *
+   * shareRun was taught that desktop Chrome exposes navigator.share and must
+   * not be handed the OS sheet. This function, which does the same job for a
+   * clan invite and a challenge, was left testing whether the API merely
+   * exists. So on a desktop it handed the invite to a system dialog that does
+   * not appear, and Invite on X did nothing at all, silently, exactly as the
+   * run share used to.
+   *
+   * Fixing one of two functions that share a failure is not fixing it. Both now
+   * ask the same question: does this person share through a sheet, and is the
+   * click still live.
+   */
+  const wantsSheet = matchesTouch() && Boolean(navigator.share);
+
+  if (!wantsSheet || !activated()) {
     openIntent(text, linkUrl);
     return;
   }
