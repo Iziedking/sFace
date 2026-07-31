@@ -258,7 +258,7 @@ every stage is playable. The service is what makes it today's real market.
 
 ```bash
 npm run check            # three tsconfigs and the whole suite
-npm test                 # 489 tests
+npm test                 # 492 tests
 npm run prove            # run the two honesty claims and print what they return
 node scripts/shoot.mjs   # re-shoot the screenshots above
 ```

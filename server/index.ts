@@ -337,6 +337,15 @@ app.post('/board', limit(20, 10), async (req, res) => {
    * a signature, whereas a derived one is the signature's author.
    */
   let address: string | null = null;
+  /*
+   * Kept, not just checked.
+   *
+   * Verifying and then discarding the signature leaves the board asserting that
+   * a wallet signed, with nothing anyone else can use to confirm it. Storing it
+   * makes the claim checkable by a stranger, offline, after we are gone. See
+   * the Proof type in leaderboard.ts.
+   */
+  let proof: board.Proof | null = null;
   if (body.publicKey && body.signature) {
     const attested = verifyClaim({
       claim: {
@@ -354,6 +363,12 @@ app.post('/board', limit(20, 10), async (req, res) => {
       return;
     }
     address = attested.address;
+    proof = {
+      publicKey: body.publicKey,
+      signature: body.signature,
+      seed: body.seed,
+      stage: body.stage ?? 1,
+    };
   }
 
   /*
@@ -392,7 +407,7 @@ app.post('/board', limit(20, 10), async (req, res) => {
     }
   }
 
-  const result = board.submit({ ...body, address });
+  const result = board.submit({ ...body, address, proof });
   if (!result.ok) {
     res.status(422).json({ error: result.reason });
     return;

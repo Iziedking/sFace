@@ -58,6 +58,34 @@ export const SCORE_CEILING = 250_000;
 export const MAX_DURATION = Math.max(...STAGES.map((stage) => stage.seconds)) + 8;
 const BOARD_LIMIT = 100;
 
+
+/**
+ * Everything a stranger needs to check this row without trusting us.
+ *
+ * The service verified the signature before the row was accepted, but it only
+ * kept the address it derived. That makes the verified mark an assertion: you
+ * can see that sFace says a wallet signed, and you have to take sFace's word
+ * for it. Keeping the signature itself turns the mark into something anyone can
+ * confirm on their own machine, and it stays confirmable if this service is
+ * gone.
+ *
+ * The seed and stage are here because the signed string contains them. Score
+ * and date are already on the row and in the route, so these four fields
+ * complete the claim: rebuild `sface:<date>:<seed>:s<stage>:<score>`, wrap it in
+ * the Nimiq envelope, and check the signature against the public key. See
+ * server/attest.ts, and `npm run prove` for a worked example.
+ *
+ * Public on purpose. A signature is not a secret; publishing one is what makes
+ * it worth anything.
+ */
+export interface Proof {
+  publicKey: string;
+  signature: string;
+  /** The mission the claim was signed against. */
+  seed: string;
+  stage: number;
+}
+
 export interface Entry {
   id: string;
   name: string;
@@ -74,6 +102,8 @@ export interface Entry {
    * has always taken unsigned rows and says which is which.
    */
   address?: string | null;
+  /** The signature itself, so the address above can be checked by anyone. */
+  proof?: Proof | null;
 }
 
 export interface PublicEntry {
@@ -82,6 +112,8 @@ export interface PublicEntry {
   score: number;
   /** Present only on rows a wallet signed for. Shown as a verified mark. */
   address?: string | null;
+  /** And the working needed to check that mark. Null on unsigned rows. */
+  proof?: Proof | null;
 }
 
 export interface SubmitInput {
@@ -94,6 +126,8 @@ export interface SubmitInput {
   duration: number;
   /** Verified address, or null. The route verifies; this module only stores. */
   address?: string | null;
+  /** The verified signature, kept so the claim outlives this service. */
+  proof?: Proof | null;
 }
 
 export type SubmitResult =
@@ -123,6 +157,7 @@ export function submit(input: SubmitInput): SubmitResult {
       attackersCleared: input.attackersCleared,
       at: Date.now(),
       address: input.address ?? null,
+      proof: input.proof ?? null,
     });
     persist();
   }
@@ -138,6 +173,7 @@ export function top(date: string, limit = BOARD_LIMIT): PublicEntry[] {
       name: entry.name,
       score: entry.score,
       address: entry.address ?? null,
+      proof: entry.proof ?? null,
     }));
 }
 

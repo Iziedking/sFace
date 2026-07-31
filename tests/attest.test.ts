@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { KeyPair } from '@nimiq/core';
+import { KeyPair, PrivateKey, Signature } from '@nimiq/core';
 
 import { claimMessage, encodeSignedMessage, verifyClaim } from '../server/attest';
 
@@ -101,5 +101,100 @@ describe('the wallet prefix is mandatory', () => {
     const encoded = encodeSignedMessage(message);
     const body = new TextEncoder().encode(message);
     expect(new TextDecoder().decode(encoded)).toContain(`\x16Nimiq Signed Message:\n${body.byteLength}`);
+  });
+});
+
+/**
+ * A row on the board carries its own working.
+ *
+ * The service verified the signature and then kept only the address it derived,
+ * which made the verified mark an assertion: you could see that sFace said a
+ * wallet signed, and you had to take sFace's word for it. A signature is not a
+ * secret, and publishing it is the entire thing that makes it worth having.
+ *
+ * This is written as a stranger would: take only the fields the API hands back,
+ * rebuild the signed string from them, and check it. Nothing from inside the
+ * service, no shared state, no trust.
+ */
+describe('anybody can check a published row', () => {
+  const DATE = '2026-07-31';
+  const SEED = '2026-07-31:m:-9.04:fng25:xzi56f9';
+
+  /** What GET /board/:date returns for a signed row. */
+  function publishedRow() {
+    const keys = KeyPair.derive(PrivateKey.generate());
+    const claim = { date: DATE, seed: SEED, stage: 6, score: 52_570 };
+    const signature = Signature.create(
+      keys.privateKey,
+      keys.publicKey,
+      encodeSignedMessage(claimMessage(claim)),
+    ).toHex();
+
+    return {
+      name: 'a pilot',
+      score: claim.score,
+      address: keys.publicKey.toAddress().toUserFriendlyAddress(),
+      proof: {
+        publicKey: keys.publicKey.toHex(),
+        signature,
+        seed: claim.seed,
+        stage: claim.stage,
+      },
+    };
+  }
+
+  it('verifies from the published fields alone', () => {
+    const row = publishedRow();
+
+    // Everything below comes from the row and the route's own date. A stranger
+    // has no other input and needs none.
+    const rebuilt = verifyClaim({
+      claim: { date: DATE, seed: row.proof.seed, stage: row.proof.stage, score: row.score },
+      publicKey: row.proof.publicKey,
+      signature: row.proof.signature,
+    });
+
+    expect(rebuilt).not.toBeNull();
+    // And the address they derive independently is the one the board displays,
+    // which is what makes the mark meaningful rather than decorative.
+    expect(rebuilt?.address).toBe(row.address);
+  });
+
+  it('catches a board that inflated a score under a real signature', () => {
+    /*
+     * The attack publishing the proof actually defends against.
+     *
+     * Without the signature on the row, a dishonest or compromised service
+     * could show any number it liked beside a genuine address and nobody could
+     * tell. With it, the arithmetic simply stops working.
+     */
+    const row = publishedRow();
+
+    const tampered = verifyClaim({
+      claim: { date: DATE, seed: row.proof.seed, stage: row.proof.stage, score: 999_999 },
+      publicKey: row.proof.publicKey,
+      signature: row.proof.signature,
+    });
+
+    expect(tampered).toBeNull();
+  });
+
+  it('catches the seed or stage being restated', () => {
+    // Both are inside the signed string, so neither can be relabelled after.
+    const row = publishedRow();
+
+    for (const claim of [
+      { date: DATE, seed: 'a different seed', stage: row.proof.stage, score: row.score },
+      { date: DATE, seed: row.proof.seed, stage: 7, score: row.score },
+      { date: '2026-08-01', seed: row.proof.seed, stage: row.proof.stage, score: row.score },
+    ]) {
+      expect(
+        verifyClaim({
+          claim,
+          publicKey: row.proof.publicKey,
+          signature: row.proof.signature,
+        }),
+      ).toBeNull();
+    }
   });
 });
