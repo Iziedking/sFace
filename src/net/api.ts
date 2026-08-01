@@ -18,12 +18,30 @@ const TIMEOUT_MS = 6000;
 
 export type ApiResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
+/**
+ * The working behind a signed row, so anybody can check it without trusting us.
+ *
+ * Published by the service on every daily row a wallet signed for. It was
+ * already going out on the wire and simply had no name on this side, so the
+ * board could not show it: exposed in the API and invisible in the app, which
+ * is the same as not having done it.
+ */
+export interface BoardProof {
+  publicKey: string;
+  signature: string;
+  /** The mission the claim was signed against. */
+  seed: string;
+  stage: number;
+}
+
 export interface BoardEntry {
   id: string;
   name: string;
   score: number;
   /** Set when a wallet signed for this row. Null when nobody did. */
   address?: string | null;
+  /** The signature over this exact claim. Null on rows nobody signed. */
+  proof?: BoardProof | null;
   avatarUrl?: string | null;
   clanTag?: string | null;
   /** Lifetime Face, so a row can show a rank badge. Daily rows carry it too. */

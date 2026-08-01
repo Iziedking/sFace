@@ -17,6 +17,7 @@ import type { DailyMission } from '../game/mission';
 import type { RunState } from '../game/state';
 import { ATTACKER_SCORE, TIME_BONUS_PER_SECOND } from '../game/state';
 import type { BoardEntry } from '../net/api';
+import { accountUrl, explorerName } from '../core/explorer';
 import { progressOf, type Profile } from '../net/profile';
 import { rankFor } from '../data/story';
 import { deck, type DeckPanel } from './deck';
@@ -956,13 +957,14 @@ function boardRow(
         'div',
         { class: 'board__name' },
         entry.clanTag ? el('span', { class: 'board__clan', text: entry.clanTag }) : null,
-        el('span', { text: isMe ? `${entry.name} (you)` : entry.name }),
+        nameNode(entry.name, isMe),
       ),
       // The tier is only meaningful where we know a lifetime total, which is
       // every row on all-time and any daily row for a pilot we have seen.
       (entry.lifetimeFace ?? 0) > 0
         ? el('div', { class: 'board__tier', text: `${tier.tier} · ${tier.name}` })
         : null,
+      receipts(entry),
     ),
 
     el('span', {
@@ -971,5 +973,109 @@ function boardRow(
         ? `${entry.score.toLocaleString()}`
         : entry.score.toLocaleString(),
     }),
+  );
+}
+
+/**
+ * The name, linked to X when it is an X handle.
+ *
+ * A connected pilot's name is stored as `@handle`, which is already the whole
+ * link. Sending somebody to the actual account is the same rule the Dispatch
+ * follows everywhere else: if we print a handle, the person behind it has to be
+ * one tap away, or we are just asserting that they exist.
+ *
+ * The pattern is X's own: letters, digits and underscore, at most fifteen. A
+ * generated callsign like "Pilot 4F2A" fails it and stays plain text, which is
+ * correct, because there is nothing to link to.
+ */
+function nameNode(name: string, isMe: boolean): HTMLElement {
+  const handle = /^@([A-Za-z0-9_]{1,15})$/.exec(name.trim());
+  const shown = isMe ? `${name} (you)` : name;
+
+  if (!handle) return el('span', { text: shown });
+
+  return el('a', {
+    class: 'board__x',
+    href: `https://x.com/${handle[1]}`,
+    target: '_blank',
+    rel: 'noopener noreferrer',
+    title: `Open @${handle[1]} on X`,
+    text: shown,
+  });
+}
+
+/**
+ * What can be checked about this row, for the people who want to check it.
+ *
+ * Two different claims, deliberately not blurred into one badge:
+ *
+ *   the signature  proves the score. Ed25519 over the date, seed, stage and
+ *                  number, and the address is derived from the key that made
+ *                  it rather than taken from the client.
+ *   the address    is a wallet, and the link opens it on chain. It does NOT
+ *                  show the score, because a score is not a transaction, and
+ *                  a pilot who has never staked has an account with nothing
+ *                  on it.
+ *
+ * Collapsed by default. A board is for reading places, and folding the working
+ * away costs one tap while putting sixty characters of base64 on every row
+ * would cost the board.
+ */
+function receipts(entry: BoardEntry): HTMLElement | null {
+  const url = accountUrl(entry.address);
+  const proof = entry.proof ?? null;
+  if (!url && !proof) return null;
+
+  return el(
+    'details',
+    { class: 'board__proof' },
+    el('summary', {
+      // The tick belongs to the signature, never to a bare wallet. Sharing one
+      // mark between them is the exact conflation this panel exists to avoid.
+      class: proof ? 'board__proofmark board__proofmark--signed' : 'board__proofmark',
+      text: proof ? 'signed' : 'wallet',
+    }),
+    el(
+      'div',
+      { class: 'board__proofbody' },
+      proof
+        ? el('p', {
+            class: 'board__prooflead',
+            text: `Signed for stage ${proof.stage} on seed ${proof.seed.slice(0, 12)}. Anyone can check this against the public key.`,
+          })
+        : null,
+      proof ? field('PUBLIC KEY', proof.publicKey) : null,
+      proof ? field('SIGNATURE', proof.signature) : null,
+      entry.address ? field('WALLET', entry.address) : null,
+      url
+        ? el(
+            'a',
+            {
+              class: 'board__prooflink',
+              href: url,
+              target: '_blank',
+              rel: 'noopener noreferrer',
+            },
+            `Open this wallet on ${explorerName()}`,
+          )
+        : null,
+      // Said once, plainly, rather than left for somebody to discover by
+      // opening an empty account and drawing the wrong conclusion.
+      url
+        ? el('p', {
+            class: 'board__proofnote',
+            text: 'That shows the wallet, not the run. Scores are signed, never sent, so sFace puts nothing on chain for them.',
+          })
+        : null,
+    ),
+  );
+}
+
+function field(label: string, value: string): HTMLElement {
+  return el(
+    'div',
+    { class: 'board__field' },
+    el('span', { class: 'board__fieldlabel', text: label }),
+    el('span', { class: 'board__fieldvalue', text: value }),
   );
 }
