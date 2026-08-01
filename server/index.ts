@@ -384,6 +384,8 @@ app.post('/board', limit(20, 10), async (req, res) => {
    * the Proof type in leaderboard.ts.
    */
   let proof: board.Proof | null = null;
+  /** Set when a signature arrived and did not verify, so the reply can say so. */
+  let signatureRefused = false;
   if (body.publicKey && body.signature) {
     const attested = verifyClaim({
       claim: {
@@ -396,17 +398,38 @@ app.post('/board', limit(20, 10), async (req, res) => {
       signature: body.signature,
     });
 
+    /*
+     * A signature that does not verify costs the signature, never the score.
+     *
+     * This used to refuse the whole post with a 422. The reasoning was that
+     * silently downgrading a bad signature would let a tampered claim land
+     * looking ordinary, and that half is still true. What it got wrong is the
+     * price: a player who finished a real run, signed it in good faith, and hit
+     * any quirk between their wallet and this check lost the entire run. Face,
+     * board row, rank, all of it, with nothing they could do about it.
+     *
+     * That trade is backwards. A row with no signature is exactly what a plain
+     * browser has always produced and the board has always accepted, and it is
+     * marked as unsigned rather than passed off as attested, so nothing is
+     * being smuggled through. Meanwhile the score, which is the thing the
+     * player actually earned, is safe.
+     *
+     * Signing is a separate act now, on its own route, and it is retryable.
+     * See POST /board/sign. That is where a signature belongs: something that
+     * can fail and be tried again, rather than something that can take a run
+     * down with it.
+     */
     if (!attested) {
-      res.status(422).json({ error: 'That signature does not match the score it was sent with.' });
-      return;
+      signatureRefused = true;
+    } else {
+      address = attested.address;
+      proof = {
+        publicKey: body.publicKey,
+        signature: body.signature,
+        seed: body.seed,
+        stage: body.stage ?? 1,
+      };
     }
-    address = attested.address;
-    proof = {
-      publicKey: body.publicKey,
-      signature: body.signature,
-      seed: body.seed,
-      stage: body.stage ?? 1,
-    };
   }
 
   /*
@@ -524,7 +547,21 @@ app.post('/board', limit(20, 10), async (req, res) => {
     stageCleared: parsed.data.stageCleared === true,
   });
 
-  res.json({ rank: result.rank, profile });
+  /*
+   * `signed` tells the client what actually happened to its signature.
+   *
+   * Absent from the reply is not the same as false: an older client that never
+   * sent one gets neither field and has nothing to explain. A client that sent
+   * one and sees `signed: false` can offer to try again, which is the whole
+   * reason the score no longer dies with the signature.
+   */
+  res.json({
+    rank: result.rank,
+    profile,
+    ...(body.publicKey && body.signature
+      ? { signed: !signatureRefused }
+      : {}),
+  });
 });
 
 /*
@@ -950,7 +987,18 @@ app.get('/profile/:id', limit(60, 20), (req, res) => {
     return;
   }
 
-  res.json({ ...profile, allTimeRank: profiles.rankOf(id.data, network) });
+  /*
+   * Runs on the board that nobody signed.
+   *
+   * Sent with the profile rather than behind a route of its own, because the
+   * profile screen is the only place that asks and a second request would be a
+   * second thing to fail on a page that already loads.
+   */
+  res.json({
+    ...profile,
+    allTimeRank: profiles.rankOf(id.data, network),
+    unsigned: board.unsignedFor(network, id.data),
+  });
 });
 
 /*

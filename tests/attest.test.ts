@@ -198,3 +198,44 @@ describe('anybody can check a published row', () => {
     }
   });
 });
+
+describe('a bad signature must not cost a score', () => {
+  /*
+   * The failure this exists to stop happened in production. A player finished a
+   * real run, signed it in good faith, and the service answered 422: the score,
+   * the Face and the board row all refused because the signature did not
+   * verify.
+   *
+   * The reasoning behind that refusal was sound and the price was not. A bad
+   * signature is worth refusing; a real run is not, and the two arrived in one
+   * request so the second died with the first.
+   *
+   * The server-side crypto is proven above. What no test here can reach is what
+   * Nimiq Pay's wallet actually signs, since headless Chrome has no wallet, so
+   * that hop stays unverified however careful the rest is. Which is exactly why
+   * the score must not depend on it.
+   */
+  it('still refuses to attest a signature that does not verify', () => {
+    // The half that was right. Nothing below weakens this.
+    const claim = { date: '2026-08-01', seed: 'seed-one', stage: 1, score: 18_064 };
+    const s = signed({ ...claim, score: 1 });
+
+    expect(verifyClaim({ claim, publicKey: s.publicKey, signature: s.signature })).toBeNull();
+  });
+
+  it('verifies the claim the score route actually builds', () => {
+    /*
+     * The message is assembled in two places: the client before signing and the
+     * service before verifying. They agree here, so a mismatch in production is
+     * the wallet's envelope rather than these two drifting apart, which is
+     * worth being able to rule out.
+     */
+    const claim = { date: '2026-08-01', seed: 'seed-one', stage: 6, score: 18_064 };
+    const s = signed(claim);
+
+    const attested = verifyClaim({ claim, publicKey: s.publicKey, signature: s.signature });
+
+    expect(attested).not.toBeNull();
+    expect(attested?.address).toMatch(/^NQ/);
+  });
+});
