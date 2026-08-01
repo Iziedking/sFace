@@ -36,7 +36,7 @@ import { renderBoard, renderBrief, renderResults, type BoardTab } from './ui/scr
 import { initialSteps, renderLoading, type LoadStep } from './ui/loading';
 import { renderChallenge } from './ui/challenge';
 import { introSeen, renderIntro } from './ui/intro';
-import { takeInAppReload } from './core/network';
+import { takeInAppReload, setPractising } from './core/network';
 import { accountKey } from './net/identity';
 import { mergeProfile } from './net/profile';
 import { renderControls } from './ui/controls';
@@ -1232,7 +1232,16 @@ class App {
       notice: this.notice,
       onConnectX: this.xAvailable ? () => void this.doConnectX() : null,
       onPractice: () => {
+        /*
+         * Practice is testnet, and saying so here is the whole rule.
+         *
+         * Nothing is at stake in a practice run and nobody has signed in, so a
+         * score from one has no business on the board people are competing on.
+         * Forcing the network rather than asking also removes a decision that
+         * would only ever have one right answer.
+         */
         this.practice = true;
+        setPractising(true);
         void this.cross(() => this.showBrief());
       },
     });
@@ -1779,6 +1788,15 @@ class App {
     this.me = profile;
     // They have a name now, so nothing needs to be thrown away any more.
     this.practice = false;
+    /*
+     * And practice stops holding the network to testnet.
+     *
+     * Signing in is the moment a run starts counting, so the stored choice
+     * takes over again, which is mainnet unless they have deliberately switched.
+     * Leaving the override on would quietly keep a signed-in player off the
+     * board they just earned the right to be on.
+     */
+    setPractising(false);
     this.notice = null;
     // Decode it now so the first frame of the run already has a head on it.
     this.renderer.preload(profile.avatarUrl);

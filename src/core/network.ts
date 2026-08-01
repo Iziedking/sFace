@@ -71,7 +71,7 @@ let current: NetworkId | null = null;
  * value that could change between two calls in the same frame would let one
  * request go to the board and the next one not.
  */
-export function network(): NetworkId {
+function resolveNetwork(): NetworkId {
   if (current) return current;
 
   /*
@@ -117,6 +117,37 @@ export function network(): NetworkId {
 
   current = chosen ?? DEFAULT_NETWORK;
   return current;
+}
+
+/** The stored choice, ignoring practice. Used by the settings chip. */
+export function chosenNetwork(): NetworkId {
+  return resolveNetwork();
+}
+
+/**
+ * Practice is testnet, always, whatever the chip says.
+ *
+ * ## Why this is an override and not a setting
+ *
+ * Practice is a mode, not a preference. Somebody taking a practice run has not
+ * signed in and has nothing at stake, and letting that land on the mainnet board
+ * would put runs there that were never played for anything.
+ *
+ * Writing it through setNetwork would be wrong twice over: it reloads, which
+ * would throw away the practice flag that asked for it, and it would persist,
+ * so leaving practice would leave you on testnet without having chosen to be.
+ *
+ * So it sits in front of the stored choice and disappears the moment practice
+ * does. Nothing is written down, because nothing was decided.
+ */
+let practising = false;
+
+export function setPractising(on: boolean): void {
+  practising = on;
+}
+
+export function network(): NetworkId {
+  return practising ? 'test' : resolveNetwork();
 }
 
 export function onTestnet(): boolean {
