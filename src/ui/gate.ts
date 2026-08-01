@@ -122,17 +122,15 @@ export function renderGate(root: HTMLElement, options: GateOptions): void {
        * deeplink opens the app when tapped ON A PHONE.
        */
       /*
-       * Where the game is, not where the payments happen.
+       * The button and one line, nothing else.
        *
-       * This used to list the three things that need NIM and add that the
-       * wallet half only exists on mobile, which reads as a set of steps to
-       * avoid and quietly invites somebody to stay in a browser. Same panel,
-       * same links, pointed at what is on the other side of it.
+       * This carried a paragraph listing what is on the other side: Face, the
+       * board, clans, staked challenges. All true, and all of it sitting
+       * between somebody who has already decided to open the wallet and the
+       * button that opens it. The pitch belongs on the front door, not stapled
+       * to the door handle.
        */
       walletCta({
-        head: 'THE WHOLE GAME IS IN NIMIQ PAY',
-        reason:
-          'Face that builds up, the daily board, clans, and challenges you can stake against a friend on the same seed. Your wallet is your name here, and sFace never holds your funds.',
         note: 'Built as a Nimiq Pay Mini App. It opens in the app you already have.',
       }),
 

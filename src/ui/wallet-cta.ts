@@ -34,8 +34,15 @@ const IOS = 'https://apps.apple.com/us/app/nimiq-pay/id6471844738';
 const ANDROID = 'https://play.google.com/store/apps/details?id=com.nimiq.pay';
 
 export interface WalletCtaOptions {
-  /** What they were trying to do, as a sentence. */
-  reason: string;
+  /**
+   * What they were trying to do, as a sentence.
+   *
+   * Optional, because the panel is used two ways. Where the wallet is required
+   * and the player did not ask for it, saying why is the entire point. Where
+   * they pressed a button that says open the wallet, an explanation is a wall
+   * in front of the door they just chose.
+   */
+  reason?: string;
   /**
    * Query string carried into the mini app so they land back here, e.g.
    * `c=<challengeId>`. Omit for the home page.
@@ -88,8 +95,21 @@ export function walletCta(options: WalletCtaOptions): HTMLElement {
     'div',
     { class: 'wallet-cta' },
 
-    el('p', { class: 'wallet-cta__head', text: options.head ?? 'WALLET NEEDED' }),
-    el('p', { class: 'wallet-cta__why', text: options.reason }),
+    /*
+     * The head and the reason are optional now, and usually absent.
+     *
+     * On the front door this carried a paragraph explaining what is on the
+     * other side: Face, the board, clans, staked challenges. Somebody looking
+     * at that panel has already decided to open the wallet, and a sales pitch
+     * between them and the button is a wall in front of a door. The one line of
+     * context and the button are enough.
+     *
+     * They stay available because the same panel is used where the wallet is
+     * genuinely required and the player did not ask for it, and there a reason
+     * is the entire point.
+     */
+    options.head ? el('p', { class: 'wallet-cta__head', text: options.head }) : null,
+    options.reason ? el('p', { class: 'wallet-cta__why', text: options.reason }) : null,
     options.note ? el('p', { class: 'wallet-cta__note', text: options.note }) : null,
 
     button('Open in Nimiq Pay', () => {
