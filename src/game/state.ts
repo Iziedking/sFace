@@ -327,6 +327,33 @@ export class RunState {
    * that asks "what am I standing in" has three answers rather than two.
    */
   readonly rings: RingCity | null;
+
+  /**
+   * The world the free camera follows, or null on a chart run.
+   *
+   * ## Why this exists rather than a second branch at each call site
+   *
+   * A chart run has a ground line, so its camera biases downward and clamps to
+   * the terrain's bounds. A city has neither, so it gets a free camera clamped
+   * to its own size. The finale is a third world with the same needs as a city
+   * and completely different dimensions.
+   *
+   * Every one of those call sites was written as `if (state.city)`, which is
+   * true for stages five and six and false for the finale. So the finale fell
+   * through to the chart camera: the player was never moved to the ring start
+   * and stayed at the default chart spawn in a corner, the camera clamped to a
+   * world 960 tall inside one 5,800 across, and it pinned there and stopped
+   * following. The minimap drew the whole place correctly the entire time,
+   * which is exactly what made it look like a view problem rather than a
+   * spawn one.
+   *
+   * Naming the concept is what stops it happening again. A fourth world shape
+   * only has to satisfy this shape to get a working camera, instead of needing
+   * somebody to remember three separate `if`s.
+   */
+  get freeWorld(): { width: number; height: number; startX: number; startY: number } | null {
+    return this.city ?? this.rings ?? null;
+  }
   /** The car, in a city. Null on a chart run, which has the transport instead. */
   readonly car: Car | null;
   readonly convoy: Convoy | null;

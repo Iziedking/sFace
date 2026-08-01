@@ -141,3 +141,53 @@ describe('the stage can be finished', () => {
     }
   });
 });
+
+describe('the camera has a world to follow', () => {
+  /*
+   * The finale used to fall through to the chart camera.
+   *
+   * Every call site branched on `state.city`, which is true for stages five and
+   * six and false for stage seven. So the finale kept the default chart spawn
+   * out in a corner, and its camera clamped to a world 960 tall inside one
+   * 5,800 across, then pinned there and stopped following.
+   *
+   * The minimap drew the whole ring city correctly the entire time, which is
+   * what made it read as a view problem rather than a spawn one, and is why
+   * this is pinned on the shape rather than on any pixel.
+   */
+  it('gives the finale a free world, not the terrain', () => {
+    const run = finale();
+
+    expect(run.freeWorld).not.toBeNull();
+    expect(run.freeWorld).toBe(run.rings);
+  });
+
+  it('is the ring world, which is far larger than the chart', () => {
+    const run = finale();
+    const world = run.freeWorld!;
+
+    // WORLD_HEIGHT is 960. Clamping the finale to that is the whole bug.
+    expect(world.height).toBeGreaterThan(960 * 4);
+    expect(world.width).toBe(world.height);
+  });
+
+  it('starts the player inside that world, not at the chart spawn', () => {
+    const run = finale();
+    const world = run.freeWorld!;
+
+    // The chart spawn is near the origin. The ring approach is nowhere near it.
+    expect(world.startY).toBeGreaterThan(1_000);
+    expect(world.startX).toBeGreaterThan(1_000);
+  });
+
+  it('leaves a chart run on the ground camera', () => {
+    // The bias toward the ground line is right for a chart and wrong for a
+    // world that has no ground, so this must stay null.
+    expect(new RunState(MISSION, 'sidearm', 1).freeWorld).toBeNull();
+  });
+
+  it('still gives a city one', () => {
+    const city = new RunState(MISSION, 'sidearm', 5);
+    expect(city.freeWorld).toBe(city.city);
+  });
+});

@@ -412,7 +412,7 @@ export function creditsOf(contest: Contest, pilotId: string): Obligation[] {
  *
  * `request()` routes anything outside that set to a JSON-RPC node, which holds
  * no keys and can sign nothing, so there is no way around it from inside the
- * wallet. See docs/submit/feedback.md.
+ * wallet. See docs/feedback.md.
  *
  * So a stake is a promise between two people and the app is a witness, not a
  * guarantor. What it can honestly do is make the promise specific and make

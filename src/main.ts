@@ -2463,11 +2463,19 @@ class App {
     // The ring city is read at a distance, so the camera sits back from it.
     if (this.run.rings) this.camera.zoomOut(Camera.RING_ZOOM_OUT);
 
-    // A city has no ground line to bias toward, so it gets the free camera.
-    if (this.run.city) {
-      this.run.player.x = this.run.city.startX;
-      this.run.player.y = this.run.city.startY;
-      this.camera.jumpToFree(this.run.player, this.run.city);
+    /*
+     * A world with no ground line places the player itself and gets the free
+     * camera. Cities and the ring finale both qualify; a chart run does not.
+     *
+     * This used to test `city`, which is false on the finale, so stage seven
+     * kept the default chart spawn out in a corner of a world it had no idea
+     * was 5,800 across.
+     */
+    const world = this.run.freeWorld;
+    if (world) {
+      this.run.player.x = world.startX;
+      this.run.player.y = world.startY;
+      this.camera.jumpToFree(this.run.player, world);
     } else {
       this.camera.jumpTo(this.run.player, this.run.terrain.groundAt(this.run.player.x));
     }
@@ -3268,8 +3276,9 @@ class App {
       this.live?.publish(poseOf(run), performance.now());
     }
 
-    if (run.city) {
-      this.camera.followFree(run.player, run.city, dt);
+    const world = run.freeWorld;
+    if (world) {
+      this.camera.followFree(run.player, world, dt);
     } else {
       this.camera.follow(run.player, run.terrain.groundAt(run.player.x), dt);
     }

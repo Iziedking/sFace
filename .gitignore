@@ -34,6 +34,19 @@ docs/*
 # nothing about the local checkout would show it.
 !docs/stage-1-to-7.md
 
+# What we hit building on the Mini App SDK, linked from the README. It belongs
+# in the public repo for the same reason the stage guide does: the README points
+# at it, and a link that 404s for everybody but us is worse than no link. It is
+# also the feedback the competition asks for, and feedback nobody can read is
+# feedback nobody gave.
+#
+# It lives here rather than in docs/submit/ because that folder is the private
+# side: the launch post, the marketing copy, the screenshots for the form. Git
+# cannot re-include a file whose parent directory is excluded, so keeping it
+# there would have meant un-ignoring the folder and re-ignoring its contents one
+# by one, which is a rule that breaks the next time somebody adds a file.
+!docs/feedback.md
+
 # The 250 word description the submission portal asks for. Kept in the repo so
 # the text that was submitted is the text in version control, rather than a
 # paragraph that only ever existed in a form field.
@@ -56,6 +69,10 @@ PLAN-V2.md
 
 # v3 planning. Private, like the other plans.
 PLAN-V3.md
+
+# v4: the survival contest. The kind exists and is refused at the door until
+# the level behind it does, so this is a spec rather than a record.
+PLAN-V4.md
 
 # Deploy keys, and anything else shaped like a private key.
 #

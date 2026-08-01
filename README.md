@@ -285,7 +285,7 @@ trusting the client with it is safe in the one direction that matters.
 
 ## What we hit building on Nimiq Pay
 
-[**docs/submit/feedback.md**](docs/submit/feedback.md) is the list, with the
+[**docs/feedback.md**](docs/feedback.md) is the list, with the
 exact SDK surface behind each one.
 
 The short version: the provider's `WALLET_METHODS` is a closed set of ten, and
