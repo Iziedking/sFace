@@ -263,8 +263,8 @@ app.get('/mission/today', limit(120, 40), async (req, res) => {
  * order, so the parameterised route would otherwise capture "all-time" as a
  * date, fail the YYYY-MM-DD parse, and return 400 for a route that exists.
  */
-app.get('/board/all-time', limit(120, 40), (_req, res) => {
-  res.json(profiles.allTime(50));
+app.get('/board/all-time', limit(120, 40), (req, res) => {
+  res.json(profiles.allTime(50, networkOf(req)));
 });
 
 app.get('/board/:date', limit(120, 40), (req, res) => {
@@ -429,6 +429,9 @@ app.post('/board', limit(20, 10), async (req, res) => {
   const profile = profiles.record({
     id: parsed.data.deviceId,
     name: parsed.data.name,
+    // Stamped so the clan table can group profiles by chain. The id is already
+    // scoped by network on the client; this is what lets a scan tell them apart.
+    network: networkOf(req),
     avatarUrl: parsed.data.avatarUrl ?? null,
     score: parsed.data.score,
     rescued: parsed.data.facesExtracted,
@@ -449,8 +452,8 @@ app.post('/board', limit(20, 10), async (req, res) => {
  * disagree with its own members. The reasoning, including why anyone is allowed
  * to join any tag, is at the top of server/clans.ts.
  */
-app.get('/clans', limit(120, 40), (_req, res) => {
-  res.json(clans.table(50));
+app.get('/clans', limit(120, 40), (req, res) => {
+  res.json(clans.table(50, networkOf(req)));
 });
 
 app.get('/clans/:tag', limit(120, 40), (req, res) => {
@@ -460,7 +463,7 @@ app.get('/clans/:tag', limit(120, 40), (req, res) => {
     return;
   }
 
-  const found = clans.detail(tag);
+  const found = clans.detail(tag, networkOf(req));
   if (!found) {
     // Not an error. An empty tag is a clan waiting for its first member, and
     // the join screen wants to show it as available rather than as missing.
@@ -486,7 +489,13 @@ app.post('/clans/join', limit(12, 6), (req, res) => {
     return;
   }
 
-  const outcome = clans.join(parsed.data.deviceId, parsed.data.name, tag, Date.now());
+  const outcome = clans.join(
+    parsed.data.deviceId,
+    parsed.data.name,
+    tag,
+    Date.now(),
+    networkOf(req),
+  );
   if (outcome.status === 'refused') {
     res.status(409).json({ error: outcome.reason });
     return;
@@ -514,13 +523,19 @@ app.post('/clans/:tag/decide', limit(30, 15), (req, res) => {
     return;
   }
 
-  const result = clans.decide(tag, parsed.data.deviceId, parsed.data.memberId, parsed.data.approve);
+  const result = clans.decide(
+    tag,
+    parsed.data.deviceId,
+    parsed.data.memberId,
+    parsed.data.approve,
+    networkOf(req),
+  );
   if (!result.ok) {
     res.status(result.code).json({ error: result.reason });
     return;
   }
 
-  res.json(clans.detail(tag));
+  res.json(clans.detail(tag, networkOf(req)));
 });
 
 /*

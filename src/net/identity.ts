@@ -25,8 +25,33 @@
  * own screen.
  */
 
+import { onTestnet } from '../core/network';
+
 const STORAGE_KEY = 'sface.pilot';
 const SOURCE_KEY = 'sface.pilot.source';
+
+/**
+ * The two chains are two people.
+ *
+ * ## Why the separation lives here
+ *
+ * Testnet NIM is handed out by a faucet. If it shared an identity with mainnet
+ * then Face farmed for free would carry a rank badge onto the real board, and
+ * the separation of the boards would be half a wall: different tables, same
+ * player, same total, same rank.
+ *
+ * Scoping the identifier instead of every store is what makes that whole rather
+ * than partial. Profiles, challenges and recorded ghosts are all keyed by pilot
+ * id, so one change here separates all of them, and there is no store left that
+ * could be forgotten later.
+ *
+ * A player is therefore two records who happen to share a browser. Switching
+ * networks is closer to signing into a different account than to changing a
+ * setting, which is exactly what it is.
+ */
+function scoped(key: string): string {
+  return onTestnet() ? `${key}.test` : key;
+}
 
 export type IdentitySource = 'local' | 'nimiq';
 
@@ -40,16 +65,16 @@ let source: IdentitySource = 'local';
 export function pilotId(): string {
   if (cached) return cached;
 
-  const stored = read(STORAGE_KEY);
+  const stored = read(scoped(STORAGE_KEY));
   if (stored && isWellFormed(stored)) {
     cached = stored;
-    source = read(SOURCE_KEY) === 'nimiq' ? 'nimiq' : 'local';
+    source = read(scoped(SOURCE_KEY)) === 'nimiq' ? 'nimiq' : 'local';
     return cached;
   }
 
   cached = randomHex();
   source = 'local';
-  write(STORAGE_KEY, cached);
+  write(scoped(STORAGE_KEY), cached);
   write(SOURCE_KEY, 'local');
   return cached;
 }
@@ -145,7 +170,15 @@ export async function accountKey(handle: string): Promise<string | null> {
   if (!clean) return null;
 
   try {
-    const bytes = new TextEncoder().encode(`sface:x:${clean}`);
+    /*
+     * The network is inside the hash, so the same handle is two accounts.
+     *
+     * Not appended to the result: a suffix would make the two obviously related
+     * and, more to the point, would let anybody derive one from the other. The
+     * hash is a namespace and the network is part of the namespace.
+     */
+    const realm = onTestnet() ? 'sface:x:test' : 'sface:x';
+    const bytes = new TextEncoder().encode(`${realm}:${clean}`);
     const digest = await crypto.subtle.digest('SHA-256', bytes);
     return [...new Uint8Array(digest)]
       .map((byte) => byte.toString(16).padStart(2, '0'))

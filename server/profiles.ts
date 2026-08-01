@@ -36,6 +36,18 @@
 export interface Profile {
   id: string;
   name: string;
+  /**
+   * Which chain this record belongs to.
+   *
+   * The pilot id is already scoped by network on the client, so two networks
+   * never collide on a key. This is here because the clan table has to GROUP
+   * profiles, and grouping needs to know which ones belong together: scanning
+   * for a clan tag without it would pool a mainnet clan and a testnet clan of
+   * the same name into one row.
+   *
+   * Absent on records written before the split, which were all mainnet.
+   */
+  network?: string;
   /** Only set when they connected an account and shared a picture. */
   avatarUrl: string | null;
   /** Four characters, uppercase. Null until they join one. */
@@ -66,6 +78,8 @@ export interface Profile {
 export interface RunRecord {
   id: string;
   name: string;
+  /** Which chain the run was played on. Decides the record it lands in. */
+  network?: string;
   avatarUrl: string | null;
   score: number;
   rescued: number;
@@ -80,11 +94,12 @@ export interface RunRecord {
 const profiles = new Map<string, Profile>();
 
 /** A profile that exists only in memory, for a pilot we have never seen. */
-export function blank(id: string, name: string): Profile {
+export function blank(id: string, name: string, network = 'main'): Profile {
   const now = Date.now();
   return {
     id,
     name,
+    network,
     avatarUrl: null,
     clanTag: null,
     lifetimeFace: 0,
@@ -106,7 +121,7 @@ export function get(id: string): Profile | null {
 
 /** Fold a finished run into a profile, creating it on first sight. */
 export function record(run: RunRecord): Profile {
-  const existing = profiles.get(run.id) ?? blank(run.id, run.name);
+  const existing = profiles.get(run.id) ?? blank(run.id, run.name, run.network ?? 'main');
 
   const updated: Profile = {
     ...existing,
@@ -229,24 +244,28 @@ export function setClan(id: string, clanTag: string | null): Profile | null {
 }
 
 /** Ensure a profile exists so a pilot can join a clan before their first run. */
-export function ensure(id: string, name: string): Profile {
+export function ensure(id: string, name: string, network = 'main'): Profile {
   const existing = profiles.get(id);
   if (existing) return existing;
 
-  const created = blank(id, name);
+  const created = blank(id, name, network);
   profiles.set(created.id, created);
   persist();
   return created;
 }
 
 /** Every profile, in no particular order. Used to fold the clan table. */
-export function all(): Profile[] {
-  return [...profiles.values()];
+export function all(network?: string): Profile[] {
+  const rows = [...profiles.values()];
+  if (!network) return rows;
+  // A record with no network predates the split and is mainnet.
+  return rows.filter((p) => (p.network ?? 'main') === network);
 }
 
 /** All-time board, ranked on lifetime Face. */
-export function allTime(limit: number): Profile[] {
+export function allTime(limit: number, network = 'main'): Profile[] {
   return [...profiles.values()]
+    .filter((p) => (p.network ?? 'main') === network)
     .filter((p) => p.lifetimeFace > 0)
     .sort((a, b) => b.lifetimeFace - a.lifetimeFace || a.firstSeen - b.firstSeen)
     .slice(0, Math.max(0, limit));
@@ -271,8 +290,12 @@ export function rankOf(id: string): number {
 }
 
 /** Everyone in a clan. Used for the clan totals board. */
-export function membersOf(clanTag: string): Profile[] {
-  return [...profiles.values()].filter((p) => p.clanTag === clanTag);
+export function membersOf(clanTag: string, network = 'main'): Profile[] {
+  // Scoped, or a clan tag that exists on both chains returns both rosters and
+  // the heir to a mainnet clan could be somebody who only plays on testnet.
+  return [...profiles.values()].filter(
+    (p) => p.clanTag === clanTag && (p.network ?? 'main') === network,
+  );
 }
 
 export function count(): number {
