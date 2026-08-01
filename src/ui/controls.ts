@@ -34,6 +34,7 @@
  */
 
 import { button, el, mount } from './dom';
+import { STAGES } from '../data/campaign';
 import { reducedMotion } from '../render/theme';
 
 export interface ControlsOptions {
@@ -113,6 +114,42 @@ const DESKTOP: Row[] = [
   { key: 'Esc', what: 'Pause, and resume again. There is a button on screen too.' },
 ];
 
+/**
+ * The seven stages, built from the campaign rather than written out.
+ *
+ * A guide that lists what each stage asks for is the first thing a new player
+ * wants and the easiest thing to get out of date. Somebody finished stage seven
+ * three people short and had no idea what the requirement had been, because the
+ * only place it existed was inside a function.
+ *
+ * Reading STAGES means the clock and the pass conditions here are the ones the
+ * game checks. Change a stage and this page changes with it.
+ */
+function stageChapter(): Chapter {
+  return {
+    title: 'The seven stages',
+    lead: 'Each one asks for something the others do not.',
+    rows: STAGES.map((stage) => ({
+      key: `${stage.n}. ${stage.name}`,
+      what: `${world(stage.n)} · ${clock(stage.seconds)}. ${stage.demands
+        .map((demand) => demand.text)
+        .join(', ')}.`,
+    })),
+  };
+}
+
+/** Which of the three worlds a stage is built in. */
+function world(n: number): string {
+  if (n === 7) return 'Ring city';
+  if (n >= 5) return 'City';
+  if (n === 4) return 'Chart, watched';
+  return 'Chart';
+}
+
+function clock(seconds: number): string {
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
 const CHAPTERS: Chapter[] = [
   {
     title: 'None of this is invented',
@@ -120,21 +157,21 @@ const CHAPTERS: Chapter[] = [
     rows: [
       {
         key: 'The ground is a chart',
-        what: "Every day the worst performer in the top 100 becomes the level. Its actual 24 hour chart is the terrain, pulled at midnight UTC.",
+        what: "Every day the worst performer in the top 100 becomes the level. Its real 24-hour chart is the ground, pulled at midnight UTC.",
       },
       {
         key: 'The people are real',
-        what: 'The five in the wreck are the accounts crypto X genuinely argued about today, with their real handles and real pictures.',
+        what: 'The five in the wreck are the accounts crypto X was arguing about today, with their real handles and pictures.',
       },
       {
         key: 'The market sets the odds',
-        what: "Fear and Greed decides how crowded the sky is. The chart's own volatility decides where the attackers sit.",
+        what: "Fear and Greed sets how crowded the sky is. The chart's own volatility decides where the attackers sit.",
       },
     ],
     shot: {
       src: '/guide/chart.webp',
       alt: 'Stage one, flying over the day’s real price chart',
-      caption: 'That ridge is a real price move. Nobody drew it.',
+      caption: 'That ridge is a real price move from the last 24 hours.',
     },
   },
   {
@@ -200,21 +237,22 @@ const CHAPTERS: Chapter[] = [
       caption: 'Your four buys sit beside the fire button, priced in the day’s own ticker.',
     },
   },
+  stageChapter(),
   {
     title: 'What you are climbing',
     lead: 'The day resets. The ladder does not.',
     rows: [
       {
         key: 'Face is the record',
-        what: 'Reputation with a value still attached. It ranks you all time, and it unlocks the weapon rack.',
+        what: 'Your score, and it adds up. It ranks you all time and unlocks the weapon rack.',
       },
       {
         key: 'Seven stages',
-        what: 'Each one restores a piece of what 2026 cost. Clearing one opens the next, and it stays cleared.',
+        what: 'Clearing one opens the next, and it stays cleared.',
       },
       {
         key: 'The mission changes daily',
-        what: 'Same stage, new level, new cast, three new contracts drawn from the day. Consistency is the only way up the board.',
+        what: 'Same stage, new level, new cast, and three new contracts drawn from the day.',
       },
     ],
   },

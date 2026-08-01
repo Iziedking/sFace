@@ -69,7 +69,7 @@ export function footer(options: FooterOptions): HTMLElement {
            * know what the game is. Trust statements belong next to the moment
            * money is actually at stake, which is the challenge screen.
            */
-          text: 'Every day the worst performer in the top 100 becomes the level. Its real chart is the ground you fly, the fear index sets the odds, and the people trapped in it are whoever crypto was actually arguing about that day. Get them out, take back what Face you can carry, and come back tomorrow to a different day.',
+          text: 'Every day the worst performer in the top 100 becomes the level. Its real 24-hour chart is the ground you fly over, the Fear and Greed index sets the difficulty, and the people trapped in it are the accounts crypto X was arguing about that day. Get them out, take back what Face you can carry, and come back tomorrow for a different day.',
         }),
       ),
 

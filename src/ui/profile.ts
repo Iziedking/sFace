@@ -116,7 +116,7 @@ export function renderProfile(root: HTMLElement, options: ProfileOptions): void 
           )
         : el('div', {
             class: 'notice',
-            text: 'Finish a run and this fills in: rank, lifetime Face, and where you sit all time.',
+            text: 'Finish a run and this fills in with your rank, lifetime Face and where you sit all time.',
           }),
 
       flown
@@ -238,7 +238,7 @@ function unsignedRuns(options: ProfileOptions): HTMLElement | null {
     }),
     el('p', {
       class: 'unsigned__say',
-      text: 'It counts and it ranks either way. Signing publishes a signature beside it, so anyone can check the run was yours without trusting us. No NIM, no transaction.',
+      text: 'The run counts and ranks either way. Signing publishes a signature next to it so anyone can check the run was yours. It costs no NIM and sends no transaction.',
     }),
     options.signNotice ? el('p', { class: 'unsigned__warn', text: options.signNotice }) : null,
     el(
@@ -297,7 +297,7 @@ function settlementRecord(profile: Profile | null): HTMLElement | null {
     el('p', {
       class: 'record__say',
       text: clean
-        ? 'Every staked contest you have lost, paid. Nothing forces this, which is exactly why it is worth showing.'
+        ? 'You have paid every staked contest you lost. Nothing forces this, so it is worth showing.'
         : `${outstanding} still outstanding. sFace cannot collect it, and this line is on your profile until you do.`,
     }),
   );
@@ -318,7 +318,7 @@ function balanceLine(nim: number | null | undefined): HTMLElement {
   if (nim === null) {
     return el('p', {
       class: 'profile__say',
-      text: 'Balance unavailable here. Your wallet still knows it, and it is what any stake is approved against.',
+      text: 'Balance not available here. Your wallet still knows it, and that is what a stake is approved against.',
     });
   }
 

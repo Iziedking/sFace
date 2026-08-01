@@ -78,7 +78,7 @@ export function renderContests(root: HTMLElement, options: ContestsOptions): voi
       el('h1', { text: 'Open to enter' }),
       el('p', {
         class: 'quiet',
-        text: 'Everyone in a contest flies the identical level. Assist is pinned to the baseline for all sides, so it settles on who flew better today rather than who has been playing longest.',
+        text: 'Everyone in a contest flies the same level, and aim assist is set to the baseline for all players. The result comes down to who played better today.',
       }),
 
       el(

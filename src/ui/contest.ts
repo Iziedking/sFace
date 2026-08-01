@@ -208,7 +208,7 @@ function settlement(options: ContestOptions): HTMLElement {
      */
     el('p', {
       class: 'settle__say',
-      text: 'Nothing was ever held. sFace records who owes what and publishes the payment, and that is all it can do: paying is between the two of you, in your own wallets.',
+      text: 'sFace does not hold the stake. It records who owes what and publishes the payment once it is made. Paying is between the two of you, from your own wallets.',
     }),
 
     debt

@@ -114,7 +114,7 @@ export function renderAbout(root: HTMLElement, options: AboutOptions): void {
        */
       el('p', {
         class: 'doc__lede',
-        text: 'Crypto is losing face. Another chart bleeds out, another timeline turns on itself, another set of people get written off. sFace makes that day something you can fight. Get them out of the wreck. Carry back what you can hold. Tomorrow it is someone else’s turn, and you will want to be there for that one too.',
+        text: 'Crypto has had a rough year. Every week another chart falls apart and another set of people get written off. sFace turns that day into something you can play. Get the people out of the wreck, carry back what you can, and come back tomorrow when it is a different coin and a different crowd.',
       }),
 
       el(
@@ -130,7 +130,7 @@ export function renderAbout(root: HTMLElement, options: AboutOptions): void {
       el('h2', { class: 'doc__section', text: 'It lives on Nimiq' }),
       el('p', {
         class: 'doc__body doc__body--wide',
-        text: 'Your wallet is your name here. It holds your rank, backs your stake and signs every score you post. Everything worth playing for runs through it.',
+        text: 'Your wallet is your name here. It holds your rank, backs your stake and signs every score you post.',
       }),
       panels(NIMIQ, 'doc__grid doc__grid--two'),
 
@@ -142,35 +142,35 @@ export function renderAbout(root: HTMLElement, options: AboutOptions): void {
           text: 'Open sFace in Nimiq Pay. Today’s coin, its chart and its cast are already loaded.',
         }),
         el('li', {
-          text: 'Fly the wreck and free the people caught in it. Reach the pad or lose everything you were carrying.',
+          text: 'Fly the wreck and free the people caught in it. Reach the pad, or you lose everything you were carrying.',
         }),
         el('li', {
           text: 'Bank your Face. Rank opens the next stage, the next weapon and a steadier gun.',
         }),
         el('li', {
-          text: 'Join a clan. Stake a friend on your exact seed. Put your handle on the daily board.',
+          text: 'Join a clan, stake a friend on your exact seed, and put your handle on the daily board.',
         }),
         el('li', {
-          text: 'Come back tomorrow. New coin, new chart, new cast. The ladder remembers today.',
+          text: 'Come back tomorrow for a new coin, a new chart and a new cast. Your rank carries over.',
         }),
       ),
 
       el('h2', { class: 'doc__section', text: 'MAIN and TEST' }),
       el('p', {
         class: 'doc__body doc__body--wide',
-        text: 'The chip in the top right says which network you are on. It changes what the NIM on screen is worth, so it is always visible and always tappable.',
+        text: 'The chip in the top right shows which network you are on. It changes what the NIM on screen is worth, so it is always visible and you can tap it to switch.',
       }),
       panels(
         [
           {
             kicker: 'MAIN',
             title: 'Mainnet, the real thing',
-            body: 'Real NIM. Your scores go to the daily board, challenges settle for money that counts, and CT Signals reads live X. This is the game, and it is what you get unless you deliberately switch.',
+            body: 'Real NIM. Your scores go to the daily board, challenges settle for real money, and CT Signals reads live X. This is the default.',
           },
           {
             kicker: 'TEST',
             title: 'Testnet, a rehearsal',
-            body: 'The same game, played for nothing, on data already in hand. You are still you here: same name, same clan, same friends. What changes is that NIM has no value, testnet keeps its own board and its own Face, and anything that costs a live read is off. Use it to try staking a challenge without spending anything. Settings links the Nimiq faucet for testnet coins.',
+            body: 'The same game played for nothing, on data already cached. You are still you here, with the same name, clan and friends. NIM has no value, testnet keeps its own board and its own Face, and anything that needs a live API call is off. Use it to try a staked challenge without spending anything. Settings links the Nimiq faucet.',
           },
         ],
         'doc__grid doc__grid--two',
@@ -181,7 +181,7 @@ export function renderAbout(root: HTMLElement, options: AboutOptions): void {
         { class: 'doc__note' },
         el('p', {
           class: 'doc__body',
-          text: 'Seven stages, and the last one is what all of it is for. The season did not die on its own. Getting it back means going through everything that killed it.',
+          text: 'Seven stages, and the last one is what the rest builds toward. Getting the season back means going through everything that broke it.',
         }),
       ),
 
