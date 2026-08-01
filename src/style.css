@@ -6270,3 +6270,53 @@ body.is-fullscreen .foot,
   color: var(--ink-muted);
   margin: 0;
 }
+
+/* Clearing the campaign --------------------------------------------------
+   Paper falling in the product's own three colours. Flat rectangles, no
+   gradients and no blur, so it reads as the same drawing as everything else. */
+
+.ending__sky {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.ending__flake {
+  position: absolute;
+  top: -24px;
+  display: block;
+  border: 2px solid var(--ink);
+  animation-name: ending-fall;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+}
+
+@keyframes ending-fall {
+  0% {
+    transform: translateY(-10vh) rotate(0deg);
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(110vh) rotate(420deg);
+    opacity: 1;
+  }
+}
+
+/* Nobody who asked for less motion gets a screen full of falling paper. The
+   sound and the voice still play, because those are not motion. */
+@media (prefers-reduced-motion: reduce) {
+  .ending__sky {
+    display: none;
+  }
+}
+
+.ending__skip {
+  font-size: 11px;
+  color: var(--ink-muted);
+  margin: 6px 0 0;
+}

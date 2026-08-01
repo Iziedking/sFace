@@ -396,6 +396,8 @@ class App {
   private briefing = false;
   /** Latched for one clear, so the campaign ending cannot repeat. */
   private endingShown = false;
+  /** True while the ending is on screen and must not be painted over. */
+  private endingOpen = false;
   private cancelBrief: (() => void) | null = null;
   /**
    * True when the last refusal was "you need a wallet" rather than an error.
@@ -1015,6 +1017,14 @@ class App {
    */
   private startSound(): void {
     this.unlockSound();
+    /*
+     * Speech has its own gesture rule, separate from the audio context.
+     *
+     * Unlocking one was treated as unlocking both, and it is not: on iOS and
+     * mobile Chrome the first speak() outside a gesture is dropped silently, so
+     * the opening played its full length with no voice.
+     */
+    narrator.prime();
     music.play('menu');
   }
 
@@ -2720,6 +2730,15 @@ class App {
   }
 
   private showResults(): void {
+    /*
+     * The ending owns the screen until somebody presses Done.
+     *
+     * Everything that lands after a run finishes calls back in here: the score
+     * post, the ghost upload, a challenge resolving. Each one used to repaint
+     * over the ending.
+     */
+    if (this.endingOpen) return;
+
     // The run is over. Whatever was banked describes a stage that has already
     // been scored, and coming back to it would replay a run twice.
     clearSnapshot();
@@ -2754,11 +2773,24 @@ class App {
       // Once per clear. Without the latch, dismissing it would land back here
       // and show it again, which is a loop with no way out.
       this.endingShown = true;
+      /*
+       * Held open until it is dismissed.
+       *
+       * endRun paints the results, posts the score, then paints them again with
+       * the rank filled in. The second paint landed on top of the ending a
+       * second or two after it appeared, so the whole sequence flashed past and
+       * nobody got to read it. This flag is what makes showResults wait.
+       */
+      this.endingOpen = true;
       this.ui.className = '';
       this.screen = 'results';
       renderEnding(this.ui, {
         state: run,
-        onContinue: () => this.showResults(),
+        onContinue: () => {
+          this.endingOpen = false;
+          narrator.stop();
+          this.showResults();
+        },
       });
       return;
     }

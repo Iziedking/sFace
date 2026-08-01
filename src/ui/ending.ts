@@ -35,11 +35,47 @@
 import { button, el, mount } from './dom';
 import { theme } from '../render/theme';
 import { reducedMotion } from '../render/theme';
+import { audio } from '../core/audio';
+import { narrator } from '../core/voice';
 import type { RunState } from '../game/state';
 
 export interface EndingOptions {
   state: RunState;
   onContinue: () => void;
+}
+
+/**
+ * What the narrator says over this screen.
+ *
+ * Written to be heard once, by somebody who has just finished seven stages and
+ * is looking at a chart shrinking into a line. It says what the year was like,
+ * then what the number on screen actually means, and stops.
+ *
+ * Read from the same figures the screen shows, so the voice cannot claim a
+ * different total from the one in front of them. No forecast anywhere in it:
+ * the argument is about size, which is measurable, and a game that invented a
+ * price would be lying in the one place it has been careful not to.
+ */
+function narration(state: RunState): string[] {
+  const market = state.mission.market;
+  const lines = [
+    'You just spent seven stages inside one bad day.',
+    'It has been a long run of them. Projects winding down, tokens going to nothing, and a thread every week explaining why it was always going to happen.',
+  ];
+
+  if (market) {
+    lines.push(
+      `All of crypto is worth ${trillions(market.totalUsd)} right now, spread across ${market.assets.toLocaleString()} assets.`,
+      'That is about one large technology company, split tens of thousands of ways, for an entire financial system being rebuilt in the open.',
+    );
+  }
+
+  lines.push(
+    'Nothing about that is finished. The day you just flew did not stop it, and neither did any of the ones before it.',
+    'It is still early. That is the whole argument, and you had to earn it.',
+  );
+
+  return lines;
 }
 
 /** Trillions, to two places. The unit is the point. */
@@ -107,11 +143,83 @@ export function renderEnding(root: HTMLElement, options: EndingOptions): void {
         text: 'Somebody has to save face. Tomorrow there is another one.',
       }),
 
-      el('div', { class: 'actions' }, button('Back to today', options.onContinue)),
+      el(
+        'div',
+        { class: 'actions' },
+        button('Done', () => {
+          narrator.stop();
+          options.onContinue();
+        }),
+      ),
+      el('p', {
+        class: 'ending__skip',
+        // Said plainly, because somebody who does not want a voice reading at
+        // them should not have to guess whether pressing Done cuts it off.
+        text: 'Done stops the voice and takes you to your score.',
+      }),
     ),
   );
 
   drawZoomOut(canvas, state);
+  celebrate(root, state);
+}
+
+/**
+ * The sound, the fall, and the voice.
+ *
+ * All three are skipped when the player has asked for reduced motion or has the
+ * sound off, and none of them holds anything up: the screen is complete and
+ * readable before any of this starts, so a browser that blocks audio or a person
+ * who ignores it loses nothing but the flourish.
+ */
+function celebrate(root: HTMLElement, state: RunState): void {
+  audio.fanfare();
+
+  if (!reducedMotion()) fall(root);
+
+  /*
+   * Spoken after a beat, so the fanfare is not talked over.
+   *
+   * Each line resolves when it has been read, so this walks the script rather
+   * than firing it all at once. Stopped by Done, which is why the button calls
+   * narrator.stop before continuing.
+   */
+  window.setTimeout(() => {
+    void (async () => {
+      for (const line of narration(state)) {
+        await narrator.say(line);
+      }
+    })();
+  }, 900);
+}
+
+/**
+ * Confetti, drawn in the same ink as everything else.
+ *
+ * Flat rectangles in the product's own three colours, no gradients and no
+ * rotation blur. Removed when they land rather than left in the DOM, and the
+ * whole thing is one element so dismissing the screen takes it with it.
+ */
+function fall(root: HTMLElement): void {
+  const sky = el('div', { class: 'ending__sky', 'aria-hidden': 'true' });
+  const colours = ['var(--accent)', 'var(--ink)', 'var(--rescue)'];
+
+  for (let i = 0; i < 42; i++) {
+    const piece = el('span', { class: 'ending__flake' });
+    // Spread across the width, staggered in time, and varied in size so it
+    // reads as falling paper rather than a curtain coming down.
+    piece.style.left = `${Math.round((i / 42) * 100 + (i % 5) * 2)}%`;
+    piece.style.animationDelay = `${(i % 9) * 0.22}s`;
+    piece.style.animationDuration = `${2.6 + (i % 6) * 0.45}s`;
+    piece.style.background = colours[i % colours.length] as string;
+    piece.style.width = `${6 + (i % 3) * 3}px`;
+    piece.style.height = `${10 + (i % 4) * 4}px`;
+    sky.append(piece);
+  }
+
+  root.append(sky);
+  // Long enough for the slowest piece plus its delay, then gone.
+  window.setTimeout(() => sky.remove(), 9000);
 }
 
 /**

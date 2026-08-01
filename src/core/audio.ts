@@ -23,7 +23,8 @@ type Voice =
   | 'ui'
   | 'cache'
   | 'relic'
-  | 'refill';
+  | 'refill'
+  | 'fanfare';
 
 interface Recipe {
   type: OscillatorType;
@@ -46,6 +47,12 @@ const RECIPES: Record<Voice, Recipe> = {
   cache: { type: 'triangle', from: 700, to: 1040, duration: 0.14, gain: 0.08 },
   relic: { type: 'triangle', from: 560, to: 1560, duration: 0.42, gain: 0.11 },
   refill: { type: 'sine', from: 480, to: 760, duration: 0.12, gain: 0.06 },
+  /*
+   * The campaign ending, and the only sound in the set that is meant to be
+   * heard on its own rather than under a run. Longer and lower than the relic
+   * so it reads as arrival rather than as another pickup.
+   */
+  fanfare: { type: 'triangle', from: 392, to: 1568, duration: 1.1, gain: 0.13 },
 };
 
 /**
@@ -158,6 +165,32 @@ class Audio {
    * sounds survives any future change to how loud they are as a group.
    */
   private static readonly LEVEL = 2.1;
+
+  /**
+   * Three notes climbing, for clearing the campaign.
+   *
+   * Built from the same oscillator the rest of the set uses rather than a
+   * sample, so it costs nothing to ship and cannot fail to load. Spaced far
+   * enough apart to read as a phrase; the per-voice rate limit is bypassed
+   * deliberately here, because the whole point is three of the same voice.
+   */
+  fanfare(): void {
+    if (!this.enabled) return;
+    const steps = [0, 180, 360];
+    steps.forEach((delay, i) => {
+      window.setTimeout(() => {
+        this.lastPlayed.delete('fanfare');
+        const recipe = RECIPES.fanfare;
+        RECIPES.fanfare = {
+          ...recipe,
+          from: recipe.from * (1 + i * 0.26),
+          duration: i === steps.length - 1 ? 1.4 : 0.45,
+        };
+        this.play('fanfare');
+        RECIPES.fanfare = recipe;
+      }, delay);
+    });
+  }
 
   play(voice: Voice): void {
     if (!this.enabled || !this.ctx || !this.master) return;
