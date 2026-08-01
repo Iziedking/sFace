@@ -5879,3 +5879,267 @@ body.is-fullscreen .foot,
   margin: 0;
   max-width: 54ch;
 }
+
+/* The bar on a phone -------------------------------------------------------
+ *
+ * The bar carries seven things: wordmark, ticker, change, clan, network, bell
+ * and rank. That fits a laptop and does not fit a phone, and the way it failed
+ * was the worst possible one: it did not wrap or scroll, it clipped, so the
+ * rank chip sat half off the right edge and the ticker lost characters.
+ *
+ * Nothing is dropped for being decorative here. Each rule below gives up the
+ * least useful pixels at that width and keeps the thing the element exists to
+ * say: the network chip keeps its meaning as one letter, the rank keeps its
+ * tier and its Face and loses only the name of the tier, and the wordmark
+ * keeps its mark and loses the word. */
+
+/* The short network label is the exception rather than the rule. */
+.chrome__netshort {
+  display: none;
+}
+
+@media (max-width: 560px) {
+  #chrome {
+    gap: 8px;
+  }
+
+  /* The ticker and its change are the premise of the game, so they stay. They
+     just stop being allowed to push everything else off the edge. */
+  .chrome__mission {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .chrome__ticker {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The tier NAME goes, the tier number and the Face total stay. Somebody who
+     wants to know they are Deep Salvage can read it on the profile; somebody
+     glancing at the bar wants the number and how far it has moved. */
+  .chrome__rankname {
+    display: none;
+  }
+
+  .chrome__face {
+    font-size: 10px;
+  }
+
+  .chrome__rank {
+    gap: 6px;
+  }
+
+  .chrome__tier {
+    width: 24px;
+    height: 24px;
+    font-size: 12px;
+  }
+
+  .chrome__clan {
+    font-size: 10px;
+    padding: 3px 5px;
+  }
+
+  .chrome__bell {
+    width: 34px;
+    height: 34px;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 430px) {
+  #chrome {
+    gap: 6px;
+  }
+
+  /* The mark is the logo. The word beside it is the same information twice,
+     and it is the widest thing on the bar that says nothing new. */
+  .chrome__word {
+    display: none;
+  }
+
+  /* One letter, which still answers whether the NIM on screen is real. */
+  .chrome__netname {
+    display: none;
+  }
+
+  .chrome__netshort {
+    display: inline;
+  }
+
+  .chrome__net {
+    padding: 5px 6px;
+    gap: 4px;
+  }
+
+  .chrome__face {
+    font-size: 9px;
+  }
+}
+
+/* Under about 360px the Face total is the last thing to go. The tier number
+   in its orange square is the smallest readable statement of rank there is. */
+@media (max-width: 360px) {
+  .chrome__face {
+    display: none;
+  }
+
+  .chrome__clan {
+    display: none;
+  }
+}
+
+/* The bell panel hangs off the bar, so it has to start below it rather than at
+   a hardcoded offset that ignores the notch. */
+.bellpanel {
+  top: calc(env(safe-area-inset-top) + var(--bar-h) + 6px);
+}
+
+@media (max-width: 430px) {
+  .bellpanel {
+    right: 8px;
+    left: 8px;
+    width: auto;
+  }
+}
+
+/* The guide, on a phone ----------------------------------------------------
+ *
+ * Every row is a label and an explanation, laid out as two columns. That is
+ * right on a laptop and wrong on a phone: a 96px label column against a 300px
+ * screen leaves the explanation in a gutter, so a sentence breaks over five or
+ * six lines and the whole page reads as broken rather than narrow.
+ *
+ * Stacked, the label sits on its own line and the explanation gets the full
+ * measure, which is what it was written for. */
+
+@media (max-width: 560px) {
+  .keys__row {
+    grid-template-columns: 1fr;
+    gap: 5px;
+    padding: 10px 12px;
+  }
+
+  /* The label keeps its chip shape rather than stretching across the row: it
+     is a key you press, and a full-width orange bar reads as a heading. */
+  .keys__key {
+    justify-self: start;
+  }
+
+  .keys__what {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .chapter {
+    padding: 14px;
+  }
+}
+
+/* The eyebrow and the headline under it -----------------------------------
+ *
+ * The eyebrow is an inline-block chip and the h1 that follows carries no top
+ * margin, so on a phone, where the headline wraps to two or three lines, the
+ * first line sat directly on the chip. Reported as the heading leaping on the
+ * chip, which is exactly what it looked like. */
+.eyebrow + h1 {
+  margin-top: 12px;
+}
+
+/* Results in a short window ------------------------------------------------
+ *
+ * The wallet in landscape is about 500px tall and the bar takes a chunk of
+ * that, so the results screen had a score number more than a seventh of the
+ * viewport wide and a row list that needed scrolling to reach the buttons.
+ *
+ * Keyed on HEIGHT rather than width on purpose. The problem is not a narrow
+ * screen, it is a short one: the same width in portrait has plenty of room and
+ * should keep the big number, because on that screen the number is the reward. */
+@media (max-height: 560px) {
+  .score__value {
+    font-size: clamp(34px, 9vw, 46px);
+  }
+
+  .score__rank {
+    margin-top: 5px;
+    font-size: 11px;
+  }
+
+  .screen {
+    gap: 10px;
+  }
+
+  h1 {
+    font-size: clamp(22px, 6vw, 30px);
+  }
+
+  /* The stat rows are the thing somebody actually reads after a run, so they
+     lose padding rather than type size. */
+  .stat,
+  .keys__row {
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+
+  .actions {
+    gap: 8px;
+  }
+
+  .button {
+    padding: 11px 16px;
+  }
+}
+
+/* Runs on the board with nobody's name on them --------------------------
+   An offer, not a warning: an unsigned row counts, ranks and pays Face
+   exactly like any other. Accent-pale rather than a danger colour, and
+   absent entirely when there is nothing outstanding. */
+
+.unsigned {
+  border: 2px solid var(--ink);
+  background: var(--accent-pale);
+  box-shadow: var(--lift-sm);
+  padding: 12px 14px;
+  display: grid;
+  gap: 5px;
+}
+
+.unsigned__head {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--accent-deep);
+  margin: 0;
+}
+
+.unsigned__figure {
+  font-family: var(--mono);
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.15;
+  margin: 0;
+}
+
+.unsigned__say {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+  margin: 0;
+  max-width: 54ch;
+}
+
+/* A refusal, said without implying the score went with it. */
+.unsigned__warn {
+  font-size: 12px;
+  color: var(--accent-deep);
+  margin: 0;
+}
+
+.unsigned__more {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-muted);
+  margin: 0;
+}

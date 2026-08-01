@@ -170,9 +170,22 @@ export function renderChrome(root: HTMLElement, options: ChromeOptions): void {
      * on screen is real, and nobody should have to learn a colour code for that.
      * MAIN and TEST fit, and say it.
      */
+    /*
+     * Two labels, and CSS picks which one the screen has room for.
+     *
+     * MAIN and TEST fit a phone until a clan chip, a bell and a rank chip are
+     * beside them, and then they are the thing that pushes the rank off the
+     * edge. A single letter still answers the only question this chip exists to
+     * answer, and it is rendered rather than swapped at runtime so the bar does
+     * not have to re-render on resize to stay correct.
+     */
     el('span', {
       class: 'chrome__netname',
       text: net === 'test' ? 'TEST' : 'MAIN',
+    }),
+    el('span', {
+      class: 'chrome__netshort',
+      text: net === 'test' ? 'T' : 'M',
     }),
   );
   chain.addEventListener('click', () => setNetwork(net === 'test' ? 'main' : 'test'));
