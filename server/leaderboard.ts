@@ -104,6 +104,9 @@ export interface Entry {
   address?: string | null;
   /** The signature itself, so the address above can be checked by anyone. */
   proof?: Proof | null;
+  /** The level flown, kept on every row so an unsigned one can still be signed. */
+  seed?: string;
+  stage?: number;
 }
 
 export interface PublicEntry {
@@ -120,6 +123,17 @@ export interface SubmitInput {
   deviceId: string;
   name: string;
   date: string;
+  /**
+   * The level this run was flown on.
+   *
+   * Stored whether or not a signature arrived, which is the point. A signed row
+   * carries them inside its proof; an unsigned one used to carry them nowhere,
+   * so nothing could reconstruct the message it would have to sign, and a run
+   * could only ever be signed in the session that produced it. Refresh the page
+   * and the chance was gone.
+   */
+  seed: string;
+  stage?: number;
   score: number;
   facesExtracted: number;
   attackersCleared: number;
@@ -185,6 +199,8 @@ export function submit(input: SubmitInput): SubmitResult {
       at: Date.now(),
       address: input.address ?? null,
       proof: input.proof ?? null,
+      seed: input.seed,
+      stage: input.stage ?? 1,
     });
     persist();
   }
@@ -237,6 +253,52 @@ export function attachProof(input: {
   entry.proof = input.proof;
   persist();
   return { ok: true };
+}
+
+export interface UnsignedRun {
+  date: string;
+  seed: string;
+  stage: number;
+  score: number;
+}
+
+/**
+ * This pilot's rows that nobody signed, newest first.
+ *
+ * ## Why the board is the right place to ask
+ *
+ * A run is signed against the exact date, seed, stage and score, and the board
+ * already holds the authoritative copy of all four: it is the row that would be
+ * marked, so it is the row that decides whether marking is still outstanding.
+ * Deriving this anywhere else would mean a second opinion about what a player
+ * scored, which is the thing this file exists to be the only source of.
+ *
+ * Naturally short. The board keeps one row per pilot per day and prunes old
+ * days, so this is at most a handful of entries and usually one or none.
+ *
+ * A row with no seed predates seeds being stored and is skipped rather than
+ * offered: there is no way to rebuild the message it would sign, so a button
+ * for it would be a button that cannot work.
+ */
+export function unsignedFor(network: string, deviceId: string): UnsignedRun[] {
+  const out: UnsignedRun[] = [];
+
+  for (const [key, board] of boards) {
+    if (!key.startsWith(`${network}:`)) continue;
+
+    const entry = board.get(deviceId);
+    if (!entry || entry.proof) continue;
+    if (typeof entry.seed !== 'string' || entry.seed.length === 0) continue;
+
+    out.push({
+      date: key.slice(network.length + 1),
+      seed: entry.seed,
+      stage: entry.stage ?? 1,
+      score: entry.score,
+    });
+  }
+
+  return out.sort((a, b) => b.date.localeCompare(a.date));
 }
 
 export function top(network: string, date: string, limit = BOARD_LIMIT): PublicEntry[] {

@@ -198,6 +198,7 @@ describe('leaderboard', () => {
     // Boards are per network now, so every fixture has to say which one.
     network: 'main',
     date: '2026-01-01',
+    seed: 'seed-one',
     score: 4200,
     facesExtracted: 3,
     attackersCleared: 11,

@@ -94,6 +94,7 @@ import {
   localProfile,
   parse as parseProfile,
   type Profile,
+  type UnsignedRun,
 } from './net/profile';
 import { rankFor } from './data/story';
 import { unlockedWeapons } from './data/weapons';
@@ -482,6 +483,8 @@ class App {
    * exist.
    */
   private signedRun: boolean | null = null;
+  private signingOldRun = false;
+  private oldRunNotice: string | null = null;
   private signing = false;
   private signNotice: string | null = null;
 
@@ -1778,6 +1781,15 @@ class App {
         onChallengeFriend: this.needsName('Contests', () =>
           void this.cross(() => this.showContestNew()),
         ),
+        /*
+         * Offered only inside a wallet that could actually sign.
+         *
+         * In a plain browser there is nothing to sign with, so the card is
+         * absent rather than a button that opens a dialog nobody can answer.
+         */
+        onSignRun: this.session?.available ? (run) => void this.signOldRun(run) : null,
+        signingRun: this.signingOldRun,
+        signNotice: this.oldRunNotice,
         onBack: () => void this.cross(() => this.showBrief()),
       });
     };
@@ -1795,6 +1807,62 @@ class App {
       balance = nim;
       paint();
     });
+  }
+
+  /**
+   * Sign a run that reached the board without a signature.
+   *
+   * The same act as the button on the results screen, reached from the profile
+   * instead, because the moment after a run is not the only time somebody
+   * decides they want their name on it. The board records the level on every
+   * row, so the message can be rebuilt from what the service already published
+   * rather than from anything this session happens to remember.
+   */
+  private async signOldRun(run: UnsignedRun): Promise<void> {
+    if (this.signingOldRun) return;
+
+    this.signingOldRun = true;
+    this.oldRunNotice = null;
+    this.showProfile();
+
+    try {
+      const address = await this.requireAddress();
+      if (!address) {
+        this.oldRunNotice = 'The wallet did not hand over an account, so there was nothing to sign with.';
+        return;
+      }
+
+      const claim = await signClaim(
+        `sface:${run.date}:${run.seed}:s${run.stage}:${run.score}`,
+      );
+      if (!claim) {
+        this.oldRunNotice = 'The wallet did not sign. Your score is still on the board.';
+        return;
+      }
+
+      const told = await signPostedScore({
+        deviceId: this.pilot,
+        date: run.date,
+        seed: run.seed,
+        stage: run.stage,
+        score: run.score,
+        publicKey: claim.publicKey,
+        signature: claim.signature,
+      });
+
+      if (!told.ok) {
+        this.oldRunNotice = told.error;
+        return;
+      }
+
+      // Re-read rather than patching the local copy, so the card disappears
+      // because the service agrees it is done rather than because we assumed.
+      await this.refreshProfile();
+      this.oldRunNotice = null;
+    } finally {
+      this.signingOldRun = false;
+      this.showProfile();
+    }
   }
 
   /** What the Profile tile says under its name. */

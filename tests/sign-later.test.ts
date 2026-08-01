@@ -40,6 +40,7 @@ function post(deviceId: string, score: number) {
     name: 'Pilot',
     network: 'main',
     date: DATE,
+    seed: SEED,
     score,
     facesExtracted: 3,
     attackersCleared: 11,
@@ -144,5 +145,77 @@ describe('the row it attaches to', () => {
 
     expect(rowFor(PILOT)?.score).toBe(8_000);
     expect(rowFor(PILOT)?.proof ?? null).toBeNull();
+  });
+});
+
+describe('finding a run that was never signed', () => {
+  /*
+   * Signing used to be possible only in the session that produced the run.
+   * Miss the moment, refresh, and the chance was gone, because nothing recorded
+   * which level the row belonged to unless a signature had already carried it.
+   *
+   * The board stores the seed and stage on every row now, so the message can
+   * always be rebuilt. These pin what may and may not be offered.
+   */
+  it('lists a row nobody signed', () => {
+    post(PILOT, 5_000);
+
+    const waiting = board.unsignedFor('main', PILOT);
+    expect(waiting).toHaveLength(1);
+    expect(waiting[0]).toMatchObject({ date: DATE, seed: SEED, score: 5_000 });
+  });
+
+  it('stops listing it once it is signed', () => {
+    post(PILOT, 5_000);
+    sign(PILOT, 5_000);
+
+    expect(board.unsignedFor('main', PILOT)).toEqual([]);
+  });
+
+  it('lists it again when a better run replaces the signed one', () => {
+    // A new best is a different run, so the old signature does not carry over
+    // and the new row genuinely is unsigned.
+    post(PILOT, 5_000);
+    sign(PILOT, 5_000);
+    post(PILOT, 8_000);
+
+    expect(board.unsignedFor('main', PILOT).map((r) => r.score)).toEqual([8_000]);
+  });
+
+  it('never offers somebody else s row', () => {
+    post(OTHER, 9_000);
+
+    expect(board.unsignedFor('main', PILOT)).toEqual([]);
+  });
+
+  it('does not cross chains', () => {
+    post(PILOT, 5_000);
+
+    expect(board.unsignedFor('test', PILOT)).toEqual([]);
+  });
+
+  it('skips a row with no seed, which cannot be signed', () => {
+    /*
+     * Rows written before the seed was stored. There is no way to rebuild the
+     * message, so a button for one would be a button that fails when pressed.
+     */
+    board.restore([
+      [
+        `main:${DATE}`,
+        [{ id: PILOT, name: 'Pilot', score: 5_000, facesExtracted: 3, attackersCleared: 11, at: 1 }],
+      ],
+    ]);
+
+    expect(board.unsignedFor('main', PILOT)).toEqual([]);
+  });
+
+  it('puts the newest first', () => {
+    board.submit({
+      deviceId: PILOT, name: 'Pilot', network: 'main', date: '2026-02-28',
+      seed: 'older', score: 100, facesExtracted: 1, attackersCleared: 1, duration: 30,
+    });
+    post(PILOT, 5_000);
+
+    expect(board.unsignedFor('main', PILOT).map((r) => r.date)).toEqual([DATE, '2026-02-28']);
   });
 });

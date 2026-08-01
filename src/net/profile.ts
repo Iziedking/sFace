@@ -44,8 +44,24 @@ export interface Profile {
   stakesOwed: number;
   stakesSettled: number;
 
+  /**
+   * Runs on the board carrying no signature.
+   *
+   * Everything needed to sign one after the fact: a signature is made over the
+   * date, seed, stage and score, so a reminder that could not name all four
+   * would be a nag with no button behind it.
+   */
+  unsigned?: UnsignedRun[];
+
   /** Position on the all-time board. Zero until they have scored. */
   allTimeRank?: number;
+}
+
+export interface UnsignedRun {
+  date: string;
+  seed: string;
+  stage: number;
+  score: number;
 }
 
 export function emptyProfile(id: string, name: string): Profile {
@@ -154,8 +170,31 @@ export function parse(raw: unknown): Profile | null {
     // Never more than were owed. A record that reads better than perfect is a
     // broken record, and this one is the whole point of the panel.
     stakesSettled: Math.min(count(value.stakesOwed), count(value.stakesSettled)),
+    unsigned: unsignedRuns(value.unsigned),
     allTimeRank: count(value.allTimeRank),
   };
+}
+
+/**
+ * Only rows that carry all four fields.
+ *
+ * A partial one cannot be signed, so offering it would be a button that fails
+ * when pressed rather than a reminder that leads somewhere.
+ */
+function unsignedRuns(value: unknown): UnsignedRun[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .filter(
+      (row): row is UnsignedRun =>
+        !!row &&
+        typeof row.date === 'string' &&
+        typeof row.seed === 'string' &&
+        row.seed.length > 0 &&
+        typeof row.stage === 'number' &&
+        typeof row.score === 'number',
+    )
+    .slice(0, 10);
 }
 
 function count(value: unknown): number {

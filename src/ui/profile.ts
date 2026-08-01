@@ -26,7 +26,7 @@
 
 import { button, el, mount } from './dom';
 import { rankFor } from '../data/story';
-import type { Profile } from '../net/profile';
+import type { Profile, UnsignedRun } from '../net/profile';
 import { networkLabel } from '../core/network';
 
 export interface ProfileOptions {
@@ -60,6 +60,15 @@ export interface ProfileOptions {
   onSignals: () => void;
   onChallenge: () => void;
   onChallengeFriend: () => void;
+  /**
+   * Signing a run that reached the board without a signature.
+   *
+   * Null when there is nothing to sign or no wallet that could, so the card is
+   * absent rather than a button that cannot work.
+   */
+  onSignRun: ((run: UnsignedRun) => void) | null;
+  signingRun: boolean;
+  signNotice: string | null;
   onBack: () => void;
 }
 
@@ -146,6 +155,7 @@ export function renderProfile(root: HTMLElement, options: ProfileOptions): void 
         options.walletAddress ? balanceLine(options.balanceNim) : null,
       ),
 
+      unsignedRuns(options),
       settlementRecord(profile),
 
       el(
@@ -183,6 +193,69 @@ export function renderProfile(root: HTMLElement, options: ProfileOptions): void 
 
       el('div', { class: 'actions' }, button('Done', options.onBack)),
     ),
+  );
+}
+
+/**
+ * Runs on the board that were never signed.
+ *
+ * ## Why this is a reminder and not a warning
+ *
+ * Nothing is wrong. An unsigned row counts, ranks and pays Face exactly like
+ * any other, and a plain browser has produced nothing else since the board
+ * existed. What it cannot do is prove whose run it was.
+ *
+ * So this offers rather than nags. It names what signing buys, in the same
+ * words the results screen uses, and it is absent entirely when there is
+ * nothing outstanding or no wallet to sign with. A permanent panel saying "0
+ * runs unsigned" would be the profile congratulating somebody for nothing.
+ *
+ * ## Why it exists at all
+ *
+ * Signing used to be possible only in the session that produced the run. Miss
+ * the moment, refresh, and the chance was gone, which meant the honest answer
+ * to "can I sign that one from this morning" was no. The board records the
+ * level on every row now, so it can always be reconstructed, and this is where
+ * somebody goes looking.
+ */
+function unsignedRuns(options: ProfileOptions): HTMLElement | null {
+  const runs = options.profile?.unsigned ?? [];
+  if (runs.length === 0 || !options.onSignRun) return null;
+
+  const first = runs[0]!;
+  const more = runs.length - 1;
+
+  return el(
+    'div',
+    { class: 'unsigned' },
+    el('p', { class: 'unsigned__head', text: 'NOT SIGNED YET' }),
+    el('p', {
+      class: 'unsigned__figure',
+      text:
+        runs.length === 1
+          ? `${first.score.toLocaleString()} on stage ${first.stage}`
+          : `${runs.length} runs, latest ${first.score.toLocaleString()} on stage ${first.stage}`,
+    }),
+    el('p', {
+      class: 'unsigned__say',
+      text: 'It counts and it ranks either way. Signing publishes a signature beside it, so anyone can check the run was yours without trusting us. No NIM, no transaction.',
+    }),
+    options.signNotice ? el('p', { class: 'unsigned__warn', text: options.signNotice }) : null,
+    el(
+      'div',
+      { class: 'actions' },
+      button(
+        options.signingRun ? 'Waiting for the wallet...' : `Sign the ${first.date} run`,
+        () => options.onSignRun?.(first),
+        'ghost',
+        { disabled: options.signingRun },
+      ),
+    ),
+    // Said once rather than listed. The button takes the newest and the card
+    // comes back for the next one, which is less to read and the same work.
+    more > 0
+      ? el('p', { class: 'unsigned__more', text: `${more} older ${more === 1 ? 'run' : 'runs'} after this one.` })
+      : null,
   );
 }
 

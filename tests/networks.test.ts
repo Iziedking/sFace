@@ -17,6 +17,7 @@ import * as board from '../server/leaderboard';
 const ALICE = 'a'.repeat(64);
 const BOB = 'b'.repeat(64);
 const DATE = '2026-03-01';
+const SEED = 'seed-one';
 
 function run(network: string, deviceId: string, score: number) {
   return board.submit({
@@ -24,6 +25,7 @@ function run(network: string, deviceId: string, score: number) {
     name: deviceId === ALICE ? 'Alice' : 'Bob',
     network,
     date: DATE,
+    seed: SEED,
     score,
     facesExtracted: 3,
     attackersCleared: 11,
