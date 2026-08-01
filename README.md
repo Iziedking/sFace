@@ -283,6 +283,27 @@ own board. Declaring testnet can only ever make the service spend less, so
 trusting the client with it is safe in the one direction that matters.
 </details>
 
+## What we hit building on Nimiq Pay
+
+[**docs/submit/feedback.md**](docs/submit/feedback.md) is the list, with the
+exact SDK surface behind each one.
+
+The short version: the provider's `WALLET_METHODS` is a closed set of ten, and
+none of them creates a contract. Nimiq supports HTLCs natively, so the protocol
+is not the blocker, but a Mini App cannot get a contract-creation transaction
+signed and `request()` routes anything unlisted to a node that holds no keys.
+
+That decides how staking works here. Nothing is ever held. A contest records who
+owes what, the loser pays in one tap, and the payment is published beside the
+debt so the winner can check it. Witnessing rather than enforcement, and the
+screen says so in those words. Free contests are the default, because a contest
+with nothing on it cannot be defaulted on.
+
+The rest of the list is workarounds we already have: no balance method, so the
+profile reads one over JSON-RPC; no official Proof-of-Stake explorer, so board
+rows link to a community one; a faucet page that renders blank, so the claim
+happens in our own settings screen.
+
 ## Repository
 
 ```

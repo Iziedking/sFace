@@ -153,12 +153,16 @@ import { trackViewport } from './core/viewport';
 import { renderContests, type ContestFilter } from './ui/contests';
 import type { AppNotification } from './ui/notifications';
 import { renderContestNew, type ContestDraft } from './ui/contest-new';
+import { renderContest } from './ui/contest';
 import { stageRange, type Contest } from './data/contests';
 import {
   createContest,
+  fetchContest,
   fetchContests,
   joinContest,
+  reportContestPayment,
 } from './net/api';
+import { debtOf } from './data/contests';
 import { CAR_REACH, carStopped } from './game/car';
 import { answerNode } from './game/node';
 import { answerGate } from './game/ally';
@@ -174,6 +178,7 @@ type Screen =
   | 'profile'
   | 'contests'
   | 'contest-new'
+  | 'contest'
   | 'loadout'
   | 'clan'
   | 'campaign'
@@ -499,6 +504,10 @@ class App {
   private joiningContest: string | null = null;
   private contestBusy = false;
   private contestNotice: string | null = null;
+  /** The contest being looked at, and whether a payment is in flight. */
+  private openContestPage: Contest | null = null;
+  private payingContest = false;
+  private payNotice: string | null = null;
   /**
    * The terms being drafted, kept on the app rather than in the screen.
    *
@@ -1486,9 +1495,7 @@ class App {
         this.paintContests();
       },
       onJoin: (contest) => void this.takeSeat(contest),
-      // Until a contest has its own page, opening one lands on the contests
-      // list it came from rather than a screen that does not exist yet.
-      onOpen: () => this.paintContests(),
+      onOpen: (contest) => void this.cross(() => this.showContest(contest)),
       onCreate: () => void this.cross(() => this.showContestNew()),
       onBack: () => void this.cross(() => this.showBrief()),
     });
@@ -1525,10 +1532,30 @@ class App {
     delete this.contestNotices[contest.id];
     this.paintContests();
 
+    /*
+     * A staked seat needs a wallet, so ask for one before taking it.
+     *
+     * Prompting here rather than letting the service refuse: the player has
+     * just tapped Take a seat, so the reason for the dialog is obvious, and a
+     * refusal they have to decode afterwards is a worse version of the same
+     * conversation.
+     */
+    let address = this.session?.address ?? null;
+    if (contest.stakeNim > 0 && !address) {
+      address = await this.requireAddress();
+      if (!address) {
+        this.joiningContest = null;
+        this.contestNotices[contest.id] = 'Connect a wallet to enter a staked contest.';
+        this.paintContests();
+        return;
+      }
+    }
+
     const result = await joinContest(contest.id, {
       deviceId: this.pilot,
       name: this.displayName(),
       avatarUrl: this.me?.avatarUrl ?? null,
+      address,
     });
 
     this.joiningContest = null;
@@ -1542,6 +1569,116 @@ class App {
     }
 
     this.paintContests();
+  }
+
+  /**
+   * One contest, with its standings and its bill.
+   *
+   * Painted from what the list already has, then refreshed. A page that waits
+   * on the network to show a table it could already draw is a blank screen for
+   * no reason.
+   */
+  private showContest(contest: Contest): void {
+    this.ui.className = '';
+    this.screen = 'contest';
+    this.openContestPage = contest;
+    this.payNotice = null;
+    this.paintContest();
+
+    void fetchContest(contest.id).then((result) => {
+      if (!result.ok || this.screen !== 'contest') return;
+      this.openContestPage = result.value;
+      this.paintContest();
+    });
+  }
+
+  private paintContest(): void {
+    const contest = this.openContestPage;
+    if (this.screen !== 'contest' || !contest) return;
+
+    renderContest(this.ui, {
+      contest,
+      meId: this.pilot,
+      paying: this.payingContest,
+      notice: this.payNotice,
+      onPay: () => void this.payContestDebt(),
+      onShare: () => void this.shareContest(contest),
+      onBack: () => void this.cross(() => this.showContests()),
+    });
+  }
+
+  /**
+   * Pay what this run cost you.
+   *
+   * ## Why the app cannot do more than this
+   *
+   * There is no escrow. Nimiq has the contract type, and the Mini App wallet
+   * will only sign ten methods, none of which creates one, so nothing could
+   * have held the stake while the contest was flown. What is left is making the
+   * promise specific and the payment easy: the exact amount, the exact address,
+   * one approval in their own wallet.
+   *
+   * The service is told afterwards. If the chain took it and the service did
+   * not hear, the payment is still real and the screen says so rather than
+   * implying the money went nowhere.
+   */
+  private async payContestDebt(): Promise<void> {
+    const contest = this.openContestPage;
+    if (!contest || this.payingContest) return;
+
+    const debt = debtOf(contest, this.pilot);
+    if (!debt?.toAddress) {
+      this.payNotice = 'There is nowhere to send it. They have no wallet attached.';
+      this.paintContest();
+      return;
+    }
+
+    this.payingContest = true;
+    this.payNotice = null;
+    this.paintContest();
+
+    const result = await settle({
+      recipient: debt.toAddress,
+      amountNim: debt.nim,
+      memo: `sFace ${contest.date} ${contest.id.slice(0, 8)}`,
+    });
+
+    this.payingContest = false;
+
+    if (!result.ok) {
+      this.payNotice = result.reason;
+      this.paintContest();
+      return;
+    }
+
+    const told = await reportContestPayment(contest.id, {
+      deviceId: this.pilot,
+      txHash: result.serializedTx,
+    });
+
+    if (told.ok) {
+      this.openContestPage = told.value;
+    } else {
+      // The chain has it even if our service does not. Say exactly that.
+      this.payNotice =
+        'Paid on chain, but the service did not record it. Your transaction is fine.';
+    }
+
+    this.paintContest();
+  }
+
+  /** The link, so somebody can be invited into a private one. */
+  private async shareContest(contest: Contest): Promise<void> {
+    const link = `${window.location.origin}/?contest=${encodeURIComponent(contest.id)}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      this.payNotice = 'Link copied.';
+    } catch {
+      // Clipboard refused, which happens without a user gesture in some
+      // WebViews. The link is still the thing they need, so show it.
+      this.payNotice = link;
+    }
+    this.paintContest();
   }
 
   private showContestNew(): void {
@@ -1560,6 +1697,10 @@ class App {
         this.paintContestNew();
       },
       clanTag: this.profile?.clanTag ?? null,
+      // The clan detail is only loaded once the clan screen has been opened, so
+      // this is false until then. Refusing on the service is what actually
+      // enforces it; this only decides whether to offer the row.
+      ownsClan: this.myClan?.ownerId === this.pilot,
       stagesCleared: this.cleared(),
       busy: this.contestBusy,
       notice: this.contestNotice,
@@ -1585,6 +1726,9 @@ class App {
       deviceId: this.pilot,
       name: this.displayName(),
       avatarUrl: this.me?.avatarUrl ?? null,
+      // Where they are paid if they win. A staked contest is refused without
+      // one, because a winner with no address is a debt nobody can settle.
+      address: this.session?.address ?? null,
       kind: this.draft.kind,
       stages: stageRange(this.draft.from, this.draft.to),
       stakeNim: this.draft.stakeNim,

@@ -16,6 +16,7 @@ const HOST = 'a'.repeat(64);
 const RIVAL = 'b'.repeat(64);
 const THIRD = 'c'.repeat(64);
 const DATE = '2026-08-01';
+const ADDR = 'NQ07 0000 0000 0000 0000 0000 0000 0000 0000';
 const SEED = 'seed-one';
 
 function open(over: Partial<Parameters<typeof contests.create>[0]> = {}) {
@@ -24,7 +25,9 @@ function open(over: Partial<Parameters<typeof contests.create>[0]> = {}) {
     hostId: HOST,
     hostName: '@host',
     hostAvatarUrl: null,
+    hostAddress: ADDR,
     hostClanTag: null,
+    hostOwnsClan: false,
     kind: 'duel',
     stages: [1, 2],
     stakeNim: 5,
@@ -46,6 +49,7 @@ function enter(id: string, pilotId: string, clanTag: string | null = null, netwo
     pilotId,
     name: `@${pilotId.slice(0, 4)}`,
     avatarUrl: null,
+    address: ADDR,
     clanTag,
   });
 }
@@ -72,8 +76,8 @@ describe('opening one', () => {
 
   it('refuses a stake outside the bounds', () => {
     const result = contests.create({
-      network: 'main', hostId: HOST, hostName: '@host', hostAvatarUrl: null,
-      hostClanTag: null, kind: 'duel', stages: [1], stakeNim: 0, seats: 2,
+      network: 'main', hostId: HOST, hostName: '@host', hostAvatarUrl: null, hostAddress: ADDR,
+      hostClanTag: null, hostOwnsClan: false, kind: 'duel', stages: [1], stakeNim: -1, seats: 2,
       visibility: 'open', date: DATE, seed: SEED, now: Date.now(),
     });
     expect(result.ok).toBe(false);
@@ -83,8 +87,8 @@ describe('opening one', () => {
     // A contest naming a clan the host is not in would credit a roster nobody
     // on it agreed to enter.
     const result = contests.create({
-      network: 'main', hostId: HOST, hostName: '@host', hostAvatarUrl: null,
-      hostClanTag: null, kind: 'clan', stages: [1], stakeNim: 5, seats: 2,
+      network: 'main', hostId: HOST, hostName: '@host', hostAvatarUrl: null, hostAddress: ADDR,
+      hostClanTag: null, hostOwnsClan: false, kind: 'clan', stages: [1], stakeNim: 5, seats: 2,
       visibility: 'open', date: DATE, seed: SEED, now: Date.now(),
     });
     expect(result.ok).toBe(false);
@@ -282,5 +286,172 @@ describe('persistence', () => {
 
     contests.prune(Date.now());
     expect(contests.count()).toBe(1);
+  });
+});
+
+describe('the rules added after the first pass', () => {
+  it('lets a contest be free', () => {
+    /*
+     * Zero is a choice, not a missing stake. A free contest is the same seeded
+     * stages and the same standings with no wallet required, which is the
+     * version most people racing a friend actually want.
+     */
+    const c = open({ stakeNim: 0 });
+    expect(c.stakeNim).toBe(0);
+  });
+
+  it('still refuses a negative stake', () => {
+    const result = contests.create({
+      network: 'main', hostId: HOST, hostName: '@host', hostAvatarUrl: null, hostAddress: ADDR,
+      hostClanTag: null, hostOwnsClan: false, kind: 'duel', stages: [1],
+      stakeNim: -1, seats: 2, visibility: 'open', date: DATE, seed: SEED, now: Date.now(),
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it('refuses a clan contest opened by a member', () => {
+    // Every member's score counts toward the result, so entering the clan
+    // commits people who have not agreed to anything. That is the owner's call.
+    const result = contests.create({
+      network: 'main', hostId: HOST, hostName: '@host', hostAvatarUrl: null, hostAddress: ADDR,
+      hostClanTag: 'WOLF', hostOwnsClan: false, kind: 'clan', stages: [1],
+      stakeNim: 5, seats: 2, visibility: 'open', date: DATE, seed: SEED, now: Date.now(),
+    });
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.code).toBe(403);
+  });
+
+  it('lets the owner open one', () => {
+    const result = contests.create({
+      network: 'main', hostId: HOST, hostName: '@host', hostAvatarUrl: null, hostAddress: ADDR,
+      hostClanTag: 'WOLF', hostOwnsClan: true, kind: 'clan', stages: [1],
+      stakeNim: 5, seats: 2, visibility: 'open', date: DATE, seed: SEED, now: Date.now(),
+    });
+    expect(result.ok).toBe(true);
+    // Two full clans, since a clan holds seven and this is clan against clan.
+    expect(result.ok && result.value.seats).toBe(14);
+  });
+
+  it('refuses the gauntlet until the level exists', () => {
+    /*
+     * It would create, join and settle exactly like the others, and play as an
+     * ordinary stage while the card promises hideouts and pickups. Shipping
+     * that is worse than not shipping it: the disappointment lands after
+     * somebody has staked on it.
+     */
+    const result = contests.create({
+      network: 'main', hostId: HOST, hostName: '@host', hostAvatarUrl: null, hostAddress: ADDR,
+      hostClanTag: null, hostOwnsClan: false, kind: 'gauntlet', stages: [1],
+      stakeNim: 5, seats: 2, visibility: 'open', date: DATE, seed: SEED, now: Date.now(),
+    });
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe('settling a staked contest', () => {
+  const ADDR_B = 'NQ34 248D 8AAA AAAA AAAA AAAA AAAA AAAA AAAA';
+
+  function staked() {
+    const c = open({ stages: [1], seats: 2, stakeNim: 5 });
+    enter(c.id, RIVAL, null);
+    fly(HOST, 1, 900);
+    fly(RIVAL, 1, 100);
+    return c;
+  }
+
+  it('refuses to open a staked contest with nowhere to be paid', () => {
+    /*
+     * There is no escrow, so a settlement is an ordinary transfer and a winner
+     * with no address is a debt that cannot be paid however willing the loser
+     * is. Refused at creation rather than discovered at the end.
+     */
+    const result = contests.create({
+      network: 'main', hostId: HOST, hostName: '@host', hostAvatarUrl: null,
+      hostAddress: null, hostClanTag: null, hostOwnsClan: false, kind: 'duel',
+      stages: [1], stakeNim: 5, seats: 2, visibility: 'open',
+      date: DATE, seed: SEED, now: Date.now(),
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it('lets a free contest be opened with no wallet at all', () => {
+    const result = contests.create({
+      network: 'main', hostId: HOST, hostName: '@host', hostAvatarUrl: null,
+      hostAddress: null, hostClanTag: null, hostOwnsClan: false, kind: 'duel',
+      stages: [1], stakeNim: 0, seats: 2, visibility: 'open',
+      date: DATE, seed: SEED, now: Date.now(),
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it('refuses a staked seat without an address', () => {
+    const c = open({ stages: [1], seats: 4, stakeNim: 5 });
+    const result = contests.join({
+      id: c.id, network: 'main', pilotId: RIVAL, name: '@rival',
+      avatarUrl: null, address: null, clanTag: null,
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it('records a payment from whoever owes it', () => {
+    const c = staked();
+    const result = contests.markPaid({
+      id: c.id, network: 'main', pilotId: RIVAL, txHash: 'abc123',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value.paid?.[RIVAL]).toBe('abc123');
+  });
+
+  it('refuses a payment from somebody who owes nothing', () => {
+    // The winner cannot mark themselves settled on their own contest.
+    const c = staked();
+    const result = contests.markPaid({
+      id: c.id, network: 'main', pilotId: HOST, txHash: 'abc123',
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.code).toBe(409);
+  });
+
+  it('refuses a payment before the contest is over', () => {
+    const c = open({ stages: [1, 2], seats: 4, stakeNim: 5 });
+    enter(c.id, RIVAL, null);
+    fly(HOST, 1, 900);
+
+    expect(
+      contests.markPaid({ id: c.id, network: 'main', pilotId: RIVAL, txHash: 'x' }).ok,
+    ).toBe(false);
+  });
+
+  it('lists what a pilot still owes, and stops once they pay', () => {
+    const c = staked();
+
+    expect(contests.debtsFor(RIVAL, 'main').map((x) => x.id)).toEqual([c.id]);
+    // The winner is never in their own debt list.
+    expect(contests.debtsFor(HOST, 'main')).toEqual([]);
+
+    contests.markPaid({ id: c.id, network: 'main', pilotId: RIVAL, txHash: 'abc123' });
+    expect(contests.debtsFor(RIVAL, 'main')).toEqual([]);
+  });
+
+  it('keeps a reported payment through a restart', () => {
+    // A debt that reappeared on the next deploy would nag somebody who paid.
+    const c = staked();
+    contests.markPaid({ id: c.id, network: 'main', pilotId: RIVAL, txHash: 'abc123' });
+
+    contests.restore(contests.serialise());
+
+    expect(contests.debtsFor(RIVAL, 'main')).toEqual([]);
+  });
+
+  it('does not let a free contest generate a debt', () => {
+    const c = open({ stages: [1], seats: 2, stakeNim: 0 });
+    enter(c.id, RIVAL, null);
+    fly(HOST, 1, 900);
+    fly(RIVAL, 1, 100);
+
+    expect(contests.debtsFor(RIVAL, 'main')).toEqual([]);
+    expect(ADDR_B.length).toBeGreaterThan(0);
   });
 });

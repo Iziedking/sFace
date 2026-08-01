@@ -37,6 +37,7 @@ import {
   MIN_SEATS,
   hasFinished,
   joinRefusal,
+  obligationsOf,
   standings,
   type Contest,
   type ContestEntrant,
@@ -44,18 +45,29 @@ import {
   type ContestVisibility,
 } from '../src/data/contests';
 
-export const MIN_STAKE_NIM = 1;
+/**
+ * Zero is a real choice, not a missing one.
+ *
+ * A contest with nothing on it is a free pass: the same seeded stages, the same
+ * standings, and nobody has to own NIM to enter. That matters more than it
+ * sounds. Requiring a stake would have made every contest a thing you need a
+ * funded wallet for, which quietly turns a game into a betting product and
+ * shuts out the person who just wants to race a friend.
+ *
+ * It is also the honest default for a service that holds no escrow. A free
+ * contest cannot be welched on, because there is nothing to welch.
+ */
+export const MIN_STAKE_NIM = 0;
 export const MAX_STAKE_NIM = 1000;
 
 /**
  * A clan contest has no seat count worth setting.
  *
  * Who turns up is decided by the roster, not by the host, so the UI does not
- * offer the control. A ceiling still exists because an unbounded entrant list
- * is a way to make the service do unbounded work, and forty is far past any
- * real clan turnout for one day.
+ * offer the control. The ceiling is two full clans: a clan holds seven, and a
+ * clan contest is one clan against another.
  */
-const CLAN_SEATS = 40;
+const CLAN_SEATS = 14;
 
 /**
  * Contests die with the day they were pinned to.
@@ -96,7 +108,10 @@ export function create(input: {
   hostId: string;
   hostName: string;
   hostAvatarUrl: string | null;
+  hostAddress: string | null;
   hostClanTag: string | null;
+  /** Whether the host runs that clan. Only the owner may commit its members. */
+  hostOwnsClan: boolean;
   kind: ContestKind;
   stages: number[];
   stakeNim: number;
@@ -130,6 +145,49 @@ export function create(input: {
     return { ok: false, reason: 'Clan contests need a clan.', code: 400 };
   }
 
+  /*
+   * Only the owner may put a clan into a contest.
+   *
+   * Every member's score counts toward the result, so opening one commits
+   * people who have not agreed to anything. That is the owner's call, the same
+   * as who gets in, and it is checked here rather than in the UI because a
+   * greyed button is a suggestion.
+   */
+  if (input.kind === 'clan' && !input.hostOwnsClan) {
+    return { ok: false, reason: 'Only the clan owner can enter the clan in a contest.', code: 403 };
+  }
+
+  /*
+   * The gauntlet is not built yet.
+   *
+   * It creates, joins and settles exactly like the others, which is the problem:
+   * it would play as an ordinary stage while the card promises hideouts, pickups
+   * and a clock nobody outlives. Shipping that is worse than not shipping it,
+   * because the disappointment lands after somebody has staked on it.
+   *
+   * Refused at the door and marked coming soon on the card, until the level
+   * itself exists.
+   */
+  if (input.kind === 'gauntlet') {
+    return { ok: false, reason: 'Last one flying is not ready yet.', code: 400 };
+  }
+
+  /*
+   * A staked contest needs somewhere to pay the winner.
+   *
+   * There is no escrow, so a settlement is an ordinary transfer between two
+   * people, and a winner with no address is a debt that cannot be paid however
+   * willing the loser is. Refused at creation rather than discovered at the end,
+   * when somebody is holding money with nowhere to send it.
+   */
+  if (input.stakeNim > 0 && !input.hostAddress) {
+    return {
+      ok: false,
+      reason: 'Connect a wallet to open a staked contest, or make it free.',
+      code: 400,
+    };
+  }
+
   const seats =
     input.kind === 'clan'
       ? CLAN_SEATS
@@ -139,6 +197,7 @@ export function create(input: {
     id: input.hostId,
     name: input.hostName,
     avatarUrl: input.hostAvatarUrl,
+    address: input.hostAddress,
     clanTag: input.hostClanTag,
     scores: {},
   };
@@ -160,6 +219,7 @@ export function create(input: {
     // The host is in it. Opening a contest you are not entered in would let
     // somebody set terms they never have to fly.
     entrants: [host],
+    paid: {},
     network: input.network,
     createdAt: input.now,
   };
@@ -209,6 +269,7 @@ export function join(input: {
   pilotId: string;
   name: string;
   avatarUrl: string | null;
+  address: string | null;
   clanTag: string | null;
 }): Result<Stored> {
   const found = get(input.id, input.network);
@@ -226,10 +287,21 @@ export function join(input: {
   const refusal = joinRefusal(contest, { id: input.pilotId, clanTag: input.clanTag });
   if (refusal) return { ok: false, reason: refusal, code: 409 };
 
+  // Same reason as opening one: if this pilot wins, somebody has to be able to
+  // pay them, and nothing here can hold the stake in the meantime.
+  if (contest.stakeNim > 0 && !input.address) {
+    return {
+      ok: false,
+      reason: 'Connect a wallet to enter a staked contest.',
+      code: 400,
+    };
+  }
+
   contest.entrants.push({
     id: input.pilotId,
     name: input.name,
     avatarUrl: input.avatarUrl,
+    address: input.address,
     clanTag: input.clanTag,
     scores: {},
   });
@@ -301,6 +373,52 @@ function settleIfDone(contest: Stored): void {
   if (!contest.entrants.every((e) => hasFinished(contest, e))) return;
 
   contest.status = 'settled';
+}
+
+/**
+ * Record that somebody paid what they owed.
+ *
+ * ## What this does and does not check
+ *
+ * It records a transaction hash the payer reported. It does not read the chain,
+ * because this service has no node and never has: the same limitation the
+ * challenge settlement already documents. So a determined liar can report a
+ * hash for a payment they never made.
+ *
+ * That is survivable, and worth being plain about rather than pretending
+ * otherwise. The hash is published beside the debt, so the person who is owed
+ * can check it themselves in one tap, and a false one is a lie with a permanent
+ * receipt attached to a named account. What the service is doing here is
+ * witnessing, not enforcing, and the UI says exactly that.
+ */
+export function markPaid(input: {
+  id: string;
+  network: string;
+  pilotId: string;
+  txHash: string;
+}): Result<Stored> {
+  const found = get(input.id, input.network);
+  if (!found.ok) return found;
+
+  const contest = found.value;
+  if (contest.status !== 'settled') {
+    return { ok: false, reason: 'That contest has not finished.', code: 409 };
+  }
+
+  const owed = obligationsOf(contest).find((o) => o.fromId === input.pilotId);
+  if (!owed) return { ok: false, reason: 'You do not owe anything on this one.', code: 409 };
+
+  contest.paid = { ...(contest.paid ?? {}), [input.pilotId]: input.txHash };
+  persist();
+  return { ok: true, value: contest };
+}
+
+/** Everything still outstanding, for the reminder on a profile. */
+export function debtsFor(pilotId: string, network: string): Contest[] {
+  return [...contests.values()]
+    .filter((c) => c.network === network && c.status === 'settled')
+    .filter((c) => obligationsOf(c).some((o) => o.fromId === pilotId && !o.txHash))
+    .map(toPublic);
 }
 
 /** Who won, or null while it is still being flown. */

@@ -443,6 +443,8 @@ export async function createContest(body: {
   deviceId: string;
   name: string;
   avatarUrl: string | null;
+  /** Where the host is paid. Required by the service for a staked contest. */
+  address: string | null;
   kind: ContestKind;
   stages: number[];
   stakeNim: number;
@@ -454,9 +456,32 @@ export async function createContest(body: {
 
 export async function joinContest(
   id: string,
-  body: { deviceId: string; name: string; avatarUrl: string | null },
+  body: {
+    deviceId: string;
+    name: string;
+    avatarUrl: string | null;
+    /** Where they are paid if they win. Required on a staked contest. */
+    address: string | null;
+  },
 ): Promise<ApiResult<Contest>> {
   return request<Contest>(`/contests/${encodeURIComponent(id)}/join`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Report a settled debt.
+ *
+ * The hash is recorded, never verified: the service has no Nimiq node. It is
+ * published beside the debt so the person owed can check it themselves, which
+ * is witnessing rather than enforcement.
+ */
+export async function reportContestPayment(
+  id: string,
+  body: { deviceId: string; txHash: string },
+): Promise<ApiResult<Contest>> {
+  return request<Contest>(`/contests/${encodeURIComponent(id)}/settled`, {
     method: 'POST',
     body: JSON.stringify(body),
   });

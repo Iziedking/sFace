@@ -60,6 +60,14 @@ export interface ContestEntrant {
   avatarUrl: string | null;
   clanTag: string | null;
   /**
+   * Where this pilot is paid, when they have a wallet attached.
+   *
+   * Null on a free contest, where nobody is ever paid anything, and required
+   * to enter a staked one: a winner with no address is a debt nobody can
+   * settle, and the loser would be left holding money with nowhere to send it.
+   */
+  address: string | null;
+  /**
    * Score per stage, keyed by stage number.
    *
    * Sparse on purpose. A partial entry is a real state: somebody who has flown
@@ -71,6 +79,14 @@ export interface ContestEntrant {
 
 export interface Contest {
   id: string;
+  /**
+   * Transactions that have been reported, keyed by who paid.
+   *
+   * The service records these; it never holds a stake and never verifies one
+   * against the chain. See the settlement note at the bottom of this file for
+   * exactly how far that goes and where it stops.
+   */
+  paid?: Record<string, string>;
   kind: ContestKind;
   /** Stage numbers, ascending. Always at least one. */
   stages: number[];
@@ -282,7 +298,131 @@ export function joinRefusal(
   return null;
 }
 
+export interface Obligation {
+  /** Who owes it. */
+  fromId: string;
+  /** Who is owed, and where they are paid. */
+  toId: string;
+  toName: string;
+  toAddress: string | null;
+  nim: number;
+  /** The transaction they reported, or null while it is outstanding. */
+  txHash: string | null;
+}
+
 /**
+ * Who owes whom, once a contest is settled.
+ *
+ * ## The shape of the debt
+ *
+ * Everyone agreed to the same stake, so a loser owes exactly that stake to
+ * whoever beat them. Not a share of a pot, because there is no pot: nothing was
+ * ever collected, so a settlement is a set of ordinary payments between two
+ * people at a time.
+ *
+ * Head to head and survival are simple. Everyone who is not first owes the
+ * stake to whoever came first.
+ *
+ * Clans are paired by rank instead, and that is a deliberate choice over the
+ * two obvious alternatives. Paying the winning clan's owner would make one
+ * person a treasurer holding six people's winnings, which is the custody this
+ * project refuses everywhere else. Paying the winning clan's top scorer would
+ * hand everything to one member while their clanmates, who did the same work,
+ * get nothing. Pairing by rank means you pay the person who actually beat you,
+ * and anybody nobody was matched against pays whoever led the other side.
+ *
+ * ## Free contests have no obligations at all
+ *
+ * A stake of zero returns an empty list rather than a list of zero-value debts.
+ * There is nothing to pay and nothing to chase, which is most of why free is
+ * the sane default.
+ */
+export function obligationsOf(contest: Contest): Obligation[] {
+  if (contest.status !== 'settled') return [];
+  if (contest.stakeNim <= 0) return [];
+
+  const paid = contest.paid ?? {};
+  const owe = (fromId: string, to: ContestEntrant): Obligation => ({
+    fromId,
+    toId: to.id,
+    toName: to.name,
+    toAddress: to.address,
+    nim: contest.stakeNim,
+    txHash: paid[fromId] ?? null,
+  });
+
+  if (contest.kind !== 'clan') {
+    const table = standings(contest);
+    const winner = table[0]?.entrant;
+    if (!winner) return [];
+
+    return table
+      .slice(1)
+      .map((row) => owe(row.entrant.id, winner))
+      // Somebody who never finished still owes: they agreed to the stake, and
+      // walking away from a run you are losing must not be a way out of it.
+      .filter((o) => o.fromId !== winner.id);
+  }
+
+  const clans = clanStandings(contest);
+  const top = clans[0];
+  if (!top || top.average === null) return [];
+
+  /** One clan's entrants, best first, so rank pairing means something. */
+  const ranked = (tag: string): ContestEntrant[] =>
+    contest.entrants
+      .filter((e) => e.clanTag === tag)
+      .sort((a, b) => (averageFor(contest, b) ?? -1) - (averageFor(contest, a) ?? -1));
+
+  const winners = ranked(top.tag);
+  if (winners.length === 0) return [];
+
+  const out: Obligation[] = [];
+  for (const clan of clans.slice(1)) {
+    ranked(clan.tag).forEach((loser, index) => {
+      // Their opposite number, or whoever led the winning clan when the two
+      // sides were not the same size.
+      const counterpart = winners[index] ?? winners[0];
+      if (counterpart) out.push(owe(loser.id, counterpart));
+    });
+  }
+
+  return out;
+}
+
+/** What this pilot still owes, if anything. */
+export function debtOf(contest: Contest, pilotId: string): Obligation | null {
+  return obligationsOf(contest).find((o) => o.fromId === pilotId && !o.txHash) ?? null;
+}
+
+/** What this pilot is owed and has not been paid. */
+export function creditsOf(contest: Contest, pilotId: string): Obligation[] {
+  return obligationsOf(contest).filter((o) => o.toId === pilotId);
+}
+
+/**
+ * ## Settlement, and exactly how far it goes
+ *
+ * There is no escrow, and it is not for want of trying. Nimiq supports HTLCs
+ * natively, but the Mini App SDK's provider will only sign ten methods and none
+ * of them creates a contract:
+ *
+ *   listAccounts, sign, sendBasicTransaction, sendBasicTransactionWithData,
+ *   and six staking calls.
+ *
+ * `request()` routes anything outside that set to a JSON-RPC node, which holds
+ * no keys and can sign nothing, so there is no way around it from inside the
+ * wallet. See docs/submit/feedback.md.
+ *
+ * So a stake is a promise between two people and the app is a witness, not a
+ * guarantor. What it can honestly do is make the promise specific and make
+ * breaking it visible: the loser is told exactly who to pay and how much, the
+ * payment is one tap in their own wallet, and whether they made it is on their
+ * profile for anyone deciding whether to stake against them.
+ *
+ * That is accountability, not enforcement, and the UI says so in those words.
+ * Free contests are the default precisely because they need none of it.
+ *
  * ## Why the gauntlet is not a shooting match
  *
  * It was asked for as last man standing: players shooting each other until one

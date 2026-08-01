@@ -143,6 +143,12 @@ function card(contest: Contest, options: ContestsOptions): HTMLElement {
       'div',
       { class: 'contest__head' },
       el('span', { class: `contest__kind contest__kind--${contest.kind}`, text: KIND_LABEL[contest.kind] }),
+      // Nothing can open one yet, so this is only reachable by an old record.
+      // Marked rather than hidden, so it does not look like a contest that
+      // quietly vanished.
+      contest.kind === 'gauntlet'
+        ? el('span', { class: 'contest__soon', text: 'COMING SOON' })
+        : null,
       contest.clanTag ? el('span', { class: 'contest__clan', text: contest.clanTag }) : null,
       // Seats read as a countdown rather than a fraction: "2 left" is the thing
       // that decides whether to enter now, and "4 of 6" makes you do the sum.
@@ -172,12 +178,14 @@ function card(contest: Contest, options: ContestsOptions): HTMLElement {
           : el('div', { class: 'contest__avatar' }),
         el('span', { text: mine ? 'Opened by you' : contest.hostName }),
       ),
-      el(
-        'div',
-        { class: 'contest__stake' },
-        el('span', { class: 'contest__stakenum', text: String(contest.stakeNim) }),
-        el('span', { class: 'contest__stakeunit', text: 'NIM' }),
-      ),
+      contest.stakeNim === 0
+        ? el('span', { class: 'contest__free', text: 'FREE' })
+        : el(
+            'div',
+            { class: 'contest__stake' },
+            el('span', { class: 'contest__stakenum', text: String(contest.stakeNim) }),
+            el('span', { class: 'contest__stakeunit', text: 'NIM' }),
+          ),
     ),
 
     notice ? el('p', { class: 'contest__notice', text: notice }) : null,
@@ -185,7 +193,12 @@ function card(contest: Contest, options: ContestsOptions): HTMLElement {
     el(
       'div',
       { class: 'contest__actions' },
-      entered || mine
+      contest.kind === 'gauntlet'
+        ? el('p', {
+            class: 'contest__notice',
+            text: 'The survival level is still being built. This one cannot be flown yet.',
+          })
+        : entered || mine
         ? button('Open', () => options.onOpen(contest), 'ghost')
         : button(busy ? 'Taking a seat...' : 'Take a seat', () => options.onJoin(contest), 'ghost', {
             disabled: busy || left <= 0,

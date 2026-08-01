@@ -91,7 +91,16 @@ function limit(perMinute: number, burst: number) {
   const refillPerMs = perMinute / 60_000;
 
   return (req: Request, res: Response, next: NextFunction): void => {
-    const key = `${req.path}:${clientIp(req)}`;
+    /*
+     * Keyed on the method as well as the path.
+     *
+     * GET /contests and POST /contests are the same path and wildly different
+     * costs: reading the list is cheap and generous, opening one is neither.
+     * Sharing a bucket meant a client that polled the list could exhaust its own
+     * ability to create, and the tighter of the two limits silently governed
+     * both. Reading something must never spend the budget for writing it.
+     */
+    const key = `${req.method}:${req.path}:${clientIp(req)}`;
     const now = Date.now();
     const bucket = buckets.get(key) ?? { tokens: burst, updatedAt: now };
 
@@ -186,8 +195,13 @@ const contestBody = z.object({
   deviceId,
   name: pilotName,
   avatarUrl: avatarUrl.nullable().optional(),
+  // Where the host is paid if they win. Required for a staked contest, and
+  // meaningless on a free one, so the shape allows absent rather than empty.
+  address: nimiqAddress.nullable().optional(),
   kind: z.enum(['duel', 'clan', 'gauntlet']),
   stages: z.array(z.number().int().min(1).max(7)).min(1).max(7),
+  // Zero is allowed: a contest with nothing on it is a free pass, not a
+  // missing stake. See the constant in server/contests.ts.
   stakeNim: z.number().int().min(contests.MIN_STAKE_NIM).max(contests.MAX_STAKE_NIM),
   seats: z.number().int().min(2).max(6),
   visibility: z.enum(['open', 'private']),
@@ -197,6 +211,13 @@ const joinContestBody = z.object({
   deviceId,
   name: pilotName,
   avatarUrl: avatarUrl.nullable().optional(),
+  address: nimiqAddress.nullable().optional(),
+});
+
+/** Reporting a settlement. The hash is a claim by the payer, not a proof. */
+const contestPaidBody = z.object({
+  deviceId,
+  txHash: z.string().min(1).max(200),
 });
 
 const signBody = z.object({
@@ -613,13 +634,18 @@ app.post('/contests', limit(12, 6), async (req, res) => {
   // The clan comes from the profile, not the request. A contest that named a
   // clan the host is not in would credit a roster nobody on it agreed to enter.
   const profile = profiles.get(body.deviceId, network);
+  const clanTag = profile?.clanTag ?? null;
+  // And whether they run it, because entering a clan commits every member.
+  const ownsClan = clanTag !== null && clans.detail(clanTag, network)?.ownerId === body.deviceId;
 
   const result = contests.create({
     network,
     hostId: body.deviceId,
     hostName: body.name,
     hostAvatarUrl: body.avatarUrl ?? null,
-    hostClanTag: profile?.clanTag ?? null,
+    hostAddress: body.address ?? null,
+    hostClanTag: clanTag,
+    hostOwnsClan: ownsClan,
     kind: body.kind,
     stages: body.stages,
     stakeNim: body.stakeNim,
@@ -658,7 +684,38 @@ app.post('/contests/:id/join', limit(20, 10), (req, res) => {
     pilotId: body.deviceId,
     name: body.name,
     avatarUrl: body.avatarUrl ?? null,
+    address: body.address ?? null,
     clanTag: profile.clanTag,
+  });
+
+  if (!result.ok) {
+    res.status(result.code).json({ error: result.reason });
+    return;
+  }
+
+  res.json(contests.toPublic(result.value));
+});
+
+/**
+ * Report that a debt was paid.
+ *
+ * The hash is recorded, never verified: this service has no Nimiq node, the
+ * same as the challenge settlement it sits beside. It is published next to the
+ * debt so the person who is owed can check it themselves, which is witnessing
+ * rather than enforcement, and the screen says so in those words.
+ */
+app.post('/contests/:id/settled', limit(20, 10), (req, res) => {
+  const parsed = contestPaidBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: firstIssue(parsed.error) });
+    return;
+  }
+
+  const result = contests.markPaid({
+    id: String(req.params.id ?? ''),
+    network: networkOf(req),
+    pilotId: parsed.data.deviceId,
+    txHash: parsed.data.txHash,
   });
 
   if (!result.ok) {

@@ -49,6 +49,14 @@ export interface ContestNewOptions {
   onChange: (next: ContestDraft) => void;
   /** Null when this pilot has no clan, which rules out a clan contest. */
   clanTag: string | null;
+  /**
+   * Whether they run that clan.
+   *
+   * Entering a clan commits every member's score to a result, so it is the
+   * owner's call. A member sees the row with the reason rather than a control
+   * that fails after they have set everything else.
+   */
+  ownsClan: boolean;
   /** Highest stage they have cleared, so they cannot stake on one they cannot fly. */
   stagesCleared: number;
   busy: boolean;
@@ -58,7 +66,15 @@ export interface ContestNewOptions {
 }
 
 const KINDS: ContestKind[] = ['duel', 'clan', 'gauntlet'];
-const STAKES = [1, 5, 10, 25];
+/*
+ * Free first, and it is not a lesser option.
+ *
+ * A stake of nothing is the same seeded stages and the same standings with no
+ * wallet required, which is the version most people racing a friend actually
+ * want. Putting it first says so; burying it behind three amounts would make
+ * money look like the default way to play.
+ */
+const STAKES = [0, 1, 5, 10, 25];
 
 export function renderContestNew(root: HTMLElement, options: ContestNewOptions): void {
   const { draft } = options;
@@ -94,7 +110,7 @@ export function renderContestNew(root: HTMLElement, options: ContestNewOptions):
             draft.kind === kind,
             // A clan contest with no clan behind it has nothing to enter, so
             // the row says why rather than vanishing.
-            kind === 'clan' && !options.clanTag ? 'Join a clan first' : null,
+            blockedReason(kind, options),
             () => options.onChange({ ...draft, kind }),
           ),
         ),
@@ -123,7 +139,7 @@ export function renderContestNew(root: HTMLElement, options: ContestNewOptions):
         'div',
         { class: 'chips' },
         ...STAKES.map((nim) =>
-          chip(`${nim} NIM`, draft.stakeNim === nim, () =>
+          chip(nim === 0 ? 'Free' : `${nim} NIM`, draft.stakeNim === nim, () =>
             options.onChange({ ...draft, stakeNim: nim }),
           ),
         ),
@@ -184,7 +200,7 @@ export function renderContestNew(root: HTMLElement, options: ContestNewOptions):
         'div',
         { class: 'actions' },
         button(options.busy ? 'Opening...' : 'Open it', options.onOpen, 'primary', {
-          disabled: options.busy || (draft.kind === 'clan' && !options.clanTag),
+          disabled: options.busy || blockedReason(draft.kind, options) !== null,
         }),
         button('Back', options.onBack, 'ghost'),
       ),
@@ -192,11 +208,27 @@ export function renderContestNew(root: HTMLElement, options: ContestNewOptions):
   );
 }
 
+/**
+ * Why a kind cannot be picked, or null when it can.
+ *
+ * One function rather than a condition in the row and another on the button,
+ * because those two drifting apart is how you get a form that looks fillable
+ * and refuses at the end.
+ */
+function blockedReason(kind: ContestKind, options: ContestNewOptions): string | null {
+  if (kind === 'gauntlet') return 'Coming soon. The survival level is still being built.';
+  if (kind === 'clan' && !options.clanTag) return 'Join a clan first';
+  if (kind === 'clan' && !options.ownsClan) {
+    return 'Only the clan owner can enter the clan in a contest';
+  }
+  return null;
+}
+
 /** The four choices, said the way a person would say them. */
 function summarise(options: ContestNewOptions, stages: number[]): string {
   const { draft } = options;
   const what = stagesLabel(stages).toLowerCase();
-  const stake = `${draft.stakeNim} NIM`;
+  const stake = draft.stakeNim === 0 ? 'nothing but pride' : `${draft.stakeNim} NIM`;
 
   if (draft.kind === 'clan') {
     return `${options.clanTag ?? 'Your clan'} against whoever answers, over ${what}, for ${stake}. Each clan is scored on the average of its members who finish, so turning up in numbers does not win it.`;

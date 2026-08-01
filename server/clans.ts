@@ -38,6 +38,25 @@ import * as profiles from './profiles';
 
 export const TAG_PATTERN = /^[A-Z0-9]{2,4}$/;
 
+/**
+ * How many pilots a clan holds.
+ *
+ * Seven, and it is a design decision rather than a technical limit. A clan is
+ * meant to be the group chat you already have, so the cap is set where a group
+ * stops being people who know each other and starts being a list. It also keeps
+ * a clan contest honest: the mean of seven is a real average of a squad, while
+ * the mean of two hundred is a statistic.
+ *
+ * Counted across both chains, because the roster is one roster. Somebody in the
+ * clan on testnet is in the clan.
+ */
+export const MAX_MEMBERS = 7;
+
+/** How many pilots are in a clan right now, on either chain. */
+export function sizeOf(tag: string): number {
+  return profiles.membersOf(tag).length;
+}
+
 /** The bit of a clan that cannot be derived: who runs it, and who is knocking. */
 export interface ClanRecord {
   tag: string;
@@ -218,6 +237,18 @@ export function join(
 
   const record = records.get(tag);
 
+  /*
+   * Full clans do not take requests.
+   *
+   * Refused at the door rather than at the owner's decision, so nobody sits in
+   * a queue for a place that cannot exist. The owner would have had to refuse
+   * them anyway, and a request they were never going to be able to grant is
+   * just an unanswerable notification.
+   */
+  if (record && sizeOf(tag) >= MAX_MEMBERS) {
+    return { status: 'refused', reason: `${tag} is full. A clan holds ${MAX_MEMBERS} pilots.` };
+  }
+
   // Nobody has this tag. Taking it makes you its owner, and membership is
   // immediate because there is no one to ask.
   if (!record) {
@@ -279,6 +310,19 @@ export function decide(
   record.pending.splice(index, 1);
 
   if (approve && request) {
+    /*
+     * Checked again here, not only at the request.
+     *
+     * Requests can outlive the room they were made for: seven people ask, the
+     * owner approves them one at a time, and the last few would walk into a
+     * clan that filled up while they were waiting. The queue entry is dropped
+     * either way, because the answer is genuinely no rather than not yet.
+     */
+    if (sizeOf(tag) >= MAX_MEMBERS) {
+      persist();
+      return { ok: false, code: 409, reason: `${tag} is full. A clan holds ${MAX_MEMBERS} pilots.` };
+    }
+
     // Out of whatever they were in first, so a pilot is never in two clans and
     // their Face never counts twice on the table.
     leave(request.id);

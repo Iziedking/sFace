@@ -202,3 +202,51 @@ describe('older snapshots load', () => {
     expect(profiles.get(PILOT, 'test')?.lifetimeFace).toBe(90_000);
   });
 });
+
+describe('a clan holds seven', () => {
+  /*
+   * A design decision, not a technical limit. A clan is meant to be the group
+   * chat you already have, so the cap sits where a group stops being people who
+   * know each other. It also keeps a clan contest honest: the mean of seven is
+   * an average of a squad, the mean of two hundred is a statistic.
+   */
+  function member(n: number): string {
+    return `m${String(n).padStart(2, '0')}`.padEnd(64, '0');
+  }
+
+  function fill(tag: string, count: number): void {
+    clans.join(member(0), 'Owner', tag, Date.now());
+    for (let i = 1; i < count; i++) {
+      clans.join(member(i), `Pilot ${i}`, tag, Date.now());
+      clans.decide(tag, member(0), member(i), true);
+    }
+  }
+
+  it('takes the seventh and refuses the eighth', () => {
+    const tag = clans.normaliseTag('FULL')!;
+    fill(tag, clans.MAX_MEMBERS);
+
+    expect(clans.sizeOf(tag)).toBe(clans.MAX_MEMBERS);
+    expect(clans.join(member(99), 'Late', tag, Date.now()).status).toBe('refused');
+  });
+
+  it('refuses a request that outlived the room it was made for', () => {
+    /*
+     * Seven ask, the owner approves one at a time, and the last few would walk
+     * into a clan that filled while they were waiting. Checked again at the
+     * decision, not only at the door.
+     */
+    const tag = clans.normaliseTag('RACE')!;
+    clans.join(member(0), 'Owner', tag, Date.now());
+
+    for (let i = 1; i <= 7; i++) clans.join(member(i), `Pilot ${i}`, tag, Date.now());
+
+    let approved = 1;
+    for (let i = 1; i <= 7; i++) {
+      if (clans.decide(tag, member(0), member(i), true).ok) approved++;
+    }
+
+    expect(approved).toBe(clans.MAX_MEMBERS);
+    expect(clans.sizeOf(tag)).toBe(clans.MAX_MEMBERS);
+  });
+});
