@@ -192,6 +192,53 @@ export function submit(input: SubmitInput): SubmitResult {
   return { ok: true, rank: rankOf(input.network, input.date, input.deviceId) };
 }
 
+/**
+ * Bind a wallet to a row that was already posted, without counting it twice.
+ *
+ * ## Why this is not just another submit
+ *
+ * `submit` replaces only on a strictly better score, so re-posting the same run
+ * with a signature attached would be silently ignored and the row would stay
+ * unsigned. Worse, the score route folds every submission into the lifetime
+ * profile, so a re-post would add the run's Face a second time. Somebody
+ * signing their best run of the day would be rewarded with double the total,
+ * which is a cheat anybody could find by accident.
+ *
+ * So this does exactly one thing: attach proof to a row that already exists.
+ * No score is written, no profile is touched, and nothing about the ranking
+ * moves.
+ *
+ * ## What it refuses
+ *
+ * The claim is verified before this is called and the address is derived from
+ * the key that signed, so the only checks left are about which row it belongs
+ * to. The score has to match the row exactly, or a signature over a smaller
+ * run could be used to decorate a bigger one. And a row that is already signed
+ * is left alone, so a second wallet cannot overwrite the first one's claim.
+ */
+export function attachProof(input: {
+  network: string;
+  date: string;
+  deviceId: string;
+  score: number;
+  address: string;
+  proof: Proof;
+}): { ok: true } | { ok: false; reason: string } {
+  const board = boards.get(keyOf(input.network, input.date));
+  const entry = board?.get(input.deviceId);
+
+  if (!entry) return { ok: false, reason: 'No run of yours on that board.' };
+  if (entry.score !== input.score) {
+    return { ok: false, reason: 'That signature is for a different run.' };
+  }
+  if (entry.proof) return { ok: true };
+
+  entry.address = input.address;
+  entry.proof = input.proof;
+  persist();
+  return { ok: true };
+}
+
 export function top(network: string, date: string, limit = BOARD_LIMIT): PublicEntry[] {
   return sorted(network, date)
     .slice(0, limit)
@@ -240,6 +287,17 @@ export function serialise(): unknown {
 
 export function restore(raw: unknown): void {
   if (!Array.isArray(raw)) return;
+
+  /*
+   * Replace rather than merge, which is what the other stores already do.
+   *
+   * A snapshot is a statement about the whole store, not an addition to it, so
+   * restoring twice has to leave the same result as restoring once. This used
+   * to merge, which meant a board dropped from the snapshot would survive any
+   * second restore and reappear as rows nobody can account for. At boot the map
+   * is empty and this clear is a no-op.
+   */
+  boards.clear();
 
   for (const pair of raw) {
     if (!Array.isArray(pair) || pair.length !== 2) continue;
