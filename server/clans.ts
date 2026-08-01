@@ -41,8 +41,6 @@ export const TAG_PATTERN = /^[A-Z0-9]{2,4}$/;
 /** The bit of a clan that cannot be derived: who runs it, and who is knocking. */
 export interface ClanRecord {
   tag: string;
-  /** Which chain it belongs to. Absent on records written before the split. */
-  network?: string;
   ownerId: string;
   createdAt: number;
   /** Pilots who have asked to join and are waiting on the owner. */
@@ -50,19 +48,17 @@ export interface ClanRecord {
 }
 
 /**
- * network and tag -> clan
+ * tag -> clan
  *
- * The pilot id is scoped by network on the client, so members separate on their
- * own. A clan tag does not: WOLF is the same four characters on both chains, so
- * one record would give a mainnet owner the testnet clan of the same name and
- * pool the two rosters into one row.
+ * One clan per tag, across both chains, because a clan is a group of people and
+ * those people do not become strangers when one of them switches to testnet.
+ * Keying this by network was tried and it split a squad in half for no gain.
+ *
+ * The chain still decides what the clan is worth. Every total below is folded
+ * out of profiles for the network being asked about, so the roster is the same
+ * in both places and the Face beside it is not. See server/profiles.ts.
  */
 const records = new Map<string, ClanRecord>();
-
-/** One clan. Network first, so a dump groups by chain rather than by name. */
-function keyOf(network: string, tag: string): string {
-  return `${network}:${tag}`;
-}
 
 /** How many requests one clan will hold. Past this the owner has stopped caring. */
 const MAX_PENDING = 40;
@@ -150,7 +146,7 @@ export interface ClanDetail extends ClanRow {
 export function detail(tag: string, network = 'main'): ClanDetail | null {
   const all = table(Number.MAX_SAFE_INTEGER, network);
   const index = all.findIndex((row) => row.tag === tag);
-  const record = records.get(keyOf(network, tag));
+  const record = records.get(tag);
 
   // A tag with a record but no members yet is still a real clan: its owner
   // claimed it and has not posted a run. Returning null would make it look
@@ -173,7 +169,7 @@ export function detail(tag: string, network = 'main'): ClanDetail | null {
     ownerName: record ? (profiles.get(record.ownerId)?.name ?? null) : null,
     pending: record?.pending ?? [],
     roster: profiles
-      .membersOf(tag)
+      .membersOf(tag, network)
       .sort((a, b) => b.lifetimeFace - a.lifetimeFace || a.firstSeen - b.firstSeen)
       .slice(0, 50)
       .map((p) => ({
@@ -209,7 +205,6 @@ export function join(
   name: string,
   tag: string | null,
   now: number,
-  network = 'main',
 ): JoinOutcome {
   profiles.ensure(id, name);
 
@@ -221,15 +216,14 @@ export function join(
   const profile = profiles.get(id);
   if (profile?.clanTag === tag) return { status: 'member', tag };
 
-  const record = records.get(keyOf(network, tag));
+  const record = records.get(tag);
 
   // Nobody has this tag. Taking it makes you its owner, and membership is
   // immediate because there is no one to ask.
   if (!record) {
     leave(id);
-    records.set(keyOf(network, tag), {
+    records.set(tag, {
       tag,
-      network,
       ownerId: id,
       createdAt: now,
       pending: [],
@@ -271,9 +265,8 @@ export function decide(
   ownerId: string,
   memberId: string,
   approve: boolean,
-  network = 'main',
 ): DecideOutcome {
-  const record = records.get(keyOf(network, tag));
+  const record = records.get(tag);
   if (!record) return { ok: false, code: 404, reason: 'No such clan.' };
   if (record.ownerId !== ownerId) {
     return { ok: false, code: 403, reason: 'Only the clan owner can do that.' };
@@ -305,7 +298,7 @@ export function decide(
  * in it and none of them did anything, so ownership passes to whoever has been
  * around longest. Only a clan with nobody left in it is removed.
  */
-export function leave(id: string, network = 'main'): void {
+export function leave(id: string): void {
   const profile = profiles.get(id);
   const tag = profile?.clanTag ?? null;
 
@@ -322,19 +315,21 @@ export function leave(id: string, network = 'main'): void {
 
   profiles.setClan(id, null);
 
-  const record = records.get(keyOf(network, tag));
+  const record = records.get(tag);
   if (!record || record.ownerId !== id) {
     persist();
     return;
   }
 
+  // Longest-standing member, across both chains. Seniority in a clan is how
+  // long you have been in it, not which network you last happened to fly.
   const heir = profiles
-    .membersOf(tag, network)
+    .membersOf(tag)
     .filter((p) => p.id !== id)
     .sort((a, b) => a.firstSeen - b.firstSeen)[0];
 
   if (heir) record.ownerId = heir.id;
-  else records.delete(keyOf(network, tag));
+  else records.delete(tag);
 
   persist();
 }
@@ -353,18 +348,8 @@ export function restore(raw: unknown): void {
     const tag = normaliseTag(item?.tag);
     if (!tag || typeof item.ownerId !== 'string') continue;
 
-    /*
-     * The network has to survive the round trip.
-     *
-     * Restoring by tag alone rebuilt every clan onto one key, which is the bug
-     * this whole change exists to remove, reintroduced on the next restart.
-     * Records written before the split were all mainnet.
-     */
-    const network = typeof item.network === 'string' ? item.network : 'main';
-
-    records.set(keyOf(network, tag), {
+    records.set(tag, {
       tag,
-      network,
       ownerId: item.ownerId,
       createdAt: typeof item.createdAt === 'number' ? item.createdAt : 0,
       pending: Array.isArray(item.pending) ? item.pending : [],

@@ -144,7 +144,7 @@ export function renderChrome(root: HTMLElement, options: ChromeOptions): void {
       )}.`,
       title:
         net === 'test'
-          ? 'Testnet: nothing here is worth anything, and X reads are off. Tap for mainnet.'
+          ? 'Testnet: nothing here is worth anything, live reads are off, and Face counts on its own board. Tap for mainnet.'
           : 'Mainnet: real NIM, real board. Tap to rehearse on testnet.',
     },
     el('span', { class: 'chrome__netdot' }),

@@ -170,7 +170,7 @@ export function renderAbout(root: HTMLElement, options: AboutOptions): void {
           {
             kicker: 'TEST',
             title: 'Testnet, a rehearsal',
-            body: 'The same game, played for nothing. NIM here has no value, scores stay off the mainnet board, and CT Signals is off because it reads live X. Use it to try staking a challenge without spending anything. Settings links the Nimiq faucet for testnet coins.',
+            body: 'The same game, played for nothing, on data already in hand. You are still you here: same name, same clan, same friends. What changes is that NIM has no value, testnet keeps its own board and its own Face, and anything that costs a live read is off. Use it to try staking a challenge without spending anything. Settings links the Nimiq faucet for testnet coins.',
           },
         ],
         'doc__grid doc__grid--two',

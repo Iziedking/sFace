@@ -280,8 +280,9 @@ app.get('/board/:date', limit(120, 40), (req, res) => {
    * to know about today.
    */
   // The board the caller is looking at, which is the one their client is on.
-  const rows = board.top(networkOf(req), date.data).map((entry) => {
-    const profile = profiles.get(entry.id);
+  const network = networkOf(req);
+  const rows = board.top(network, date.data).map((entry) => {
+    const profile = profiles.get(entry.id, network);
     return {
       ...entry,
       avatarUrl: profile?.avatarUrl ?? null,
@@ -494,7 +495,6 @@ app.post('/clans/join', limit(12, 6), (req, res) => {
     parsed.data.name,
     tag,
     Date.now(),
-    networkOf(req),
   );
   if (outcome.status === 'refused') {
     res.status(409).json({ error: outcome.reason });
@@ -505,7 +505,9 @@ app.post('/clans/join', limit(12, 6), (req, res) => {
   // whether the tag took. On a request it has not, and the profile says so.
   res.json({
     outcome,
-    profile: profiles.get(parsed.data.deviceId) ?? profiles.blank(parsed.data.deviceId, parsed.data.name),
+    profile:
+      profiles.get(parsed.data.deviceId, networkOf(req)) ??
+      profiles.blank(parsed.data.deviceId, parsed.data.name, networkOf(req)),
     pending: clans.pendingFor(parsed.data.deviceId),
   });
 });
@@ -528,7 +530,6 @@ app.post('/clans/:tag/decide', limit(30, 15), (req, res) => {
     parsed.data.deviceId,
     parsed.data.memberId,
     parsed.data.approve,
-    networkOf(req),
   );
   if (!result.ok) {
     res.status(result.code).json({ error: result.reason });
@@ -622,7 +623,7 @@ app.post('/profile/merge', limit(12, 6), (req, res) => {
     return;
   }
 
-  const merged = profiles.merge(parsed.data.from, parsed.data.into);
+  const merged = profiles.merge(parsed.data.from, parsed.data.into, networkOf(req));
   if (!merged) {
     // Neither side has ever finished a run. Nothing to do, and not a failure.
     res.json({ merged: false });
@@ -639,15 +640,24 @@ app.get('/profile/:id', limit(60, 20), (req, res) => {
     return;
   }
 
-  const profile = profiles.get(id.data);
+  /*
+   * Scoped to the caller's chain.
+   *
+   * This is the card that shows Face, rank and campaign progress, and those are
+   * per chain. Reading it network-blind would show a mainnet total to somebody
+   * looking at their testnet profile, which is the pooling the split exists to
+   * prevent, surfacing in the one place a player actually reads.
+   */
+  const network = networkOf(req);
+  const profile = profiles.get(id.data, network);
   if (!profile) {
     // Not an error. A pilot who has never finished a run has a real, empty
     // profile, and returning 404 would make the client special-case day one.
-    res.json(profiles.blank(id.data, 'Pilot'));
+    res.json(profiles.blank(id.data, 'Pilot', network));
     return;
   }
 
-  res.json({ ...profile, allTimeRank: profiles.rankOf(id.data) });
+  res.json({ ...profile, allTimeRank: profiles.rankOf(id.data, network) });
 });
 
 /*

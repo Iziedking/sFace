@@ -25,33 +25,24 @@
  * own screen.
  */
 
-import { onTestnet } from '../core/network';
-
 const STORAGE_KEY = 'sface.pilot';
 const SOURCE_KEY = 'sface.pilot.source';
 
 /**
- * The two chains are two people.
+ * ## One identity, whichever chain you are on
  *
- * ## Why the separation lives here
+ * An earlier build scoped this key by network, so switching to testnet handed
+ * you a different pilot id and, with it, a different profile, clan and set of
+ * challenges. That is the wrong cut. A person flying a rehearsal is the same
+ * person, and making them a stranger to their own clan for the duration is a
+ * cost with nothing bought.
  *
- * Testnet NIM is handed out by a faucet. If it shared an identity with mainnet
- * then Face farmed for free would carry a rank badge onto the real board, and
- * the separation of the boards would be half a wall: different tables, same
- * player, same total, same rank.
- *
- * Scoping the identifier instead of every store is what makes that whole rather
- * than partial. Profiles, challenges and recorded ghosts are all keyed by pilot
- * id, so one change here separates all of them, and there is no store left that
- * could be forgotten later.
- *
- * A player is therefore two records who happen to share a browser. Switching
- * networks is closer to signing into a different account than to changing a
- * setting, which is exactly what it is.
+ * What actually needed separating was the scoring, and that separation lives
+ * where scores live: the daily board keys on network, and a profile keeps one
+ * set of totals per chain. So the boards are two and the player is one, which
+ * is the thing being asked for. See the header of server/profiles.ts for why
+ * the totals cannot be pooled.
  */
-function scoped(key: string): string {
-  return onTestnet() ? `${key}.test` : key;
-}
 
 export type IdentitySource = 'local' | 'nimiq';
 
@@ -65,16 +56,16 @@ let source: IdentitySource = 'local';
 export function pilotId(): string {
   if (cached) return cached;
 
-  const stored = read(scoped(STORAGE_KEY));
+  const stored = read(STORAGE_KEY);
   if (stored && isWellFormed(stored)) {
     cached = stored;
-    source = read(scoped(SOURCE_KEY)) === 'nimiq' ? 'nimiq' : 'local';
+    source = read(SOURCE_KEY) === 'nimiq' ? 'nimiq' : 'local';
     return cached;
   }
 
   cached = randomHex();
   source = 'local';
-  write(scoped(STORAGE_KEY), cached);
+  write(STORAGE_KEY, cached);
   write(SOURCE_KEY, 'local');
   return cached;
 }
@@ -171,14 +162,11 @@ export async function accountKey(handle: string): Promise<string | null> {
 
   try {
     /*
-     * The network is inside the hash, so the same handle is two accounts.
-     *
-     * Not appended to the result: a suffix would make the two obviously related
-     * and, more to the point, would let anybody derive one from the other. The
-     * hash is a namespace and the network is part of the namespace.
+     * No network in the realm. One handle is one player on every chain, and
+     * their name, picture and clan follow them across the switch. What does
+     * not follow is their Face, which the profile store keeps per chain.
      */
-    const realm = onTestnet() ? 'sface:x:test' : 'sface:x';
-    const bytes = new TextEncoder().encode(`${realm}:${clean}`);
+    const bytes = new TextEncoder().encode(`sface:x:${clean}`);
     const digest = await crypto.subtle.digest('SHA-256', bytes);
     return [...new Uint8Array(digest)]
       .map((byte) => byte.toString(16).padStart(2, '0'))

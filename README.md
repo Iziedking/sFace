@@ -168,12 +168,33 @@ intent and put it somewhere it does not count.
 
 | | |
 |---|---|
-| **MAIN** | Real NIM. Scores go to the daily board, challenges settle for money that counts, and CT Signals reads live X. |
-| **TEST** | The same game, played for nothing. NIM has no value, scores are verified but kept off the mainnet board, and CT Signals is off because it reads live X. Settings links the Nimiq faucet. |
+| **MAIN** | The whole game. Today's mission, read live. Real NIM. Scores on the daily board, challenges that settle for money that counts, CT Signals reading live X. |
+| **TEST** | The same game, played for nothing, on data already in hand. NIM has no value, scores are verified but ranked on their own board, and anything that costs a paid call is off. Settings links the Nimiq faucet. |
 
-Testnet also never triggers a metered X call. Declaring it can only ever make the
-service spend less or keep a row off the board, never unlock anything, which is
-why the client is allowed to declare it at all.
+**Testnet never spends.** Not on X, not on the market, not on model inference.
+A rehearsal is served whatever the cache already holds, and the client's own
+practice mission when it holds nothing, so it exercises the same code with the
+same validation against real numbers rather than a stub. What it does not do is
+put a bill on a session nobody was going to score from. Every read of X is
+metered and an afternoon of testing can burn a month's quota producing
+information nobody needed.
+
+That is also why the client is trusted to declare its own network. Declaring
+testnet can make the service spend less and keep a row off the real board. It
+cannot unlock a feature, raise a limit, mint anything or move funds, so the lie
+is not worth telling.
+
+**You are the same player on both.** Connect X and your name, picture, clan and
+friends follow you across the switch, because a person flying a rehearsal is
+still that person and making them a stranger to their own squad buys nothing.
+
+What does not follow is the scoring. The two boards are genuinely separate, and
+so are lifetime Face and campaign progress. Testnet NIM comes out of a faucet
+and a rehearsal has nothing at stake, so pooling those totals would put free
+Face in a real rank. The sharper reason is that campaign progress feeds the
+assist tier: shared, an unmetered grind on the free chain would buy a
+measurably easier run on the paid one, which is the purchasable advantage this
+project refuses, arriving in a different currency.
 
 <div align="center">
   <img src="docs/shots/testnet.png" width="300" alt="The network panel on testnet, showing a faucet claim card with the live dispense amount and claims remaining">
@@ -256,10 +277,10 @@ guarantee the whole challenge system rests on.
 
 <br>
 
-A testnet session serves cached reads and never triggers a metered X call, and its
-scores are verified but kept off the mainnet board. Declaring testnet can only ever
-make the service spend less, so trusting the client with it is safe in the one
-direction that matters.
+A testnet session serves cached reads and triggers no metered call at all: not X,
+not the market, not model inference. Its scores are verified and ranked on their
+own board. Declaring testnet can only ever make the service spend less, so
+trusting the client with it is safe in the one direction that matters.
 </details>
 
 ## Repository

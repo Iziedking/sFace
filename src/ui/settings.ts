@@ -103,7 +103,7 @@ export function renderSettings(root: HTMLElement, options: SettingsOptions): voi
         el('p', {
           class: 'settings__netsay',
           text: onTestnet()
-            ? 'Testnet. The game is identical, but NIM here is worth nothing, scores stay off the daily board, and CT Signals is off because it reads live X. Use it to rehearse a challenge without spending anything.'
+            ? 'Testnet. Same game, same you: your name, clan and friends come with you. NIM here is worth nothing, Face and the board are kept separate from mainnet, and anything needing a live read is off. Rehearse a challenge without spending anything.'
             : 'Mainnet. Real NIM, the real daily board, and live reads of crypto X. This is the game.',
         }),
         onTestnet() ? faucetCard(options.address ?? null) : null,

@@ -1,14 +1,17 @@
 /**
- * Testnet and mainnet are two different people.
+ * One player, two boards.
  *
- * Testnet NIM comes out of a faucet. If the two chains shared an identity then
- * Face farmed for nothing would carry a rank badge onto the real board, and
- * separating the boards would be half a wall: different tables, same player,
- * same lifetime total, same rank.
+ * The player is the same person on both chains: same name, same picture, same
+ * clan, same friends. Switching to testnet is a setting, not a second account.
  *
- * The pilot id is scoped on the client, so profiles, challenges and ghosts
- * separate on their own. A clan tag does not: WOLF is the same four characters
- * on both chains. These pin the parts that needed the server to know.
+ * What separates is the scoring, and it has to separate for a sharper reason
+ * than tidiness. Testnet costs nothing to play, triggers no metered read, and
+ * its NIM comes out of a faucet. `stagesCleared` feeds the assist tier, so if
+ * campaign progress were shared, an unmetered grind on the free chain would buy
+ * a measurably easier run on the real one. That is the purchasable advantage
+ * this project refuses, arriving in a different currency.
+ *
+ * So: identity pooled, progress bucketed. These pin both halves.
  */
 
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -19,111 +22,183 @@ import * as profiles from '../server/profiles';
 /**
  * Fresh ids per case.
  *
- * The profile store is a module level map that lives for the whole file, so
- * reusing one id would let each case inherit the last one's lifetime Face and
- * turn an assertion about clan totals into arithmetic about test order.
+ * The store is a module level map that lives for the whole file, so reusing an
+ * id would let each case inherit the last one's totals and turn an assertion
+ * about Face into arithmetic about test order.
  */
 let seq = 0;
-let LIVE = '';
-let TEST = '';
+let PILOT = '';
+let OTHER = '';
 
 beforeEach(() => {
   seq++;
-  LIVE = `live${String(seq).padStart(2, '0')}`.padEnd(64, '0');
-  TEST = `test${String(seq).padStart(2, '0')}`.padEnd(64, '0');
+  PILOT = `aa${String(seq).padStart(2, '0')}`.padEnd(64, '0');
+  OTHER = `bb${String(seq).padStart(2, '0')}`.padEnd(64, '0');
+  clans.restore([]);
 });
 
-function play(id: string, network: string, face: number, name = 'Pilot') {
+function play(
+  id: string,
+  network: string,
+  face: number,
+  extra: { name?: string; stage?: number; stageCleared?: boolean } = {},
+) {
   profiles.record({
     id,
-    name,
+    name: extra.name ?? 'Pilot',
     network,
     score: face,
     rescued: 1,
     caches: 0,
     relics: 0,
     extracted: true,
-    stage: 1,
-    stageCleared: false,
+    stage: extra.stage ?? 1,
+    stageCleared: extra.stageCleared ?? false,
     avatarUrl: null,
   });
 }
 
-describe('the all-time board', () => {
-  it('shows only the chain being asked about', () => {
-    play(LIVE, 'main', 5_000);
-    play(TEST, 'test', 90_000);
+describe('one identity across both chains', () => {
+  it('is the same person, whichever chain you ask about', () => {
+    play(PILOT, 'main', 5_000, { name: 'Ada' });
+
+    // Never flown on testnet, and still a real person there rather than a
+    // stranger: the name is theirs, the totals are simply zero.
+    const rehearsal = profiles.get(PILOT, 'test');
+    expect(rehearsal?.name).toBe('Ada');
+    expect(rehearsal?.lifetimeFace).toBe(0);
+  });
+
+  it('carries a clan across the switch', () => {
+    const tag = clans.normaliseTag('WOLF')!;
+    play(PILOT, 'main', 5_000);
+    clans.join(PILOT, 'Ada', tag, Date.now());
+
+    expect(profiles.get(PILOT, 'main')?.clanTag).toBe(tag);
+    expect(profiles.get(PILOT, 'test')?.clanTag).toBe(tag);
+  });
+});
+
+describe('progress does not cross chains', () => {
+  it('keeps the two totals apart', () => {
+    play(PILOT, 'main', 5_000);
+    play(PILOT, 'test', 90_000);
+
+    expect(profiles.get(PILOT, 'main')?.lifetimeFace).toBe(5_000);
+    expect(profiles.get(PILOT, 'test')?.lifetimeFace).toBe(90_000);
+  });
+
+  it('does not let a testnet grind buy a mainnet assist tier', () => {
+    /*
+     * The one that actually matters. earnedAssist reads stagesCleared, so a
+     * pooled campaign count is a free difficulty reduction on the paid chain.
+     */
+    play(PILOT, 'test', 100, { stage: 1, stageCleared: true });
+    play(PILOT, 'test', 100, { stage: 2, stageCleared: true });
+
+    expect(profiles.get(PILOT, 'test')?.stagesCleared).toBe(2);
+    expect(profiles.get(PILOT, 'main')?.stagesCleared).toBe(0);
+  });
+
+  it('ranks each board on its own chain', () => {
+    play(PILOT, 'main', 5_000);
+    play(OTHER, 'test', 90_000);
 
     const live = profiles.allTime(50, 'main').map((p) => p.id);
     const rehearsal = profiles.allTime(50, 'test').map((p) => p.id);
 
-    expect(live).toContain(LIVE);
-    expect(live).not.toContain(TEST);
-    expect(rehearsal).toContain(TEST);
-    expect(rehearsal).not.toContain(LIVE);
+    expect(live).toContain(PILOT);
+    expect(live).not.toContain(OTHER);
+    expect(rehearsal).toContain(OTHER);
+    expect(rehearsal).not.toContain(PILOT);
+  });
+
+  it('folds two devices per chain when an account signs in', () => {
+    // A phone that only ever flew testnet must not top up the real total.
+    play(PILOT, 'test', 40_000);
+    play(OTHER, 'main', 1_000);
+
+    profiles.merge(PILOT, OTHER);
+
+    expect(profiles.get(OTHER, 'main')?.lifetimeFace).toBe(1_000);
+    expect(profiles.get(OTHER, 'test')?.lifetimeFace).toBe(40_000);
   });
 });
 
-describe('a clan tag on both chains is two clans', () => {
-  beforeEach(() => {
-    clans.restore([]);
-  });
-
-  it('lets each chain own the same tag independently', () => {
-    const tag = clans.normaliseTag('WOLF')!;
-
-    expect(clans.join(LIVE, 'Live', tag, Date.now(), 'main').status).toBe('founded');
-    // Founded again, not "requested": on testnet nobody has taken it.
-    expect(clans.join(TEST, 'Test', tag, Date.now(), 'test').status).toBe('founded');
-  });
-
-  it('does not pool the two rosters into one row', () => {
-    /*
-     * The failure this catches is silent and flattering: a clan that looks
-     * twice its size with a Face total nobody earned on the chain being shown.
-     */
+describe('a clan is one clan', () => {
+  it('cannot be founded twice by switching network', () => {
     const tag = clans.normaliseTag('PACK')!;
 
-    play(LIVE, 'main', 5_000);
-    play(TEST, 'test', 90_000);
-    clans.join(LIVE, 'Live', tag, Date.now(), 'main');
-    clans.join(TEST, 'Test', tag, Date.now(), 'test');
-
-    const live = clans.detail(tag, 'main');
-    const rehearsal = clans.detail(tag, 'test');
-
-    expect(live?.members).toBe(1);
-    expect(rehearsal?.members).toBe(1);
-    expect(live?.face).toBe(5_000);
-    expect(rehearsal?.face).toBe(90_000);
+    expect(clans.join(PILOT, 'Ada', tag, Date.now()).status).toBe('founded');
+    // Not "founded" again: the tag is taken, so the second pilot has to ask.
+    expect(clans.join(OTHER, 'Bo', tag, Date.now()).status).toBe('requested');
   });
 
-  it('keeps the owner of one off the other', () => {
+  it('shows the same roster on both chains', () => {
     const tag = clans.normaliseTag('HERD')!;
-    clans.join(LIVE, 'Live', tag, Date.now(), 'main');
-    clans.join(TEST, 'Test', tag, Date.now(), 'test');
+    play(PILOT, 'main', 5_000);
+    clans.join(PILOT, 'Ada', tag, Date.now());
 
-    expect(clans.detail(tag, 'main')?.ownerId).toBe(LIVE);
-    expect(clans.detail(tag, 'test')?.ownerId).toBe(TEST);
+    expect(clans.detail(tag, 'main')?.members).toBe(1);
+    expect(clans.detail(tag, 'test')?.members).toBe(1);
   });
 
-  it('survives a restart with both chains intact', () => {
-    // restore used to rebuild every clan onto one key, which is this whole
-    // change undone on the next deploy.
+  it('counts only the Face earned on the chain being shown', () => {
     const tag = clans.normaliseTag('CREW')!;
-    clans.join(LIVE, 'Live', tag, Date.now(), 'main');
-    clans.join(TEST, 'Test', tag, Date.now(), 'test');
+    play(PILOT, 'main', 5_000);
+    play(OTHER, 'test', 90_000);
+    clans.join(PILOT, 'Ada', tag, Date.now());
+    clans.join(OTHER, 'Bo', tag, Date.now());
+    clans.decide(tag, PILOT, OTHER, true);
+
+    // Same two people in both places, and two different totals.
+    expect(clans.detail(tag, 'main')?.members).toBe(2);
+    expect(clans.detail(tag, 'test')?.members).toBe(2);
+    expect(clans.detail(tag, 'main')?.face).toBe(5_000);
+    expect(clans.detail(tag, 'test')?.face).toBe(90_000);
+  });
+
+  it('keeps its owner through a restart', () => {
+    const tag = clans.normaliseTag('KIN')!;
+    clans.join(PILOT, 'Ada', tag, Date.now());
 
     clans.restore(clans.serialise());
 
-    expect(clans.detail(tag, 'main')?.ownerId).toBe(LIVE);
-    expect(clans.detail(tag, 'test')?.ownerId).toBe(TEST);
+    expect(clans.detail(tag, 'main')?.ownerId).toBe(PILOT);
+    expect(clans.detail(tag, 'test')?.ownerId).toBe(PILOT);
+  });
+});
+
+describe('older snapshots load', () => {
+  it('reads a flat record with no network as mainnet', () => {
+    /*
+     * The shape written before progress was bucketed. Reading it as anything
+     * other than mainnet would quietly demote real Face to a rehearsal.
+     */
+    profiles.restore([
+      { id: PILOT, name: 'Ada', lifetimeFace: 7_500, bestScore: 900, stagesCleared: 3 },
+    ]);
+
+    expect(profiles.get(PILOT, 'main')?.lifetimeFace).toBe(7_500);
+    expect(profiles.get(PILOT, 'main')?.stagesCleared).toBe(3);
+    expect(profiles.get(PILOT, 'test')?.lifetimeFace).toBe(0);
   });
 
-  it('reads a clan saved before the split as mainnet', () => {
-    clans.restore([{ tag: 'OLDS', ownerId: LIVE, createdAt: 1, pending: [] }]);
+  it('honours a flat record that says it was testnet', () => {
+    // Written during the short window the two were separate identities.
+    profiles.restore([{ id: PILOT, name: 'Ada', network: 'test', lifetimeFace: 7_500 }]);
 
-    expect(clans.detail('OLDS', 'main')?.ownerId).toBe(LIVE);
-    expect(clans.detail('OLDS', 'test')).toBeNull();
+    expect(profiles.get(PILOT, 'test')?.lifetimeFace).toBe(7_500);
+    expect(profiles.get(PILOT, 'main')?.lifetimeFace).toBe(0);
+  });
+
+  it('round-trips the bucketed shape', () => {
+    play(PILOT, 'main', 5_000);
+    play(PILOT, 'test', 90_000);
+
+    profiles.restore(profiles.serialise() as unknown[]);
+
+    expect(profiles.get(PILOT, 'main')?.lifetimeFace).toBe(5_000);
+    expect(profiles.get(PILOT, 'test')?.lifetimeFace).toBe(90_000);
   });
 });
