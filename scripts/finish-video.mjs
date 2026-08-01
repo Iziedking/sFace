@@ -72,6 +72,14 @@ async function buildNarration() {
   await mkdir(WORK, { recursive: true });
   const parts = [];
 
+  // The same lead in the title card is holding for. See the note in build-video.
+  const leadIn = Number(script.leadIn) || 0;
+  if (leadIn > 0) {
+    const head = join(WORK, 'lead.wav');
+    await ff(['-f', 'lavfi', '-i', `anullsrc=r=48000:cl=stereo:d=${leadIn}`, head, '-y']);
+    parts.push({ file: head, seconds: leadIn });
+  }
+
   for (const [i, line] of script.lines.entries()) {
     const wav = join(VOICE, `${String(i).padStart(3, '0')}.wav`);
     const spoken = existsSync(wav)

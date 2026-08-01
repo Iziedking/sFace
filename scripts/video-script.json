@@ -8,8 +8,13 @@
     "footage after the line finishes, for shots that need to breathe.",
     "",
     "Read at about 145 words a minute. Timings are derived from the rendered",
-    "audio, never guessed, so a rewrite reflows the whole video automatically."
+    "audio, never guessed, so a rewrite reflows the whole video automatically.",
+    "",
+    "`leadIn` is silence before the first line, in seconds. Both the picture and",
+    "the narration read it, so the title card holds for exactly as long as the",
+    "voice waits and the two cannot drift."
   ],
+  "leadIn": 4,
   "lines": [
     {
       "scene": "title",
@@ -26,7 +31,6 @@
       "text": "Nobody drew this. The market did, at midnight, and it will draw a different one tomorrow.",
       "hold": 0.8
     },
-
     {
       "scene": "problem",
       "text": "This cycle has been a long run of things going quiet.",
@@ -42,7 +46,6 @@
       "text": "sFace is what you would rather look at. A rescue game where the wreck is the market, and the people trapped in it are the accounts who were arguing about it hours ago.",
       "hold": 0.8
     },
-
     {
       "scene": "chart",
       "text": "It plays as a twin stick shooter. Fly the day's chart, pull people out, reach extraction before the clock.",
@@ -63,7 +66,6 @@
       "text": "There is a car. It is twice as fast and heard from twice as far.",
       "hold": 0.6
     },
-
     {
       "scene": "panel",
       "text": "Then the game stops asking you to shoot, and starts asking you to read.",
@@ -79,7 +81,6 @@
       "text": "Every post links back to the original. Nothing here is written by us and put in somebody's mouth.",
       "hold": 0.7
     },
-
     {
       "scene": "rings",
       "text": "The finale is a third kind of world. Concentric walls around a core, worked inward.",
@@ -95,7 +96,6 @@
       "text": "Reach one and it tells you how it is holding up. Fly past it and you can still reach the wall. You simply cannot answer it.",
       "hold": 0.8
     },
-
     {
       "scene": "clan",
       "text": "It is built for Nimiq Pay. Your wallet is your name, so a score belongs to an address instead of a device anyone can throw away.",
@@ -111,7 +111,6 @@
       "text": "Pull your closest mutuals into a clan and pool your Face. Stake a friend on the exact same seed and settle it in NIM, wallet to wallet. sFace never holds funds.",
       "hold": 0.8
     },
-
     {
       "scene": "ending",
       "text": "Clear all seven stages and the camera pulls back, until the day you just fought through is a notch on a long climb.",
@@ -122,7 +121,6 @@
       "text": "Two trillion is still early. That is the only thing this game argues, and it waits until you have earned it.",
       "hold": 1.0
     },
-
     {
       "scene": "close",
       "text": "sFace. The market builds the level. Play it at sface dot site, and the code is on GitHub.",

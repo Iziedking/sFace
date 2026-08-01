@@ -25,7 +25,7 @@ import * as signals from './xsignals';
 import * as profiles from './profiles';
 import * as xauth from './xauth';
 import { attachLive } from './live';
-import { flush, loadSnapshot, scheduleSave } from './store';
+import { backupSnapshot, flush, loadSnapshot, saveNow, scheduleSave } from './store';
 import { verifyClaim } from './attest';
 import { levelFacts, refuse } from './verify';
 
@@ -906,6 +906,38 @@ async function main(): Promise<void> {
     clans.restore((restored as { clans?: unknown }).clans);
     signals.restore((restored as { signals?: unknown }).signals);
     console.log('[sface] restored snapshot');
+
+    /*
+     * Put the new shape on disk once, deliberately, rather than whenever.
+     *
+     * Profiles used to hold their totals flat; they now hold one set per chain.
+     * `restore` reads both, so nothing is broken without this, and the file
+     * would convert itself the first time anybody posted a score anyway.
+     *
+     * Doing it here buys one thing worth having: the reading half stops being
+     * load-bearing. While an old-shape file exists anywhere, that branch has to
+     * survive every future edit, and deleting it as dead code would not throw.
+     * It would read every profile as zeroes. Face gone, ranks gone, campaign
+     * progress gone, no error anywhere.
+     *
+     * The original is copied aside first, because this is the one write that
+     * replaces data with a shape that has never been on this disk. If the
+     * backup cannot be made the migration does not happen: converting anyway,
+     * with nothing to go back to, is the opposite of careful.
+     */
+    const legacy = profiles.legacyCount();
+    if (legacy > 0) {
+      const stamp = utcDate();
+      const kept = await backupSnapshot(stamp);
+      if (kept) {
+        await saveNow(snapshot());
+        console.log(
+          `[sface] migrated ${legacy} profile${legacy === 1 ? '' : 's'} to per-chain totals, previous snapshot kept at ${kept}`,
+        );
+      } else {
+        console.error('[sface] skipped profile migration: could not back up the snapshot');
+      }
+    }
   }
 
   board.onChange(() => scheduleSave(snapshot));

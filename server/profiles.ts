@@ -141,6 +141,27 @@ function emptyProgress(): Progress {
   };
 }
 
+/**
+ * Take only the eight numbers, whatever else came with them.
+ *
+ * A flat pre-split record carries its identity fields in the same object as its
+ * totals, so spreading it wholesale puts a copy of the name, id and clan inside
+ * the progress bucket. `view` spreads the bucket last, which means those stale
+ * copies win over the account's real ones: rename a pilot and the old name
+ * comes back until they next fly that chain.
+ *
+ * Nothing about a chain is identity, so nothing about identity belongs in here.
+ */
+function pickProgress(raw: unknown): Progress {
+  const from = (raw ?? {}) as Partial<Progress>;
+  const out = emptyProgress();
+  for (const key of Object.keys(out) as Array<keyof Progress>) {
+    const value = from[key];
+    if (typeof value === 'number' && Number.isFinite(value)) out[key] = value;
+  }
+  return out;
+}
+
 function newAccount(id: string, name: string): Account {
   const now = Date.now();
   return {
@@ -392,7 +413,22 @@ export function serialise(): unknown {
   return [...accounts.values()];
 }
 
+/**
+ * How many records the last restore had to migrate.
+ *
+ * Read at boot to decide whether the file on disk is still the old shape. It is
+ * a count rather than a boolean so the log line can say what actually moved: a
+ * migration that silently touches every profile is worth one honest sentence in
+ * the output, and "migrated 0" is the line that proves it is finally done.
+ */
+let migrated = 0;
+
+export function legacyCount(): number {
+  return migrated;
+}
+
 export function restore(raw: unknown): void {
+  migrated = 0;
   if (!Array.isArray(raw)) return;
 
   // Replace rather than merge. A snapshot is a statement about the whole store,
@@ -411,7 +447,7 @@ export function restore(raw: unknown): void {
 
     if (item.chains && typeof item.chains === 'object') {
       for (const [network, progress] of Object.entries(item.chains)) {
-        account.chains[network] = { ...emptyProgress(), ...progress };
+        account.chains[network] = pickProgress(progress);
       }
     } else {
       /*
@@ -424,7 +460,8 @@ export function restore(raw: unknown): void {
        * board rather than quietly demoting it to a rehearsal.
        */
       const network = typeof item.network === 'string' ? item.network : DEFAULT_NETWORK;
-      account.chains[network] = { ...emptyProgress(), ...(item as Partial<Progress>) };
+      account.chains[network] = pickProgress(item);
+      migrated++;
     }
 
     accounts.set(account.id, account);

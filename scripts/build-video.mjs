@@ -197,7 +197,24 @@ async function buildShot(scene, seconds) {
        * The only real fix is a 1080p recording. This makes a 720p one look as
        * close as it is going to get.
        */
-      `crop=iw:ih-45:0:45,scale=${W}:${H}:force_original_aspect_ratio=increase:flags=lanczos,crop=${W}:${H},unsharp=5:5:0.9:5:5:0.0,fps=${FPS},format=yuv420p`,
+      /*
+       * Fit the whole frame in. Never crop to fill.
+       *
+       * Taking the browser chrome off the top changes the aspect ratio, and
+       * scaling that to FILL 16:9 then cropping back throws away forty five
+       * rows, centred, so it ate the top of the HUD and the bottom of the
+       * screen where the controls are. Nothing about a still frame shows that;
+       * it is obvious the moment anybody plays it.
+       *
+       * Fitting inside and padding the difference loses nothing. The bars are
+       * the game's own canvas colour, so they read as the page rather than as
+       * black bars.
+       */
+      `crop=iw:ih-45:0:45,` +
+        `scale=${W}:${H}:force_original_aspect_ratio=decrease:flags=lanczos,` +
+        `unsharp=5:5:0.9:5:5:0.0,` +
+        `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=0xF4EDE0,` +
+        `fps=${FPS},format=yuv420p`,
       '-an',
       '-c:v', 'libx264', '-preset', 'slow', '-crf', '15',
       out, '-y',
@@ -326,6 +343,16 @@ async function main() {
   await mkdir(WORK, { recursive: true });
 
   const { timings, total } = await lineTimings();
+
+  /*
+   * Silence before the first word, held by the title card.
+   *
+   * Added to the picture and to the narration from the same number in the
+   * script, so the card is on screen for exactly as long as the voice waits.
+   * Putting it in only one of the two is how everything after it ends up four
+   * seconds out.
+   */
+  const leadIn = Number(script.leadIn) || 0;
   console.log(`script: ${script.lines.length} lines, ${total.toFixed(1)}s of narration + holds`);
   if (total > 270) console.log('WARNING: over 4:30, trim the script');
 
@@ -335,7 +362,12 @@ async function main() {
   const order = [];
   for (const [scene, seconds] of need) {
     if (scene === 'title') {
-      order.push({ scene, file: await buildCard('title', seconds, 'sFace', 'THE MARKET BUILDS THE LEVEL'), seconds });
+      const held = seconds + leadIn;
+      order.push({
+        scene,
+        file: await buildCard('title', held, 'sFace', 'THE MARKET BUILDS THE LEVEL'),
+        seconds: held,
+      });
       continue;
     }
     if (scene === 'close') {
