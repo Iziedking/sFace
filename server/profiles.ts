@@ -76,6 +76,30 @@ export interface Progress {
    * campaign.
    */
   stagesCleared: number;
+
+  /**
+   * Staked contests this pilot has lost and been billed for, and how many of
+   * those they actually paid.
+   *
+   * ## Why this lives on the profile rather than being counted from contests
+   *
+   * Contests are pruned two days after the level they were pinned to, because
+   * nobody can verify one against a mission the service no longer holds. A
+   * settlement record counted from them would therefore reset every couple of
+   * days, which is the opposite of a record: the whole value of it is that it
+   * outlives the thing it is about.
+   *
+   * ## Why it exists at all
+   *
+   * There is no escrow, so nothing makes a loser pay. What the app can do is
+   * make not paying legible. Somebody deciding whether to stake against a
+   * stranger has one question, and this is the answer to it.
+   *
+   * Per chain, like everything else here. A testnet stake is faucet NIM and
+   * settling one says nothing about whether you would settle a real debt.
+   */
+  stakesOwed: number;
+  stakesSettled: number;
 }
 
 /**
@@ -138,6 +162,8 @@ function emptyProgress(): Progress {
     relics: 0,
     extractions: 0,
     stagesCleared: 0,
+    stakesOwed: 0,
+    stakesSettled: 0,
   };
 }
 
@@ -220,6 +246,9 @@ export function record(run: RunRecord): Profile {
       run.stageCleared && (run.stage ?? 0) === before.stagesCleared + 1
         ? before.stagesCleared + 1
         : before.stagesCleared,
+    // Untouched by flying. Only a contest settling moves these.
+    stakesOwed: before.stakesOwed,
+    stakesSettled: before.stakesSettled,
   };
 
   // The display name follows the latest run, so connecting an X account
@@ -309,6 +338,9 @@ export function merge(
       // happened.
       bestScore: Math.max(have.bestScore, add.bestScore),
       stagesCleared: Math.max(have.stagesCleared, add.stagesCleared),
+      // Debts add, like any other total. Two devices are one person's history.
+      stakesOwed: have.stakesOwed + add.stakesOwed,
+      stakesSettled: have.stakesSettled + add.stakesSettled,
     };
   }
 
@@ -325,6 +357,42 @@ export function merge(
   accounts.delete(fromId);
   persist();
   return view(into, network);
+}
+
+/**
+ * Note that this pilot has been billed for a staked contest they lost.
+ *
+ * Called once, when the contest settles, for each entrant who owes. Creating
+ * the profile if it does not exist: somebody can enter a contest before they
+ * have finished a run of their own, and a debt that failed to record because
+ * there was no row for it is exactly the one worth recording.
+ */
+export function recordDebt(id: string, name: string, network = DEFAULT_NETWORK): void {
+  const account = accounts.get(id) ?? newAccount(id, name);
+  const before = account.chains[network] ?? emptyProgress();
+  account.chains[network] = { ...before, stakesOwed: before.stakesOwed + 1 };
+  accounts.set(id, account);
+  persist();
+}
+
+/**
+ * Note that they paid one.
+ *
+ * Never more than they were billed for. The count is reported by the payer, so
+ * without the clamp a client could report the same settlement repeatedly and
+ * end up reading better than perfect, which is the one direction this number
+ * must not be able to move.
+ */
+export function recordSettlement(id: string, network = DEFAULT_NETWORK): void {
+  const account = accounts.get(id);
+  if (!account) return;
+
+  const before = account.chains[network] ?? emptyProgress();
+  account.chains[network] = {
+    ...before,
+    stakesSettled: Math.min(before.stakesOwed, before.stakesSettled + 1),
+  };
+  persist();
 }
 
 /**

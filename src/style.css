@@ -5836,3 +5836,46 @@ body.is-fullscreen .foot,
   color: var(--ink-muted);
   margin: 0;
 }
+
+/* The settlement record --------------------------------------------------
+   There is no escrow, so this is the whole accountability layer: whether a
+   pilot pays what they lose, on their own profile, where somebody deciding
+   to stake against them will see it. */
+
+.record {
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  padding: 12px 14px;
+  display: grid;
+  gap: 4px;
+}
+
+/* Marked only when there is nothing outstanding. An accent on every state
+   would make the colour mean "this panel exists" rather than "this is clean". */
+.record--clean {
+  background: var(--rescue-pale, var(--paper));
+}
+
+.record__head {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--ink-muted);
+  margin: 0;
+}
+
+.record__figure {
+  font-family: var(--mono);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.record__say {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+  margin: 0;
+  max-width: 54ch;
+}

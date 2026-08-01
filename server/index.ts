@@ -21,6 +21,7 @@ import * as board from './leaderboard';
 import * as challenges from './challenges';
 import * as clans from './clans';
 import * as contests from './contests';
+import * as contestRules from '../src/data/contests';
 import * as ghosts from './ghosts';
 import * as signals from './xsignals';
 import * as profiles from './profiles';
@@ -483,7 +484,7 @@ app.post('/board', limit(20, 10), async (req, res) => {
    * stake that does not know about it. In the same request they arrive together
    * or not at all.
    */
-  contests.recordScore({
+  const justSettled = contests.recordScore({
     network: networkOf(req),
     pilotId: parsed.data.deviceId,
     date: parsed.data.date,
@@ -491,6 +492,21 @@ app.post('/board', limit(20, 10), async (req, res) => {
     stage: parsed.data.stage ?? 1,
     score: parsed.data.score,
   });
+
+  /*
+   * Write the debts once, at the moment a contest becomes settled.
+   *
+   * Here rather than in the store, because the store knows nothing about
+   * profiles and should not: it answers who owes what, and the record of
+   * whether people pay is a different question kept somewhere that outlives
+   * the contest, which is pruned after two days.
+   */
+  for (const contest of justSettled) {
+    for (const owed of contestRules.obligationsOf(contest)) {
+      const who = contest.entrants.find((e) => e.id === owed.fromId);
+      profiles.recordDebt(owed.fromId, who?.name ?? 'Pilot', networkOf(req));
+    }
+  }
 
   const profile = profiles.record({
     id: parsed.data.deviceId,
@@ -722,6 +738,10 @@ app.post('/contests/:id/settled', limit(20, 10), (req, res) => {
     res.status(result.code).json({ error: result.reason });
     return;
   }
+
+  // The record of whether people settle, which is the only thing standing in
+  // for an escrow this app was never able to build.
+  profiles.recordSettlement(parsed.data.deviceId, networkOf(req));
 
   res.json(contests.toPublic(result.value));
 });

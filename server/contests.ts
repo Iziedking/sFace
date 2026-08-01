@@ -338,8 +338,17 @@ export function recordScore(input: {
   seed: string;
   stage: number;
   score: number;
-}): void {
+}): Contest[] {
   let touched = false;
+  /*
+   * The contests that settled on this score, handed back to the caller.
+   *
+   * The settlement record on a profile has to be written exactly once per debt,
+   * and the only moment that is knowable is the transition into settled. This
+   * store deliberately knows nothing about profiles, so it reports the
+   * transition and the route does the writing.
+   */
+  const settled: Contest[] = [];
 
   for (const contest of contests.values()) {
     if (contest.network !== input.network) continue;
@@ -355,10 +364,11 @@ export function recordScore(input: {
     entrant.scores[input.stage] = Math.max(0, Math.round(input.score));
     touched = true;
 
-    settleIfDone(contest);
+    if (settleIfDone(contest)) settled.push(toPublic(contest));
   }
 
   if (touched) persist();
+  return settled;
 }
 
 /**
@@ -368,11 +378,12 @@ export function recordScore(input: {
  * that never filled still ends once its entrants are done, or an abandoned
  * seat would hold a result open forever and the stake with it.
  */
-function settleIfDone(contest: Stored): void {
-  if (contest.entrants.length === 0) return;
-  if (!contest.entrants.every((e) => hasFinished(contest, e))) return;
+function settleIfDone(contest: Stored): boolean {
+  if (contest.entrants.length === 0) return false;
+  if (!contest.entrants.every((e) => hasFinished(contest, e))) return false;
 
   contest.status = 'settled';
+  return true;
 }
 
 /**

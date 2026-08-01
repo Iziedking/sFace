@@ -163,6 +163,10 @@ describe('the bucket holds numbers and nothing else', () => {
       'rescued',
       'runs',
       'stagesCleared',
+      // The settlement record, added with staked contests. Per chain, because
+      // settling a faucet-NIM debt says nothing about a real one.
+      'stakesOwed',
+      'stakesSettled',
     ]);
   });
 

@@ -146,6 +146,8 @@ export function renderProfile(root: HTMLElement, options: ProfileOptions): void 
         options.walletAddress ? balanceLine(options.balanceNim) : null,
       ),
 
+      settlementRecord(profile),
+
       el(
         'div',
         { class: 'tiles' },
@@ -181,6 +183,50 @@ export function renderProfile(root: HTMLElement, options: ProfileOptions): void 
 
       el('div', { class: 'actions' }, button('Done', options.onBack)),
     ),
+  );
+}
+
+/**
+ * Whether this pilot pays what they lose.
+ *
+ * ## Why a game has a credit rating
+ *
+ * There is no escrow. Nimiq supports the contract type, but the Mini App wallet
+ * signs ten methods and none of them creates one, so nothing can hold a stake
+ * while a contest is flown. A staked contest is a promise between two people.
+ *
+ * That leaves one useful thing to build: make the promise legible. Somebody
+ * deciding whether to stake against a stranger has exactly one question, and
+ * this is the answer to it. It enforces nothing and is not pretending to.
+ *
+ * ## Absent until it means something
+ *
+ * Hidden for anybody who has never been billed, rather than shown as zero of
+ * zero. A fresh player has not failed to pay anything, and a record implying
+ * otherwise would be the panel accusing somebody of nothing.
+ */
+function settlementRecord(profile: Profile | null): HTMLElement | null {
+  const owed = profile?.stakesOwed ?? 0;
+  if (!profile || owed === 0) return null;
+
+  const settled = Math.min(owed, profile.stakesSettled);
+  const outstanding = owed - settled;
+  const clean = outstanding === 0;
+
+  return el(
+    'div',
+    { class: clean ? 'record record--clean' : 'record' },
+    el('p', { class: 'record__head', text: 'SETTLEMENT RECORD' }),
+    el('p', {
+      class: 'record__figure',
+      text: `Settled ${settled} of ${owed}`,
+    }),
+    el('p', {
+      class: 'record__say',
+      text: clean
+        ? 'Every staked contest you have lost, paid. Nothing forces this, which is exactly why it is worth showing.'
+        : `${outstanding} still outstanding. sFace cannot collect it, and this line is on your profile until you do.`,
+    }),
   );
 }
 

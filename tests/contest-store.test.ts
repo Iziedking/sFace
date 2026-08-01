@@ -11,6 +11,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import * as contests from '../server/contests';
+import * as profiles from '../server/profiles';
+import { obligationsOf } from '../src/data/contests';
 
 const HOST = 'a'.repeat(64);
 const RIVAL = 'b'.repeat(64);
@@ -453,5 +455,98 @@ describe('settling a staked contest', () => {
 
     expect(contests.debtsFor(RIVAL, 'main')).toEqual([]);
     expect(ADDR_B.length).toBeGreaterThan(0);
+  });
+});
+
+describe('the settlement record', () => {
+  /*
+   * The only accountability there is. No escrow means nothing makes a loser
+   * pay, so the record of whether they do has to outlive the contest itself,
+   * which is pruned two days after the level it was pinned to.
+   */
+  it('bills every loser exactly once, when the contest settles', () => {
+    profiles.restore([]);
+
+    const c = open({ stages: [1], seats: 2, stakeNim: 5 });
+    enter(c.id, RIVAL, null);
+
+    fly(HOST, 1, 900);
+    // Not settled yet, so nobody has been billed.
+    expect(settledFor(c).length).toBe(0);
+
+    fly(RIVAL, 1, 100);
+
+    const bills = settledFor(c);
+    expect(bills.map((o) => o.fromId)).toEqual([RIVAL]);
+  });
+
+  /** The obligations a just-settled contest reports, as the route reads them. */
+  function settledFor(created: { id: string }) {
+    const found = contests.get(created.id, 'main');
+    if (!found.ok || found.value.status !== 'settled') return [];
+    return obligationsOf(found.value);
+  }
+
+  it('reports a settled contest back from recordScore, once', () => {
+    /*
+     * The route writes the debt on the transition into settled, so reporting it
+     * twice would bill somebody twice for one loss and a record that can be
+     * inflated is worse than none.
+     */
+    const c = open({ stages: [1], seats: 2, stakeNim: 5 });
+    enter(c.id, RIVAL, null);
+
+    const first = contests.recordScore({
+      network: 'main', pilotId: HOST, date: DATE, seed: SEED, stage: 1, score: 900,
+    });
+    expect(first).toHaveLength(0);
+
+    const second = contests.recordScore({
+      network: 'main', pilotId: RIVAL, date: DATE, seed: SEED, stage: 1, score: 100,
+    });
+    expect(second.map((x) => x.id)).toEqual([c.id]);
+
+    // Anything after the transition reports nothing, however many scores land.
+    const third = contests.recordScore({
+      network: 'main', pilotId: RIVAL, date: DATE, seed: SEED, stage: 1, score: 999,
+    });
+    expect(third).toHaveLength(0);
+  });
+
+  it('cannot be inflated past what was owed', () => {
+    // The count is reported by the payer, so without the clamp a client could
+    // report one settlement repeatedly and read better than perfect.
+    profiles.restore([]);
+    profiles.recordDebt(RIVAL, '@rival', 'main');
+
+    profiles.recordSettlement(RIVAL, 'main');
+    profiles.recordSettlement(RIVAL, 'main');
+    profiles.recordSettlement(RIVAL, 'main');
+
+    const p = profiles.get(RIVAL, 'main');
+    expect(p?.stakesOwed).toBe(1);
+    expect(p?.stakesSettled).toBe(1);
+  });
+
+  it('keeps the record per chain', () => {
+    // Settling a faucet-NIM debt says nothing about whether you would settle a
+    // real one.
+    profiles.restore([]);
+    profiles.recordDebt(RIVAL, '@rival', 'test');
+
+    expect(profiles.get(RIVAL, 'test')?.stakesOwed).toBe(1);
+    expect(profiles.get(RIVAL, 'main')?.stakesOwed).toBe(0);
+  });
+
+  it('survives a restart', () => {
+    profiles.restore([]);
+    profiles.recordDebt(RIVAL, '@rival', 'main');
+    profiles.recordSettlement(RIVAL, 'main');
+
+    profiles.restore(profiles.serialise() as unknown[]);
+
+    const p = profiles.get(RIVAL, 'main');
+    expect(p?.stakesOwed).toBe(1);
+    expect(p?.stakesSettled).toBe(1);
   });
 });

@@ -34,6 +34,16 @@ export interface Profile {
   /** Highest campaign stage cleared, 0 to 7. */
   stagesCleared: number;
 
+  /**
+   * Staked contests lost, and how many were paid.
+   *
+   * The settlement record. There is no escrow, so nothing makes a loser pay;
+   * what the app can do is make not paying legible to whoever is deciding
+   * whether to stake against them.
+   */
+  stakesOwed: number;
+  stakesSettled: number;
+
   /** Position on the all-time board. Zero until they have scored. */
   allTimeRank?: number;
 }
@@ -52,6 +62,8 @@ export function emptyProfile(id: string, name: string): Profile {
     relics: 0,
     extractions: 0,
     stagesCleared: 0,
+    stakesOwed: 0,
+    stakesSettled: 0,
   };
 }
 
@@ -138,6 +150,10 @@ export function parse(raw: unknown): Profile | null {
     relics: count(value.relics),
     extractions: count(value.extractions),
     stagesCleared: Math.min(7, count(value.stagesCleared)),
+    stakesOwed: count(value.stakesOwed),
+    // Never more than were owed. A record that reads better than perfect is a
+    // broken record, and this one is the whole point of the panel.
+    stakesSettled: Math.min(count(value.stakesOwed), count(value.stakesSettled)),
     allTimeRank: count(value.allTimeRank),
   };
 }
