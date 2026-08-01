@@ -279,7 +279,8 @@ app.get('/board/:date', limit(120, 40), (req, res) => {
    * Merged here rather than duplicated into the board store, which only needs
    * to know about today.
    */
-  const rows = board.top(date.data).map((entry) => {
+  // The board the caller is looking at, which is the one their client is on.
+  const rows = board.top(networkOf(req), date.data).map((entry) => {
     const profile = profiles.get(entry.id);
     return {
       ...entry,
@@ -407,7 +408,13 @@ app.post('/board', limit(20, 10), async (req, res) => {
     }
   }
 
-  const result = board.submit({ ...body, address, proof });
+  /*
+   * Stamped with the network the client declared, never with anything the body
+   * claims. A score can only land on the board it was played on, and the client
+   * is trusted with this exactly because declaring testnet can only ever mean
+   * less: no metered reads, and a row that stays off the mainnet board.
+   */
+  const result = board.submit({ ...body, network: networkOf(req), address, proof });
   if (!result.ok) {
     res.status(422).json({ error: result.reason });
     return;

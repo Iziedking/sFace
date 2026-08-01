@@ -195,6 +195,8 @@ describe('leaderboard', () => {
   const good = {
     deviceId: CREATOR,
     name: 'Pilot A1B2',
+    // Boards are per network now, so every fixture has to say which one.
+    network: 'main',
     date: '2026-01-01',
     score: 4200,
     facesExtracted: 3,
@@ -235,7 +237,7 @@ describe('leaderboard', () => {
     board.submit({ ...good, date, score: 5000 });
     board.submit({ ...good, date, score: 1000 });
 
-    const top = board.top(date);
+    const top = board.top('main', date);
     expect(top).toHaveLength(1);
     expect(top[0]?.score).toBe(5000);
   });
@@ -246,16 +248,16 @@ describe('leaderboard', () => {
     board.submit({ ...good, date, deviceId: OPPONENT, score: 3000 });
     board.submit({ ...good, date, deviceId: THIRD, score: 3000 });
 
-    const top = board.top(date);
+    const top = board.top('main', date);
     expect(top.map((e) => e.score)).toEqual([3000, 3000, 1000]);
     expect(top[0]?.id).toBe(OPPONENT);
   });
 
   it('drops boards older than a week', () => {
     board.submit({ ...good, date: '2026-04-01' });
-    expect(board.top('2026-04-01')).toHaveLength(1);
+    expect(board.top('main', '2026-04-01')).toHaveLength(1);
 
     board.prune('2026-05-01');
-    expect(board.top('2026-04-01')).toHaveLength(0);
+    expect(board.top('main', '2026-04-01')).toHaveLength(0);
   });
 });

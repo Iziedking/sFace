@@ -124,6 +124,8 @@ export interface SubmitInput {
   facesExtracted: number;
   attackersCleared: number;
   duration: number;
+  /** Which chain this was played on. Boards do not mix. */
+  network: string;
   /** Verified address, or null. The route verifies; this module only stores. */
   address?: string | null;
   /** The verified signature, kept so the claim outlives this service. */
@@ -134,15 +136,40 @@ export type SubmitResult =
   | { ok: true; rank: number }
   | { ok: false; reason: string };
 
-/** date -> deviceId -> entry */
+/**
+ * network and date -> deviceId -> entry
+ *
+ * ## Why the network is in the key
+ *
+ * It was not, and the README said it was. Every score landed in one table keyed
+ * only by date, so a run played on testnet, where NIM is free and a faucet hands
+ * it out, sat on the same board as one played for real. The claim that testnet
+ * scores are kept off the mainnet board was simply untrue.
+ *
+ * Two boards, and a score can only ever be on the one it was played on. That is
+ * also what makes testnet worth having: somewhere to learn the game and try a
+ * staked challenge without it counting, which is only true if it genuinely does
+ * not count.
+ */
 const boards = new Map<string, Map<string, Entry>>();
+
+/**
+ * One board.
+ *
+ * Network first, so anything iterating keys can group by it, and so a missing
+ * network is visible in a dump rather than silently colliding with a date.
+ */
+function keyOf(network: string, date: string): string {
+  return `${network}:${date}`;
+}
 
 export function submit(input: SubmitInput): SubmitResult {
   const rejection = implausible(input);
   if (rejection) return { ok: false, reason: rejection };
 
-  const board = boards.get(input.date) ?? new Map<string, Entry>();
-  boards.set(input.date, board);
+  const key = keyOf(input.network, input.date);
+  const board = boards.get(key) ?? new Map<string, Entry>();
+  boards.set(key, board);
 
   const existing = board.get(input.deviceId);
 
@@ -162,11 +189,11 @@ export function submit(input: SubmitInput): SubmitResult {
     persist();
   }
 
-  return { ok: true, rank: rankOf(input.date, input.deviceId) };
+  return { ok: true, rank: rankOf(input.network, input.date, input.deviceId) };
 }
 
-export function top(date: string, limit = BOARD_LIMIT): PublicEntry[] {
-  return sorted(date)
+export function top(network: string, date: string, limit = BOARD_LIMIT): PublicEntry[] {
+  return sorted(network, date)
     .slice(0, limit)
     .map((entry) => ({
       id: entry.id,
@@ -177,13 +204,13 @@ export function top(date: string, limit = BOARD_LIMIT): PublicEntry[] {
     }));
 }
 
-export function rankOf(date: string, deviceId: string): number {
-  const index = sorted(date).findIndex((entry) => entry.id === deviceId);
+export function rankOf(network: string, date: string, deviceId: string): number {
+  const index = sorted(network, date).findIndex((entry) => entry.id === deviceId);
   return index === -1 ? 0 : index + 1;
 }
 
-function sorted(date: string): Entry[] {
-  const board = boards.get(date);
+function sorted(network: string, date: string): Entry[] {
+  const board = boards.get(keyOf(network, date));
   if (!board) return [];
   // Ties break on who got there first. Arbitrary, but stable, and a board that
   // reorders on refresh looks broken.
@@ -208,7 +235,7 @@ function implausible(input: SubmitInput): string | null {
 // Persistence -------------------------------------------------------------
 
 export function serialise(): unknown {
-  return [...boards.entries()].map(([date, board]) => [date, [...board.values()]]);
+  return [...boards.entries()].map(([key, board]) => [key, [...board.values()]]);
 }
 
 export function restore(raw: unknown): void {
@@ -216,8 +243,18 @@ export function restore(raw: unknown): void {
 
   for (const pair of raw) {
     if (!Array.isArray(pair) || pair.length !== 2) continue;
-    const [date, entries] = pair as [unknown, unknown];
-    if (typeof date !== 'string' || !Array.isArray(entries)) continue;
+    const [rawKey, entries] = pair as [unknown, unknown];
+    if (typeof rawKey !== 'string' || !Array.isArray(entries)) continue;
+
+    /*
+     * Anything saved before the boards were split is a mainnet board.
+     *
+     * The old key was the date alone. Loading one of those as-is would make a
+     * board nobody can reach, because every read now asks for a network, and
+     * the live site has real scores in that shape. A key with no colon is from
+     * before the split and everything before the split was mainnet.
+     */
+    const key = rawKey.includes(':') ? rawKey : keyOf('main', rawKey);
 
     const board = new Map<string, Entry>();
     for (const entry of entries as Entry[]) {
@@ -225,15 +262,26 @@ export function restore(raw: unknown): void {
         board.set(entry.id, entry);
       }
     }
-    boards.set(date, board);
+    boards.set(key, board);
   }
 }
 
 /** Drop boards older than a week. This service is not an archive. */
 export function prune(today: string): void {
   const cutoff = Date.parse(`${today}T00:00:00Z`) - 7 * 86_400_000;
-  for (const date of boards.keys()) {
-    if (Date.parse(`${date}T00:00:00Z`) < cutoff) boards.delete(date);
+
+  for (const key of boards.keys()) {
+    /*
+     * The date is the back half of the key now.
+     *
+     * This used to parse the whole key as a date, which quietly stopped working
+     * the moment the network went in front of it: Date.parse returns NaN, every
+     * comparison against NaN is false, and nothing is ever pruned. A store that
+     * grows forever and never errors is the kind of bug that is found months
+     * later by a memory graph.
+     */
+    const date = key.slice(key.indexOf(':') + 1);
+    if (Date.parse(`${date}T00:00:00Z`) < cutoff) boards.delete(key);
   }
 }
 
