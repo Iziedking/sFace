@@ -5473,17 +5473,49 @@ body.is-fullscreen .foot,
 
 /* The bell ---------------------------------------------------------------- */
 
+/* Sized off the chips beside it rather than set by eye, so the clan tag, the
+   network chip and the bell sit on one line with one height between them. */
 .chrome__bell {
   appearance: none;
   position: relative;
+  display: grid;
+  place-items: center;
   border: 2px solid var(--ink);
   background: var(--paper);
-  width: 38px;
-  height: 38px;
-  font-size: 15px;
+  /* Measured against the network chip beside it rather than picked: that one
+     resolves to 26px from its own padding, and the bell being even four taller
+     made it the biggest thing on the bar. */
+  width: 26px;
+  height: 26px;
+  padding: 0;
   line-height: 1;
   cursor: pointer;
   flex: none;
+}
+
+.chrome__bellicon {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+
+/* Flat ink and one accent, like every other mark in the product. */
+.chrome__belldome {
+  fill: var(--accent);
+  stroke: var(--ink);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+}
+
+.chrome__bellclapper {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.chrome__bell--open .chrome__belldome {
+  fill: var(--canvas);
 }
 
 .chrome__bell--open {
@@ -5943,9 +5975,13 @@ body.is-fullscreen .foot,
   }
 
   .chrome__bell {
-    width: 34px;
-    height: 34px;
-    font-size: 13px;
+    width: 24px;
+    height: 24px;
+  }
+
+  .chrome__bellicon {
+    width: 14px;
+    height: 14px;
   }
 }
 
@@ -6140,6 +6176,97 @@ body.is-fullscreen .foot,
 .unsigned__more {
   font-family: var(--mono);
   font-size: 10px;
+  color: var(--ink-muted);
+  margin: 0;
+}
+
+/* A stake the presets do not carry. Sits in the same row as the chips and is
+   the same height, so it reads as one more option rather than a form. */
+.stakefield {
+  appearance: none;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  width: 88px;
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  padding: 8px 10px;
+  color: var(--ink);
+}
+
+.stakefield::placeholder {
+  color: var(--ink-faint);
+  font-weight: 600;
+}
+
+/* Marked when it is the one in force, the same as a selected chip. */
+.stakefield--on {
+  background: var(--accent);
+  box-shadow: var(--lift-sm);
+}
+
+/* The spinners are a second control for a thing that already has one, and on
+   a phone they eat a third of the field. */
+.stakefield::-webkit-outer-spin-button,
+.stakefield::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+/* What the stage asked for and did not get -------------------------------
+   The objective line alone was prose, so a player who fell two people short
+   was told to learn every project and had no idea which number failed. */
+
+.missed {
+  border: 2px solid var(--ink);
+  background: var(--accent-pale);
+  padding: 12px 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.missed__head {
+  font-size: 14px;
+  font-weight: 800;
+  margin: 0;
+}
+
+.missed__list {
+  display: grid;
+  gap: 0;
+  border: 2px solid var(--ink);
+  background: var(--canvas);
+}
+
+.missed__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  border-bottom: 2px solid var(--paper-deep);
+}
+
+.missed__row:last-child {
+  border-bottom: 0;
+}
+
+.missed__what {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* What they actually managed, so the gap is a number rather than a deduction. */
+.missed__got {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--accent-deep);
+  flex: none;
+}
+
+.missed__say {
+  font-size: 12px;
+  line-height: 1.45;
   color: var(--ink-muted);
   margin: 0;
 }

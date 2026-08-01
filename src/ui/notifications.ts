@@ -78,7 +78,7 @@ export function bell(options: BellOptions): HTMLElement {
           ? `${count} thing${count === 1 ? '' : 's'} waiting on you`
           : 'Nothing waiting on you',
     },
-    el('span', { class: 'chrome__bellicon', text: '🔔' }),
+    bellIcon(),
     /*
      * A count, not a dot.
      *
@@ -93,6 +93,42 @@ export function bell(options: BellOptions): HTMLElement {
 
   node.addEventListener('click', options.onToggle);
   return node;
+}
+
+/**
+ * The bell, drawn rather than typed.
+ *
+ * An emoji was wrong here for two reasons. It renders as whatever the operating
+ * system decides, so the bar carried a glossy Apple bell on one phone and a flat
+ * Google one on another, neither of which belongs to a product drawn in black
+ * ink on cream. And the house rule for this project has always been no emoji in
+ * the interface, which this broke.
+ *
+ * Same construction as everything else on the bar: a 2px black outline, one
+ * accent fill, no gradients. It sits on the same 12px grid as the chips beside
+ * it so the three read as one row rather than as an icon that wandered in.
+ */
+function bellIcon(): SVGElement {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('class', 'chrome__bellicon');
+  svg.setAttribute('viewBox', '0 0 20 20');
+  svg.setAttribute('aria-hidden', 'true');
+
+  const body = document.createElementNS(ns, 'path');
+  // The dome and its rim, in one stroke: a bell shape a child would draw.
+  body.setAttribute(
+    'd',
+    'M10 2.6c-2.7 0-4.6 2-4.6 4.6v3.3L4 13.1h12l-1.4-2.6V7.2c0-2.6-1.9-4.6-4.6-4.6z',
+  );
+  body.setAttribute('class', 'chrome__belldome');
+
+  const clapper = document.createElementNS(ns, 'path');
+  clapper.setAttribute('d', 'M8.2 15.1a1.9 1.9 0 0 0 3.6 0');
+  clapper.setAttribute('class', 'chrome__bellclapper');
+
+  svg.append(body, clapper);
+  return svg;
 }
 
 /** The panel. Null when closed, so there is nothing in the tree to trip over. */

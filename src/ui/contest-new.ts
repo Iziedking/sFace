@@ -76,6 +76,10 @@ const KINDS: ContestKind[] = ['duel', 'clan', 'gauntlet'];
  */
 const STAKES = [0, 1, 5, 10, 25];
 
+/** The same bounds the service enforces, so nothing typed here is refused. */
+const MIN_STAKE = 0;
+const MAX_STAKE = 1000;
+
 export function renderContestNew(root: HTMLElement, options: ContestNewOptions): void {
   const { draft } = options;
   const stages = stageRange(draft.from, draft.to);
@@ -143,6 +147,9 @@ export function renderContestNew(root: HTMLElement, options: ContestNewOptions):
             options.onChange({ ...draft, stakeNim: nim }),
           ),
         ),
+        // The presets cover the common cases and cannot cover everybody. Two
+        // people who agreed on 7 NIM should not have to round to 5 or 10.
+        stakeField(options),
       ),
 
       // Seats are meaningless on a clan contest, where the roster decides who
@@ -174,7 +181,7 @@ export function renderContestNew(root: HTMLElement, options: ContestNewOptions):
         text:
           draft.visibility === 'open'
             ? 'It appears in Contests for anybody to take a seat in.'
-            : 'It stays off the Contests list. Only somebody with the link can enter, so the link is the whole invitation.',
+            : 'It stays off the Contests list. Only someone with the link can enter, so the link is the invitation.',
       }),
 
       /*
@@ -206,6 +213,41 @@ export function renderContestNew(root: HTMLElement, options: ContestNewOptions):
       ),
     ),
   );
+}
+
+/**
+ * Any amount the presets do not carry.
+ *
+ * Bounded to the same range the service enforces, so nothing typed here can be
+ * refused on the far side. Clamped on the way out rather than blocked on the
+ * way in: somebody typing 100 passes through 1 and 10, and rejecting keystrokes
+ * as they arrive makes the field feel broken while it is being used.
+ */
+function stakeField(options: ContestNewOptions): HTMLElement {
+  const preset = STAKES.includes(options.draft.stakeNim);
+
+  const field = el('input', {
+    class: preset ? 'stakefield' : 'stakefield stakefield--on',
+    type: 'number',
+    inputmode: 'numeric',
+    min: String(MIN_STAKE),
+    max: String(MAX_STAKE),
+    step: '1',
+    placeholder: 'Custom',
+    value: preset ? '' : String(options.draft.stakeNim),
+    'aria-label': `Custom stake in NIM, ${MIN_STAKE} to ${MAX_STAKE}`,
+  }) as HTMLInputElement;
+
+  field.addEventListener('input', () => {
+    const typed = Number.parseInt(field.value, 10);
+    if (!Number.isFinite(typed)) return;
+    options.onChange({
+      ...options.draft,
+      stakeNim: Math.max(MIN_STAKE, Math.min(MAX_STAKE, typed)),
+    });
+  });
+
+  return field;
 }
 
 /**

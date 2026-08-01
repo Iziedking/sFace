@@ -103,6 +103,7 @@ import {
   STAGES,
   progressOf as stageProgressOf,
   stageAt,
+  stageCleared,
   stageUnlocked,
 } from './data/campaign';
 import {
@@ -151,6 +152,7 @@ function claimMessage(run: RunState): string {
 import { renderSettings } from './ui/settings';
 import { renderProfile } from './ui/profile';
 import { trackViewport } from './core/viewport';
+import { onNetworkChange } from './core/network';
 import { renderContests, type ContestFilter } from './ui/contests';
 import type { AppNotification } from './ui/notifications';
 import { renderContestNew, type ContestDraft } from './ui/contest-new';
@@ -549,6 +551,20 @@ class App {
     });
 
     window.addEventListener('resize', this.onResize);
+
+    /*
+     * Switching chain refetches rather than reloading the page.
+     *
+     * Everything the network decides is cached here: the mission, the profile,
+     * the boards, the contests. The old answer was to throw the page away so
+     * none of them could disagree, which worked and cost a white flash and a
+     * rebuild of the whole app to change one chip.
+     *
+     * Repainting whatever screen is up rather than going home, because the
+     * player was reading something when they tapped it and taking that away is
+     * the thing the reload was already doing wrong.
+     */
+    onNetworkChange(() => void this.reloadForNetwork());
     window.addEventListener('orientationchange', this.onResize);
 
     // Escape toggles the hold. Bound here rather than in Input, because pausing
@@ -1324,6 +1340,41 @@ class App {
     }
 
     return out.filter((n) => !this.dismissed.has(n.id));
+  }
+
+  /**
+   * Refetch everything the chain decides, without losing the screen.
+   *
+   * The contests list and the open contest are dropped rather than refetched,
+   * because a contest belongs to one chain and the one being looked at does not
+   * exist on the other. Clearing them means the next visit reads the new chain
+   * instead of showing rows from the old one until something happens to
+   * refresh them.
+   */
+  private async reloadForNetwork(): Promise<void> {
+    this.contests = [];
+    this.openContestPage = null;
+    this.clanTable = [];
+    this.myClan = null;
+    this.rank = null;
+
+    this.paintChrome();
+
+    const [{ mission, notice }] = await Promise.all([
+      loadMission(),
+      this.refreshProfile(),
+    ]);
+
+    this.mission = mission;
+    this.notice = notice;
+    this.prepareRun();
+
+    // Repaint where they are. Anything not listed redraws on its own next visit.
+    if (this.screen === 'settings') this.showSettings();
+    else if (this.screen === 'brief') this.showBrief();
+    else if (this.screen === 'profile') this.showProfile();
+    else if (this.screen === 'contests') this.showContests();
+    else this.paintChrome();
   }
 
   /**
@@ -2599,7 +2650,7 @@ class App {
     // Judged here, once, off the finished run. The stage owns the rule; this
     // only asks it. See src/data/campaign.ts.
     const progress = stageProgressOf(run, PLAYER_MAX_HEALTH);
-    this.stageCleared = run.stage.clear(progress);
+    this.stageCleared = stageCleared(run.stage, progress);
 
     /*
      * Banked here, before a single network call.
@@ -2735,6 +2786,9 @@ class App {
       rankedUp: this.rankedUp,
       unlockedWeapon: this.unlockedWeapon,
       stageCleared: this.stageCleared,
+      // The same reading the clear check ran on, so the screen lists exactly
+      // what that check refused rather than a second opinion about the run.
+      progress: stageProgressOf(run, PLAYER_MAX_HEALTH),
       contracts: this.contracts,
       contractsMet: this.contractsMet,
       // Only when this run actually opened something new. Offering "next" for a

@@ -195,12 +195,39 @@ export function setNetwork(next: NetworkId): void {
     // Storage refused. The reload still works, it just replays the opening.
   }
 
-  // Drop any network parameter on the way out, or the URL would immediately
-  // override the choice that was just made.
-  const url = new URL(window.location.href);
-  url.searchParams.delete('network');
-  url.searchParams.delete('net');
-  window.location.replace(url.toString());
+  /*
+   * Drop any network parameter, or the URL would override the choice just made.
+   *
+   * Rewritten in place rather than navigated to. Reloading was the old way of
+   * making every cached thing agree with the new chain, and it cost a white
+   * flash and a rebuild of the whole app to change one chip. The listener below
+   * does the same job by refetching what actually depends on the network, and
+   * the player keeps the screen they were on.
+   */
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('network');
+    url.searchParams.delete('net');
+    window.history.replaceState(null, '', url.toString());
+  } catch {
+    // A WebView that refuses history rewriting still has the right network.
+  }
+
+  for (const listener of listeners) listener(next);
+}
+
+/**
+ * Told when the chain changes, so callers can refetch what depends on it.
+ *
+ * The mission, the profile, the boards and the contests are all per network and
+ * all cached in the app, and none of them can be trusted across a switch. This
+ * is how they find out without the page being thrown away and rebuilt.
+ */
+const listeners = new Set<(next: NetworkId) => void>();
+
+export function onNetworkChange(handler: (next: NetworkId) => void): () => void {
+  listeners.add(handler);
+  return () => listeners.delete(handler);
 }
 
 const RESUME_KEY = 'sface.resume';
