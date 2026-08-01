@@ -200,8 +200,76 @@ export interface Stage {
   /** Shown while it is still locked. See StageTease. */
   tease: StageTease;
 
-  /** Did this finished run clear the stage? */
-  clear: (run: StageProgress) => boolean;
+  /**
+   * Everything this stage asks for, one entry each.
+   *
+   * ## Why a list rather than a single predicate
+   *
+   * It used to be one function returning true or false, and the screen showed
+   * the stage's objective line when it came back false. That line is prose, so
+   * a player who finished stage seven with three of five people out was told to
+   * "learn every project, answer every gate" and reasonably read it as a bug:
+   * the run was complete, the message named nothing they had missed, and the
+   * numbers they were actually judged on appeared nowhere.
+   *
+   * A list fixes that at the source. The rule and the explanation are the same
+   * data, so the screen can say "four of five out, needed five" and cannot
+   * drift from what the check does, because it is reading the check.
+   */
+  demands: Demand[];
+}
+
+/** One thing a stage asks for, and how to say whether a run did it. */
+export interface Demand {
+  /** What it wants, with the number in it. Reads on its own. */
+  text: string;
+  met: (run: StageProgress) => boolean;
+  /** What the run actually managed, shown only when it fell short. */
+  got: (run: StageProgress) => string;
+}
+
+const survived: Demand = {
+  text: 'Reach extraction',
+  met: (r) => r.survived,
+  got: () => 'went down',
+};
+
+const relic: Demand = {
+  text: 'Take the relic',
+  met: (r) => r.relic,
+  got: () => 'left it behind',
+};
+
+function extracted(n: number): Demand {
+  return {
+    text: `Get ${n} out`,
+    met: (r) => r.extracted >= n,
+    got: (r) => `${r.extracted} out`,
+  };
+}
+
+function caches(n: number): Demand {
+  return {
+    text: `Recover ${n} caches`,
+    met: (r) => r.caches >= n,
+    got: (r) => `${r.caches} recovered`,
+  };
+}
+
+function attackers(n: number): Demand {
+  return {
+    text: `Clear ${n} attackers`,
+    met: (r) => r.attackers >= n,
+    got: (r) => `${r.attackers} cleared`,
+  };
+}
+
+function hull(fraction: number): Demand {
+  return {
+    text: `Finish above ${Math.round(fraction * 100)}% hull`,
+    met: (r) => r.hull >= fraction,
+    got: (r) => `${Math.round(r.hull * 100)}% left`,
+  };
 }
 
 export const STAGES: readonly Stage[] = [
@@ -232,7 +300,7 @@ export const STAGES: readonly Stage[] = [
       scene: 'A pale chart with the panic still settling on it.',
       threat: 'Nothing hurries you. This is where you find out the ship answers.',
     },
-    clear: (r) => r.survived && r.relic,
+    demands: [survived, relic],
   },
   {
     n: 2,
@@ -264,7 +332,7 @@ export const STAGES: readonly Stage[] = [
     // Reaching the pad is part of every objective. Caches are banked on pickup
     // and survive a crash, so without this a player could dive for four, die,
     // and be told they cleared a stage whose brief says "to the pad".
-    clear: (r) => r.survived && r.caches >= 4 && r.extracted >= 2,
+    demands: [survived, caches(4), extracted(2)],
   },
   {
     n: 3,
@@ -293,7 +361,7 @@ export const STAGES: readonly Stage[] = [
       scene: 'A drained bridge under a haze of dead signal.',
       threat: 'The floor stops being safe. Things start coming at you along it.',
     },
-    clear: (r) => r.survived && r.attackers >= 12 && r.hull >= 0.5,
+    demands: [survived, attackers(12), hull(0.5)],
   },
   {
     n: 4,
@@ -322,7 +390,7 @@ export const STAGES: readonly Stage[] = [
       scene: 'A washed-out maze of half-written rules.',
       threat: 'Two rounds a volley from the first second, and a longer way home.',
     },
-    clear: (r) => r.survived && r.relic && r.caches >= 6,
+    demands: [survived, relic, caches(6)],
   },
   {
     n: 5,
@@ -359,7 +427,7 @@ export const STAGES: readonly Stage[] = [
       scene: 'Ash over a wide contested floor, with people watching who do not post.',
       threat: 'Everyone comes out or nobody does. Losing one is losing the stage.',
     },
-    clear: (r) => r.survived && r.extracted >= 4,
+    demands: [survived, extracted(4)],
   },
   {
     n: 6,
@@ -422,7 +490,7 @@ export const STAGES: readonly Stage[] = [
      * too quiet for four sourced posts it would make the stage impossible while
      * the exit stood open.
      */
-    clear: (r) => r.survived && r.extracted >= 3,
+    demands: [survived, extracted(3)],
   },
   {
     n: 7,
@@ -470,7 +538,7 @@ export const STAGES: readonly Stage[] = [
       scene: 'The whole day, end to end, with the ones that outlasted it waiting in it.',
       threat: 'Gates that ask instead of shoot. Fly past a project and you cannot answer.',
     },
-    clear: (r) => r.survived && r.extracted >= 5 && r.relic && r.caches >= 8,
+    demands: [survived, extracted(5), relic, caches(8)],
   },
 ];
 
@@ -492,6 +560,16 @@ export function stageUnlocked(n: number, cleared: number): boolean {
 
 export function nextStage(cleared: number): Stage {
   return stageAt(Math.min(STAGES.length, cleared + 1));
+}
+
+/** Did this finished run clear the stage? */
+export function stageCleared(stage: Stage, run: StageProgress): boolean {
+  return stage.demands.every((demand) => demand.met(run));
+}
+
+/** What it asked for and did not get. Empty when the stage was cleared. */
+export function missedDemands(stage: Stage, run: StageProgress): Demand[] {
+  return stage.demands.filter((demand) => !demand.met(run));
 }
 
 export function campaignComplete(cleared: number): boolean {

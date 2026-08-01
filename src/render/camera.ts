@@ -146,16 +146,24 @@ export class Camera {
    * same fraction of a smaller screen is a smaller number of actual pixels.
    *
    * Then reported the other way at 1.2, as too close. Both complaints are real
-   * and they pull against each other, so this sits between them: 2.5 ring
-   * spacings across a phone, which is enough to see one wall curve away and the
-   * next one behind it, with people still large enough to tell apart.
+   * and they pull against each other, so this sits between them.
+   *
+   * Moved from 1.45 to 1.28 after the finale's camera was fixed. Until then
+   * stage seven was drawing through the chart camera: the player spawned in a
+   * corner and the view clamped to a world 960 tall inside one 5,800 across, so
+   * every judgement about how the place read was made against a broken frame.
+   * Retested on a working one and the characters were still too small, which is
+   * the same complaint arriving for the third time and worth believing.
+   *
+   * 1.28 puts a figure at about 25px on the wallet viewport, up from 22, and
+   * still shows one wall curving away with the next behind it.
    *
    * Past this the ring map in the corner does the job better. It draws every
    * wall, every gap and where you are, without shrinking the world you are
    * standing in, and the point of keeping the camera close is that the map
    * stays the thing you read the place with.
    */
-  static readonly RING_ZOOM_OUT = 1.45;
+  static readonly RING_ZOOM_OUT = 1.28;
 
   /** Widen the view for a world that has to be read at a distance. */
   zoomOut(factor: number): void {

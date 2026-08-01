@@ -15,6 +15,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   STAGES,
+  missedDemands,
+  stageCleared,
   campaignComplete,
   nextStage,
   progressOf,
@@ -230,12 +232,12 @@ describe('objectives', () => {
   };
 
   it('is met by a perfect run on every stage', () => {
-    for (const stage of STAGES) expect(stage.clear(perfect)).toBe(true);
+    for (const stage of STAGES) expect(stageCleared(stage, perfect)).toBe(true);
   });
 
   it('is not met by a run that ended in the ground', () => {
     for (const stage of STAGES) {
-      expect(stage.clear({ ...perfect, survived: false })).toBe(false);
+      expect(stageCleared(stage, { ...perfect, survived: false })).toBe(false);
     }
   });
 
@@ -257,13 +259,13 @@ describe('objectives', () => {
       survived: true,
       hull: 0.5,
     });
-    expect(stageAt(1).clear(progress)).toBe(true);
+    expect(stageCleared(stageAt(1), progress)).toBe(true);
   });
 
   /** Stage 1 is the tutorial. It has to be clearable without heroics. */
   it('lets a modest run clear the first stage', () => {
     expect(
-      stageAt(1).clear({
+      stageCleared(stageAt(1), {
         extracted: 0,
         caches: 1,
         relic: true,
@@ -277,9 +279,9 @@ describe('objectives', () => {
   /** Stage 7 is not. It has to refuse anything short of everything. */
   it('refuses anything less than everything on the last stage', () => {
     const stage = stageAt(7);
-    expect(stage.clear({ ...perfect, extracted: 4 })).toBe(false);
-    expect(stage.clear({ ...perfect, relic: false })).toBe(false);
-    expect(stage.clear({ ...perfect, caches: 7 })).toBe(false);
+    expect(stageCleared(stage, { ...perfect, extracted: 4 })).toBe(false);
+    expect(stageCleared(stage, { ...perfect, relic: false })).toBe(false);
+    expect(stageCleared(stage, { ...perfect, caches: 7 })).toBe(false);
   });
 });
 
@@ -459,5 +461,80 @@ describe('outside the wallet', () => {
 
     expect(preview.enemies.length).toBe(full.enemies.length);
     expect(preview.faces.map((f) => f.handle)).toEqual(full.faces.map((f) => f.handle));
+  });
+});
+
+describe('what a stage says you missed', () => {
+  /*
+   * Somebody finished stage seven with three of five people out and was told
+   * to "learn every project, answer every gate". The run was complete, nothing
+   * named what they had fallen short of, and the numbers they were judged on
+   * appeared nowhere. It read as a bug and the rule was working the whole time.
+   *
+   * The list the check runs on is now the list the screen prints, so the two
+   * cannot disagree.
+   */
+  const perfect = {
+    extracted: 5,
+    caches: 12,
+    relic: true,
+    attackers: 40,
+    survived: true,
+    hull: 1,
+  };
+
+  it('says nothing when the stage was cleared', () => {
+    for (const stage of STAGES) {
+      expect(missedDemands(stage, perfect)).toEqual([]);
+      expect(stageCleared(stage, perfect)).toBe(true);
+    }
+  });
+
+  it('names every requirement that fell short, with the number', () => {
+    // The exact run from the report: finished stage seven, three out, five
+    // caches, no relic.
+    const run = { ...perfect, extracted: 3, caches: 5, relic: false };
+    const missed = missedDemands(stageAt(7), run);
+
+    expect(missed.map((d) => d.text)).toEqual([
+      'Get 5 out',
+      'Take the relic',
+      'Recover 8 caches',
+    ]);
+    expect(missed.map((d) => d.got(run))).toEqual([
+      '3 out',
+      'left it behind',
+      '5 recovered',
+    ]);
+  });
+
+  it('agrees with the clear check on every stage', () => {
+    /*
+     * The property that matters. If a demand list and its clear rule could
+     * drift, the screen would list nothing while the stage stayed locked, which
+     * is a worse version of the bug this replaced.
+     */
+    const runs = [
+      perfect,
+      { ...perfect, survived: false },
+      { ...perfect, extracted: 0 },
+      { ...perfect, caches: 0 },
+      { ...perfect, relic: false },
+      { ...perfect, attackers: 0 },
+      { ...perfect, hull: 0.1 },
+    ];
+
+    for (const stage of STAGES) {
+      for (const run of runs) {
+        expect(missedDemands(stage, run).length === 0).toBe(stageCleared(stage, run));
+      }
+    }
+  });
+
+  it('still requires reaching the pad everywhere', () => {
+    for (const stage of STAGES) {
+      const missed = missedDemands(stage, { ...perfect, survived: false });
+      expect(missed.map((d) => d.text)).toContain('Reach extraction');
+    }
   });
 });

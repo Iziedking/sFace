@@ -23,7 +23,7 @@ import { rankFor } from '../data/story';
 import { deck, type DeckPanel } from './deck';
 import { footer } from './footer';
 import { walletCta } from './wallet-cta';
-import { STAGES, type Stage } from '../data/campaign';
+import { STAGES, missedDemands, type Stage, type StageProgress } from '../data/campaign';
 import type { Contract } from '../data/contracts';
 
 export interface BriefOptions {
@@ -528,6 +528,8 @@ export interface ResultsOptions {
    * post, which put a dialog in front of somebody reading their own score, and
    * asked whenever a wallet was present rather than connected, so it failed.
    */
+  /** The finished run, read against the stage's demands. */
+  progress: StageProgress;
   canSign: boolean;
   signing: boolean;
   /** What went wrong last time, or null. Never implies the score is at risk. */
@@ -682,10 +684,7 @@ export function renderResults(root: HTMLElement, options: ResultsOptions): void 
               el('span', { text: 'FACE RESTORED' }),
               el('strong', { text: state.stage.restores }),
             )
-          : el('div', {
-              class: 'notice',
-              text: `Stage ${state.stage.n} not cleared. ${state.stage.objective}`,
-            }),
+          : missedPanel(state, options),
 
         // Clearing a stage used to say so and then leave you on a screen whose
         // only button was "Run it again", which is the one thing you have just
@@ -1003,6 +1002,46 @@ function boardRow(
 }
 
 /**
+ * What the stage asked for and did not get.
+ *
+ * This used to print the stage's objective line, which is prose. Somebody
+ * finished stage seven with three of five people out and was told to "learn
+ * every project, answer every gate": the run was complete, nothing named what
+ * they had missed, and the numbers they were judged on appeared nowhere. It
+ * read as a bug, and the rule was working the whole time.
+ *
+ * Read straight off the same list the check uses, so the screen cannot say one
+ * thing while the rule does another.
+ */
+function missedPanel(state: RunState, options: ResultsOptions): HTMLElement {
+  const missed = missedDemands(state.stage, options.progress);
+
+  return el(
+    'div',
+    { class: 'missed' },
+    el('p', {
+      class: 'missed__head',
+      text: `Stage ${state.stage.n} not cleared`,
+    }),
+    el(
+      'div',
+      { class: 'missed__list' },
+      ...missed.map((demand) =>
+        el(
+          'div',
+          { class: 'missed__row' },
+          el('span', { class: 'missed__what', text: demand.text }),
+          // What they actually managed, so the gap is a number rather than a
+          // thing to work out from the rows above.
+          el('span', { class: 'missed__got', text: demand.got(options.progress) }),
+        ),
+      ),
+    ),
+    el('p', { class: 'missed__say', text: state.stage.objective }),
+  );
+}
+
+/**
  * The name, linked to X when it is an X handle.
  *
  * A connected pilot's name is stored as `@handle`, which is already the whole
@@ -1138,7 +1177,7 @@ function signOffer(options: ResultsOptions): HTMLElement | null {
       text: 'Your score is on the board. Want to prove it is yours?',
     }),
     el('p', {
-      text: 'Your wallet signs this exact run, and the board publishes the signature beside it. Anyone can check it against your address without trusting us. It costs no NIM and sends no transaction.',
+      text: 'Your wallet signs this run and the board publishes the signature next to it, so anyone can check it against your address. It costs no NIM and sends no transaction.',
     }),
     options.signNotice
       ? el('p', { class: 'notice__warn', text: options.signNotice })
