@@ -66,6 +66,19 @@ export interface BriefOptions {
   onSettings: () => void;
   /** Absent when X connect is not configured on this deployment. */
   onConnectX: (() => void) | null;
+
+  /**
+   * Connecting the wallet, offered only inside Nimiq Pay and only until it is.
+   *
+   * The approval used to be asked for during boot, so the wallet appeared to
+   * connect itself before the player had touched anything. It is a decision
+   * now, and a decision needs somewhere to be made. Here, under signing in,
+   * because the two are the same kind of act: this is who I am, this is what I
+   * pay with.
+   */
+  onConnectWallet: (() => void) | null;
+  /** The connected address, shortened, or null when there is not one yet. */
+  walletAddress: string | null;
 }
 
 /**
@@ -189,6 +202,24 @@ export function renderBrief(root: HTMLElement, options: BriefOptions): void {
           options.onConnectX && !options.me
             ? button(t('connectX'), options.onConnectX, 'x')
             : null,
+          /*
+           * Under the X button, and only inside the wallet.
+           *
+           * In a browser there is no wallet to connect and the button would be
+           * a promise nothing can keep, so it is simply absent. Once connected
+           * it becomes the address rather than disappearing, because a player
+           * who just approved something wants to see that it took.
+           */
+          options.walletAddress
+            ? el(
+                'p',
+                { class: 'brief__wallet' },
+                el('span', { class: 'brief__wallettag', text: 'WALLET' }),
+                el('span', { class: 'brief__walletid', text: options.walletAddress }),
+              )
+            : options.onConnectWallet
+              ? button('Connect wallet', options.onConnectWallet, 'ghost')
+              : null,
           /*
            * Everything else is a small tile rather than a full-width block.
            *

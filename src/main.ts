@@ -112,7 +112,7 @@ import {
   type XProfile,
 } from './net/xconnect';
 import { el, button } from './ui/dom';
-import { connect, askDeviceId, hostLanguage, isTestnet, type WalletSession } from './nimiq/wallet';
+import { connect, probe, askDeviceId, hostLanguage, isTestnet, type WalletSession } from './nimiq/wallet';
 import { settle } from './nimiq/payments';
 import { challengeShareLink, clanShareLink, readChallengeId, readClanTag } from './nimiq/deeplink';
 import { capture, matches, restore, type RunSnapshot } from './game/snapshot';
@@ -1055,11 +1055,48 @@ class App {
     if (this.xAvailable && this.screen === 'brief') this.showBrief();
   }
 
+  /**
+   * Notice the wallet at boot. Deliberately does not ask for an account.
+   *
+   * See nimiq/wallet.ts: listAccounts is what raises the approval dialog, and
+   * raising it during boot meant the wallet appeared to connect itself before
+   * the player had asked for anything.
+   */
   private async probeWallet(): Promise<void> {
-    this.session = await connect();
-    setLanguage(this.session.language);
+    const session = await probe();
+    this.session = session;
+    setLanguage(session.language);
     // Re-render whatever is up, since the language may have just changed.
     if (this.screen === 'brief') this.showBrief();
+  }
+
+  /**
+   * Get an address, asking for one if we do not have it yet.
+   *
+   * Every path that needs to sign or spend goes through here rather than
+   * reading `session.address` and finding it null. One prompt, at the moment it
+   * is earned, and the provider caches the approval afterwards.
+   */
+  /**
+   * The Connect wallet button on the front door.
+   *
+   * Nothing more than asking, plus repainting so the address appears where the
+   * button was. Somebody who just approved something wants to see that it took.
+   */
+  private async connectWallet(): Promise<void> {
+    await this.requireAddress();
+    if (this.screen === 'brief') this.showBrief();
+  }
+
+  private async requireAddress(): Promise<string | null> {
+    if (this.session?.address) return this.session.address;
+    if (!this.session?.available) return null;
+
+    this.session = await connect();
+    setLanguage(this.session.language);
+
+    if (this.screen === 'brief') this.showBrief();
+    return this.session.address;
   }
 
   // Screens ---------------------------------------------------------------
@@ -1277,6 +1314,18 @@ class App {
       onStart: () => this.startRun(),
       onBoard: this.needsName('The leaderboard', () => void this.showBoard()),
       onConnectX: this.xAvailable ? () => void this.doConnectX() : null,
+      /*
+       * Offered only inside the wallet, and only until it is connected.
+       *
+       * In a browser there is nothing to connect to, so the button would be a
+       * promise nothing can keep. Once an address exists the button is replaced
+       * by the address itself.
+       */
+      onConnectWallet:
+        this.session?.available && !this.session.address
+          ? () => void this.connectWallet()
+          : null,
+      walletAddress: shortAddress(this.session?.address ?? null),
     });
   }
 
@@ -2201,9 +2250,17 @@ class App {
       return;
     }
 
-    // A challenge needs a wallet address to pay to, and that is the one thing
-    // an identifier cannot stand in for. Say so before creating a dead bet.
-    if (!this.session?.address) {
+    /*
+     * A challenge needs an address to pay to, so this is where we ask for one.
+     *
+     * The prompt used to happen during boot, before the player had done
+     * anything at all. Asking here means the dialog arrives attached to a
+     * reason: they pressed Challenge a friend, and a bet needs somewhere to
+     * send the money.
+     */
+    const payTo = await this.requireAddress();
+
+    if (!payTo) {
       this.postError = t('challengeNoWallet');
       this.needsWallet = true;
       this.showResults();
@@ -2213,7 +2270,7 @@ class App {
     const result = await createChallenge({
       deviceId: this.pilot,
       name: this.displayName(),
-      address: this.session?.address ?? null,
+      address: payTo,
       date: run.mission.date,
       seed: run.mission.seed,
       stakeNim: DEFAULT_STAKE_NIM,
@@ -2262,10 +2319,14 @@ class App {
       return;
     }
 
+    // Taking a bet needs somewhere to be paid, so ask before accepting rather
+    // than discovering it is missing at settlement.
+    const payTo = await this.requireAddress();
+
     const result = await acceptChallenge(challenge.id, {
       deviceId: this.pilot,
       name: this.displayName(),
-      address: this.session?.address ?? null,
+      address: payTo,
       score: run.score,
       seed: run.mission.seed,
     });
@@ -2726,6 +2787,21 @@ class App {
     this.camera.resize(this.renderer.width, this.renderer.height);
     this.hud.measure();
   }
+}
+
+/**
+ * A Nimiq address, short enough to sit on a button.
+ *
+ * They are thirty six characters in six blocks, which is unreadable in a row of
+ * controls and pointless at full length: nobody verifies an address by reading
+ * it off a game screen. The first and last blocks are enough to recognise the
+ * one you approved.
+ */
+function shortAddress(address: string | null): string | null {
+  if (!address) return null;
+  const blocks = address.replace(/^NQ/i, 'NQ').split(' ').filter(Boolean);
+  if (blocks.length < 3) return address;
+  return `${blocks[0]} ${blocks[1]} … ${blocks[blocks.length - 1]}`;
 }
 
 /** The player's current pose, in the shape squadmates are drawn from. */

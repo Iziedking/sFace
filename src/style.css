@@ -1676,6 +1676,27 @@ p.quiet {
    data/collapse.ts for the rule about never paraphrasing them. */
 /* A picture of the thing each chapter describes. Captured from the running
    game by scripts/shoot.mjs, so the guide cannot describe a build that is gone. */
+.brief__wallet {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 2px solid var(--ink);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.brief__wallettag {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--ink-muted);
+}
+
+.brief__walletid {
+  font-weight: 700;
+}
+
 .chapter__shot {
   margin: 0 0 14px;
   max-width: var(--measure);

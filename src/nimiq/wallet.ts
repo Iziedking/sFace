@@ -114,10 +114,48 @@ export async function getProvider(): Promise<NimiqProvider | null> {
 }
 
 /**
- * Connect at boot and keep the result. Never throws.
+ * Notice the wallet without asking the player for anything.
  *
- * listAccounts triggers a native approval dialog the first time and caches on
- * the provider afterwards, so calling this once per session is enough.
+ * ## Why this is separate from connecting
+ *
+ * The SDK draws a line and we were stepping over it. `init` opens the bridge to
+ * the host and prompts nobody. `listAccounts` is what raises the native approval
+ * dialog. The provider also carries `connect`, `disconnect` and a `connected`
+ * getter, which is only a sensible shape if connecting is a deliberate act.
+ *
+ * We used to call `listAccounts` during boot, so opening the game inside Nimiq
+ * Pay threw an account approval dialog at somebody who had not yet asked for
+ * anything. Reported as the wallet connecting by itself, which is exactly what
+ * it was.
+ *
+ * This reads only what the host volunteers: that it is there, its language, and
+ * its network. All three are needed to draw the first screen correctly and none
+ * of them costs the player a decision.
+ */
+export async function probe(): Promise<WalletSession> {
+  const language = hostLanguage();
+
+  const nimiq = await getProvider();
+  if (!nimiq) return { ...OFFLINE, language };
+
+  markHost();
+
+  let network: string | null = null;
+  try {
+    network = nimiq.getNetwork();
+  } catch {
+    network = null;
+  }
+
+  return { ...OFFLINE, available: true, language, network };
+}
+
+/**
+ * Ask for account access. This is the one that prompts.
+ *
+ * Called when something genuinely needs an address: signing a score, staking a
+ * challenge, settling one, or the player pressing Connect. The provider caches
+ * the approval, so a second call resolves without another dialog.
  */
 export async function connect(): Promise<WalletSession> {
   const language = hostLanguage();
