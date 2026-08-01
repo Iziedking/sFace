@@ -103,6 +103,48 @@ export interface Survivor {
 
 const TERRAIN_POINTS = 240;
 
+/**
+ * Accounts read every day, whatever the roster says.
+ *
+ * ## Why a fixed list exists at all
+ *
+ * The roster is whoever crypto X argued about that day. That is the right source
+ * for the people in the wreck and the wrong one for the state of the market. On
+ * a quiet day the argument is about a launch or a personality, and the Dispatch
+ * comes back with nothing about the thing the game is premised on, which is that
+ * crypto is having a bad year.
+ *
+ * These accounts post the other half consistently: exploits, liquidations, red
+ * boards, the running total of what went wrong. Including them means the
+ * Dispatch always has some of that to rank, and Grok still picks what matters
+ * rather than being told.
+ *
+ * Short on purpose. Every handle is a request against a metered quota, and a
+ * long standing list would crowd out the people the day was actually about.
+ */
+export const ALWAYS_READ = ['WatcherGuru'] as const;
+
+/**
+ * The roster plus the standing accounts, deduplicated.
+ *
+ * Case-insensitive, because X handles are. A duplicate here is a wasted call
+ * against a metered API rather than a harmless repeat.
+ */
+export function readList(roster: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+
+  for (const handle of [...roster, ...ALWAYS_READ]) {
+    const clean = handle.replace(/^@/, '').trim();
+    const key = clean.toLowerCase();
+    if (!clean || seen.has(key)) continue;
+    seen.add(key);
+    out.push(clean);
+  }
+
+  return out;
+}
+
 export async function composeMission(): Promise<MissionPayload> {
   const date = new Date().toISOString().slice(0, 10);
 
@@ -146,7 +188,7 @@ export async function composeMission(): Promise<MissionPayload> {
     fearGreed: fng.value,
   });
 
-  const candidates = cast ? await recentFrom(cast.roster.map((r) => r.handle)) : [];
+  const candidates = cast ? await recentFrom(readList(cast.roster.map((r) => r.handle))) : [];
 
   // Only worth a second Grok call if X actually gave us something to rank.
   const brief =
