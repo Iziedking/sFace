@@ -102,6 +102,87 @@ export class Renderer {
   private dpr = 1;
 
   /**
+   * How much of the device's pixel ratio we are actually asking for.
+   *
+   * Measured, not assumed. On the wallet's viewport a frame costs about half a
+   * millisecond of update and nine to fifteen of rendering, so the picture is
+   * effectively the whole frame budget, and a WebView rasterising canvas 2D in
+   * software is slower again than anything a desktop can be throttled to.
+   *
+   * When frames run long this comes down, which cuts the number of pixels
+   * quadratically: dropping to 0.7 is half the fill cost. The world on screen
+   * does not change size, only the buffer behind it, so the game gets softer
+   * rather than smaller. Soft and playable beats sharp and stuck.
+   */
+  private quality = 1;
+
+  /** Rolling average of recent draws, in milliseconds. */
+  private frameAverage = 8;
+
+  /**
+   * How long the picture may take before sharpness is traded away.
+   *
+   * Sixty frames a second is 16.7ms for everything, and the picture is not
+   * everything: the simulation, input, audio and whatever the browser has
+   * queued all come out of the same budget. Thirteen leaves a working margin.
+   *
+   * The two thresholds are far apart on purpose. Changing quality reallocates
+   * the canvas, so a renderer that flips between two resolutions every second
+   * is worse than one that picks the wrong resolution and stays there.
+   */
+  private static readonly TOO_SLOW_MS = 13;
+  private static readonly COMFORTABLE_MS = 5;
+
+  /**
+   * Frames that must pass between changes.
+   *
+   * Without it the picture pulses. Measured on a six times throttled run: the
+   * draw sat around nine milliseconds, which straddles both thresholds, so
+   * quality fell, recovered, fell again, seven times in four hundred frames,
+   * and finished exactly where it started having achieved nothing but flicker.
+   *
+   * A second and a half of holding still means a change has to be earned by a
+   * sustained problem rather than by a noisy patch, and it gives the rolling
+   * average time to reflect the new resolution before it is judged again.
+   */
+  private static readonly HOLD_FRAMES = 90;
+
+  private sinceChange = 0;
+
+  /**
+   * Watch the frame clock and trade sharpness for speed when it is losing.
+   *
+   * Called once a frame with how long the last one took. The thresholds are
+   * deliberately far apart: dropping quality is itself a reallocation, and a
+   * renderer that flips back and forth between two resolutions is worse than
+   * one that picks the wrong one and stays there.
+   */
+  observeFrame(ms: number): void {
+    // Long tail, so one hitch from a garbage collection or a stage load does
+    // not pull the resolution down for the rest of the run.
+    this.frameAverage = this.frameAverage * 0.9 + Math.min(ms, 100) * 0.1;
+    this.sinceChange++;
+
+    if (this.sinceChange < Renderer.HOLD_FRAMES) return;
+
+    const was = this.quality;
+
+    if (this.frameAverage > Renderer.TOO_SLOW_MS && this.quality > 0.6) {
+      this.quality = Math.max(0.6, this.quality - 0.15);
+    } else if (this.frameAverage < Renderer.COMFORTABLE_MS && this.quality < 1) {
+      // Climbs back in smaller steps than it falls, so recovering is gentle and
+      // giving up is quick. Being briefly soft costs less than being briefly
+      // unplayable.
+      this.quality = Math.min(1, this.quality + 0.1);
+    }
+
+    if (was !== this.quality) {
+      this.sinceChange = 0;
+      this.resize();
+    }
+  }
+
+  /**
    * Match the backing store to the device pixel ratio, then work in CSS pixels
    * everywhere above this line.
    *
@@ -121,7 +202,15 @@ export class Renderer {
     // same size and the buffer behind it simply has fewer pixels in it.
     const affordable = Math.sqrt(Renderer.PIXEL_BUDGET / Math.max(1, area));
 
-    this.dpr = Math.max(1, Math.min(wanted, affordable));
+    /*
+     * The floor is below one on purpose.
+     *
+     * At quality 1 this never goes under the CSS resolution. When frames are
+     * being missed it is allowed to, because a buffer smaller than the element
+     * is upscaled by the compositor for free, and free is the point: that work
+     * happens on the GPU rather than in the canvas we are struggling to fill.
+     */
+    this.dpr = Math.max(0.6, Math.min(wanted, affordable) * this.quality);
 
     const bufferW = Math.round(this.width * this.dpr);
     const bufferH = Math.round(this.height * this.dpr);

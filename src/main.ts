@@ -2626,6 +2626,22 @@ class App {
     const run = this.run;
     if (!run) return;
 
+    /*
+     * Timed, so the renderer can trade sharpness for a playable frame rate.
+     *
+     * On the wallet's own viewport a step of the simulation costs about half a
+     * millisecond and the picture costs nine to fifteen, so the picture IS the
+     * frame budget, and a WebView rasterising canvas 2D in software is slower
+     * again than anything a desktop can be throttled to. When it is losing, the
+     * only lever worth pulling is how many pixels it is being asked to fill.
+     *
+     * Measured here rather than in the loop because this is the work being
+     * judged. Timing the whole frame would fold in the simulation and whatever
+     * else the browser had queued, and then quality would drop for reasons the
+     * renderer cannot do anything about.
+     */
+    const startedAt = performance.now();
+
     this.renderer.draw(run, this.camera, this.effects, this.squad, {
       handle: this.me?.handle ?? null,
       avatarUrl: this.me?.avatarUrl ?? null,
@@ -2640,6 +2656,8 @@ class App {
         this.renderer.height,
       );
     }
+
+    this.renderer.observeFrame(performance.now() - startedAt);
   }
 
   /**
