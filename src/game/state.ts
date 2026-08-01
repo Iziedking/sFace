@@ -609,8 +609,34 @@ export class RunState {
      * standing on. Ring 0 is innermost, so the list is walked backwards: the
      * first project you meet guards the outermost wall.
      */
+    this.refills = layOutRefills(
+      levelRng,
+      this.terrain,
+      () => this.nextId++,
+      this.extractionX,
+      stage.refills,
+    );
+
+    /*
+     * Relocate everything into the rings.
+     *
+     * Same reasoning as the city block below: the layout functions place things
+     * against a ground line, which in a ring world means somewhere in the empty
+     * strip the chart used to occupy. So the level is laid out normally and then
+     * moved, and one seed produces the same contents whichever world it is in.
+     *
+     * This runs after the refills are built rather than before, because it used
+     * to run before and so relocated everything EXCEPT them. Caches were missing
+     * for the same reason: the block simply never mentioned them, and stage seven
+     * asks for eight of them to clear. They were scattered across a strip of the
+     * old chart with nothing to do with the rings, which made the stage's own
+     * pass condition close to unreachable.
+     */
     if (this.rings) {
       const rings = this.rings;
+      const band = (): { x: number; y: number } =>
+        spotOutside(rings, levelRng, levelRng.int(0, rings.rings.length - 1));
+
       /*
        * Outermost first, one per band, working in.
        *
@@ -625,25 +651,27 @@ export class RunState {
       });
 
       for (const enemy of this.enemies) {
-        const spot = spotOutside(rings, levelRng, levelRng.int(0, rings.rings.length - 1));
+        const spot = band();
         enemy.x = spot.x;
         enemy.y = spot.y;
         enemy.homeY = enemy.y;
       }
       for (const face of this.faces) {
-        const spot = spotOutside(rings, levelRng, levelRng.int(0, rings.rings.length - 1));
+        const spot = band();
         face.x = spot.x;
         face.y = spot.y;
       }
+      for (const cache of this.caches) {
+        const spot = band();
+        cache.x = spot.x;
+        cache.y = spot.y;
+      }
+      for (const refill of this.refills) {
+        const spot = band();
+        refill.x = spot.x;
+        refill.y = spot.y;
+      }
     }
-
-    this.refills = layOutRefills(
-      levelRng,
-      this.terrain,
-      () => this.nextId++,
-      this.extractionX,
-      stage.refills,
-    );
 
     /*
      * Relocate everything into the streets.

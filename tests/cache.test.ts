@@ -37,10 +37,17 @@ const COMFORT = 200;
 
 describe('cache placement', () => {
   it('puts the relic at the lowest point of the day chart', () => {
-    // Stage 7 flies the whole chart, so its relic is at the true global bottom.
-    // Earlier stages fly a piece of the day and bury theirs at the bottom of
-    // the piece, which is the same rule applied to a shorter level.
-    for (const stage of [7, 1]) {
+    /*
+     * Chart stages only.
+     *
+     * Stage seven used to be in this list, on the reasoning that it flies the
+     * whole chart and so has its relic at the true global bottom. It does not
+     * fly a chart at all: it is a ring world, and the chart position was only
+     * still there because the ring relocation never moved caches. That left the
+     * eight caches the stage needs to clear scattered across a strip of a world
+     * nobody is standing in. Its relic is checked in the ring case below.
+     */
+    for (const stage of [1, 4]) {
       const run = new RunState(mission(), 'sidearm', stage);
       const relic = run.caches.find((c) => c.tier === 'relic');
       expect(relic).toBeDefined();
@@ -61,6 +68,43 @@ describe('cache placement', () => {
 
       // Within one chart sample of that bottom.
       expect(Math.abs(relic!.x - deepestX)).toBeLessThanOrEqual(POINT_SPACING);
+    }
+  });
+
+  it('moves every cache into the rings on the finale', () => {
+    /*
+     * The bug this replaced was quiet and expensive. Stage seven asks for eight
+     * caches to clear, the ring block relocated allies, enemies and faces but
+     * never caches, and the layout functions place against a ground line, so
+     * they sat in a thin strip of the old chart. A run could finish having found
+     * five, which is what a player reported, and reads as the stage being
+     * unfairly hard rather than as a placement fault.
+     */
+    const run = new RunState(mission(), 'sidearm', 7);
+    const rings = run.rings;
+    expect(rings).not.toBeNull();
+
+    const cx = rings!.cx;
+    const cy = rings!.cy;
+
+    for (const cache of run.caches) {
+      const reach = Math.hypot(cache.x - cx, cache.y - cy);
+      // Inside the outermost wall, so it is somewhere the player can work to.
+      expect(reach).toBeLessThanOrEqual(rings!.width / 2);
+      expect(cache.x).toBeGreaterThanOrEqual(0);
+      expect(cache.y).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('moves the hull refills in with them', () => {
+    // Refills were laid out after the ring block ran, so they were the one thing
+    // it could not have relocated even if it had mentioned them.
+    const run = new RunState(mission(), 'sidearm', 7);
+    const rings = run.rings!;
+
+    for (const refill of run.refills) {
+      const reach = Math.hypot(refill.x - rings.cx, refill.y - rings.cy);
+      expect(reach).toBeLessThanOrEqual(rings.width / 2);
     }
   });
 

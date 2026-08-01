@@ -519,7 +519,22 @@ export const STAGES: readonly Stage[] = [
      * pulling at your attention rather than something you have to solve. It is
      * possible to reach the core without firing.
      */
-    density: 0.35,
+    /*
+     * Raised from 0.35 after the finale was played end to end and finished with
+     * time to spare and almost nothing shooting back.
+     *
+     * Tuned on the resulting count rather than on this number. Density is a
+     * multiplier on placement attempts and this stage has `span: 1`, so it
+     * covers more ground than any other and converts density into attackers
+     * faster. 0.72 looked like a modest bump and produced more of them than
+     * stage six, which is backwards for the stage that is meant to be about
+     * working things out.
+     *
+     * 0.45 lands it around stage three: clearly busier than it was, clearly
+     * quieter than the city. The count still moves with the fear index and the
+     * chart's own volatility, so a violent day fields noticeably more.
+     */
+    density: 0.45,
     minDifficulty: 5,
     caches: 11,
     refills: 6,
