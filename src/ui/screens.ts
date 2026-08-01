@@ -38,12 +38,17 @@ export interface BriefOptions {
   testnet: boolean;
   /** The wallet's network, or null when there is no wallet. Three states. */
   network: string | null;
-  /** Current sound state, for the toggle's label. */
-  soundOn: boolean;
-  /** What is in hand, named on the button so the rack is never a mystery box. */
-  weaponName: string;
-  /** The pilot's clan, or null. Names the button either way. */
-  clanTag: string | null;
+  /**
+   * What the Profile tile says under its name.
+   *
+   * A rank when they have one, an invitation when they do not. Passed in
+   * rather than derived here because the caller already knows whether a clan
+   * request is waiting, and a tile that can nag is worth more than one that
+   * only ever repeats the obvious.
+   */
+  profileValue: string;
+  /** True when something in there wants attention, so the tile can say so. */
+  profileAlert: boolean;
   /** The stage about to be flown, and how far up the campaign they are. */
   stage: Stage;
   stagesCleared: number;
@@ -51,18 +56,11 @@ export interface BriefOptions {
   contracts: Contract[];
   onCampaign: () => void;
   onDispatch: () => void;
-  onSignals: () => void;
   onStart: () => void;
   onBoard: () => void;
-  onLoadout: () => void;
-  onClan: () => void;
-  onToggleSound: () => void;
+  onProfile: () => void;
   onAbout: () => void;
   onControls: () => void;
-  /** Null on a phone, where fullscreen is refused or actively harmful. */
-  onFullscreen: (() => void) | null;
-  fullscreen: boolean;
-  onReplayIntro: () => void;
   onSettings: () => void;
   /** Absent when X connect is not configured on this deployment. */
   onConnectX: (() => void) | null;
@@ -240,27 +238,23 @@ export function renderBrief(root: HTMLElement, options: BriefOptions): void {
             // Named for what it is. "Board" was a tile nobody read as the
             // leaderboard, so the leaderboard was effectively missing.
             tile('Leaderboard', 'today and all time', options.onBoard),
-            tile('Loadout', options.weaponName, options.onLoadout),
-            tile('Clan', options.clanTag ?? 'none', options.onClan),
-            tile('Signals', 'who talks to you', options.onSignals),
-          ),
-          el(
-            'div',
-            { class: 'minor' },
-            button(
-              options.soundOn ? 'Sound on' : 'Sound off',
-              options.onToggleSound,
-              'quiet',
+            /*
+             * Profile and Settings, and nothing else.
+             *
+             * Loadout, Clan and Signals moved into Profile and the four quiet
+             * toggles moved into Settings. They were all defensible on their
+             * own and together they made a home page with fourteen controls on
+             * it, which reads as fourteen equally important things and so as
+             * none. What is left is the three places you go for today's game,
+             * then you and your settings.
+             */
+            tile(
+              'Profile',
+              options.profileValue,
+              options.onProfile,
+              options.profileAlert,
             ),
-            options.onFullscreen
-              ? button(
-                  options.fullscreen ? 'Exit fullscreen' : 'Fullscreen',
-                  options.onFullscreen,
-                  'quiet',
-                )
-              : null,
-            button('Replay intro', options.onReplayIntro, 'quiet'),
-            button('Controls', options.onSettings, 'quiet'),
+            tile('Settings', 'sound, controls, network', options.onSettings),
           ),
         ),
       ),

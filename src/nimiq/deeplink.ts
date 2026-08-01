@@ -98,3 +98,47 @@ export function clanShareLink(tag: string): string {
 export function challengeShareLink(challengeId: string): string {
   return shareableLink(`c=${encodeURIComponent(challengeId)}`);
 }
+
+const OPEN_CHALLENGE_KEY = 'sface.challenge';
+
+/**
+ * The last challenge this device was part of, so it survives a refresh.
+ *
+ * ## Why the client has to remember
+ *
+ * The service can answer "what is challenge X" and nothing else. There is no
+ * route that lists a pilot's challenges, and adding one would mean an endpoint
+ * that enumerates by device id, which is a worse trade than a single string in
+ * local storage.
+ *
+ * Without it, closing the tab loses a staked challenge until the other player
+ * sends the link again. Somebody who has just approved NIM against a wager and
+ * then cannot find it does not conclude that the UI forgot.
+ *
+ * Only the id is kept. Everything else is re-read from the service on open, so
+ * a stale local copy can never disagree with the real state of the wager.
+ */
+export function rememberChallenge(challenge: { id: string; status: string } | null): void {
+  try {
+    // Settled is finished. Keeping it would put a dead challenge on the tile
+    // every launch, nagging about something already done.
+    if (!challenge || challenge.status === 'settled') {
+      localStorage.removeItem(OPEN_CHALLENGE_KEY);
+      return;
+    }
+    localStorage.setItem(OPEN_CHALLENGE_KEY, challenge.id);
+  } catch {
+    // Private mode. The challenge still works for this session, and the link
+    // is the durable copy either way.
+  }
+}
+
+/** The remembered challenge id, or null. */
+export function rememberedChallenge(): string | null {
+  try {
+    const id = localStorage.getItem(OPEN_CHALLENGE_KEY);
+    return id && id.length > 0 ? id : null;
+  } catch {
+    return null;
+  }
+}

@@ -112,15 +112,31 @@ import {
   type XProfile,
 } from './net/xconnect';
 import { el, button } from './ui/dom';
-import { connect, probe, askDeviceId, hostLanguage, isTestnet, type WalletSession } from './nimiq/wallet';
+import {
+  balanceNim,
+  connect,
+  probe,
+  askDeviceId,
+  hostLanguage,
+  isTestnet,
+  type WalletSession,
+} from './nimiq/wallet';
 import { settle } from './nimiq/payments';
-import { challengeShareLink, clanShareLink, readChallengeId, readClanTag } from './nimiq/deeplink';
+import {
+  challengeShareLink,
+  clanShareLink,
+  readChallengeId,
+  readClanTag,
+  rememberChallenge,
+  rememberedChallenge,
+} from './nimiq/deeplink';
 import { capture, matches, restore, type RunSnapshot } from './game/snapshot';
 import { buy } from './game/consume';
 import { slotIntent } from './game/intent';
 import { CONSUMABLES } from './data/consumables';
 import { signClaim } from './nimiq/wallet';
 import { renderSettings } from './ui/settings';
+import { renderProfile } from './ui/profile';
 import { CAR_REACH, carStopped } from './game/car';
 import { answerNode } from './game/node';
 import { answerGate } from './game/ally';
@@ -133,6 +149,7 @@ type Screen =
   | 'controls'
   | 'about'
   | 'settings'
+  | 'profile'
   | 'loadout'
   | 'clan'
   | 'campaign'
@@ -430,6 +447,8 @@ class App {
 
   private challenge: Challenge | null = null;
   private pendingChallengeId: string | null = null;
+  /** Clan requests waiting on this pilot to decide, when they own one. */
+  private clanRequests = 0;
   private challengeNotice: string | null = null;
   private settling = false;
 
@@ -549,7 +568,16 @@ class App {
     // Whichever finishes first, the player is not waiting on the other.
     void this.probeWallet();
 
-    this.pendingChallengeId = readChallengeId();
+    /*
+     * A link wins, then whatever was left open.
+     *
+     * The id is remembered locally because there is no route that lists a
+     * pilot's challenges: the service can answer "what is challenge X" and
+     * nothing else. Without this, closing the tab loses a staked challenge
+     * until the other player sends the link again, which is the kind of thing
+     * that makes somebody think their NIM is gone.
+     */
+    this.pendingChallengeId = readChallengeId() ?? rememberedChallenge();
     this.invitedTag = readClanTag();
 
     /*
@@ -986,6 +1014,15 @@ class App {
       music.duck();
       renderPause(this.ui, {
         onResume: () => this.setPaused(false),
+        soundOn: music.on,
+        onToggleSound: () => {
+          const on = music.toggle();
+          if (audio.on !== on) audio.toggle();
+          narrator.setMuted(!on);
+          // Repaint in place. Bouncing anywhere from a paused run would lose
+          // the run, which is the opposite of what pausing is for.
+          this.setPaused(true);
+        },
         onQuit: () => {
           this.paused = false;
           this.ui.className = '';
@@ -1252,11 +1289,103 @@ class App {
     this.ui.className = '';
     this.screen = 'settings';
     renderSettings(this.ui, {
-      onBack: () => this.showBrief(),
+      onBack: () => void this.cross(() => this.showBrief()),
+      // Re-render in place rather than bouncing home, so a player trying the
+      // three schemes can feel the difference without losing the page.
       onChange: () => this.showSettings(),
       // Prefills the faucet field, so claiming inside the wallet is one tap.
       address: this.session?.address ?? null,
+      soundOn: music.on,
+      onToggleSound: () => {
+        // One switch for everything audible: the bed, the sting, the blips
+        // and the narrator. Two separate toggles would be a settings screen.
+        const on = music.toggle();
+        if (audio.on !== on) audio.toggle();
+        narrator.setMuted(!on);
+        this.showSettings();
+      },
+      fullscreen: isFullscreen(),
+      onFullscreen: fullscreenAvailable() ? () => void toggleFullscreen() : null,
+      onReplayIntro: () => this.playIntro(),
+      onControls: () => this.showControls(),
     });
+  }
+
+  /**
+   * Everything that is yours, behind one tile.
+   *
+   * The balance is read after the first paint rather than awaited before it. It
+   * is one RPC round trip to a node that may not answer, and blocking the page
+   * on it would make the slowest thing on the screen decide when the screen
+   * appears. The card renders "reading" and fills itself in.
+   */
+  private showProfile(): void {
+    this.ui.className = '';
+    this.screen = 'profile';
+
+    let balance: number | null | undefined = undefined;
+
+    const paint = (): void => {
+      // Guard against a late RPC answer painting over whatever the player
+      // navigated to in the meantime.
+      if (this.screen !== 'profile') return;
+
+      renderProfile(this.ui, {
+        profile: this.profile,
+        me: this.meChip(),
+        walletAddress: shortAddress(this.session?.address ?? null),
+        balanceNim: balance,
+        weaponName: this.weapon().name,
+        clanTag: this.profile?.clanTag ?? null,
+        clanPending: this.clanRequests,
+        openChallenge: this.liveChallenge(),
+        onLoadout: () => void this.cross(() => this.showLoadout()),
+        onClan: this.needsName('Clans', () => void this.cross(() => this.openClan())),
+        onSignals: this.needsName('CT Signals', () => void this.cross(() => this.openSignals())),
+        onChallenge: () => {
+          const open = this.liveChallenge();
+          if (open) void this.openChallenge(open.id);
+        },
+        onBack: () => void this.cross(() => this.showBrief()),
+      });
+    };
+
+    paint();
+
+    const address = this.session?.address ?? null;
+    if (!address) {
+      balance = null;
+      paint();
+      return;
+    }
+
+    void balanceNim(address).then((nim) => {
+      balance = nim;
+      paint();
+    });
+  }
+
+  /** What the Profile tile says under its name. */
+  private profileTileValue(): string {
+    if (this.liveChallenge()) return 'challenge waiting';
+    if (this.clanRequests > 0) {
+      return `${this.clanRequests} clan request${this.clanRequests === 1 ? '' : 's'}`;
+    }
+    if (!this.profile || this.profile.runs === 0) return 'rank, clan, wallet';
+    return rankFor(this.profile.lifetimeFace).rank.name;
+  }
+
+  /**
+   * A challenge worth walking back into, or null.
+   *
+   * Only one that is still waiting on somebody. A settled challenge is history
+   * and putting it on the tile would nag about a thing already done.
+   */
+  private liveChallenge(): { id: string; stakeNim: number } | null {
+    const c = this.challenge;
+    if (!c) return null;
+    if (c.status === 'settled') return null;
+    return { id: c.id, stakeNim: c.stakeNim };
   }
 
   private showBrief(): void {
@@ -1282,19 +1411,9 @@ class App {
       profile: this.profile,
       testnet: isTestnet(this.session?.network ?? null),
       network: this.session?.network ?? null,
-      soundOn: music.on,
-      onToggleSound: () => {
-        // One switch for everything audible: the bed, the sting, the blips
-        // and the narrator. Two separate toggles would be a settings screen.
-        const on = music.toggle();
-        if (audio.on !== on) audio.toggle();
-        narrator.setMuted(!on);
-        this.showBrief();
-      },
-      weaponName: this.weapon().name,
-      onLoadout: () => void this.cross(() => this.showLoadout()),
-      clanTag: this.profile?.clanTag ?? null,
-      onClan: this.needsName('Clans', () => void this.cross(() => this.openClan())),
+      profileValue: this.profileTileValue(),
+      profileAlert: this.openChallenge !== null,
+      onProfile: () => void this.cross(() => this.showProfile()),
       stage: stageAt(this.activeStage()),
       stagesCleared: this.cleared(),
       contracts: this.todaysContracts(),
@@ -1302,24 +1421,9 @@ class App {
       // which stage to taste, so locking it would hide the reason to sign in.
       onCampaign: () => void this.cross(() => this.showCampaign()),
       onDispatch: () => void this.cross(() => this.showDispatch()),
-      onSignals: this.needsName('CT Signals', () => void this.cross(() => this.openSignals())),
-      fullscreen: isFullscreen(),
-      onFullscreen: fullscreenAvailable()
-        ? () => void toggleFullscreen()
-        : null,
       onAbout: () => void this.cross(() => this.showAbout()),
       onControls: () => this.showControls(),
-      onSettings: () => {
-        this.ui.className = '';
-        this.screen = 'settings';
-        renderSettings(this.ui, {
-          onBack: () => this.showBrief(),
-          // Re-render in place rather than bouncing home, so a player trying
-          // the three schemes can feel the difference without losing the page.
-          onChange: () => this.showSettings(),
-        });
-      },
-      onReplayIntro: () => this.playIntro(),
+      onSettings: () => void this.cross(() => this.showSettings()),
       onStart: () => this.startRun(),
       onBoard: this.needsName('The leaderboard', () => void this.showBoard()),
       onConnectX: this.xAvailable ? () => void this.doConnectX() : null,
@@ -1639,6 +1743,15 @@ class App {
     if (table.ok) this.clanTable = table.value;
     if (mine?.ok) this.myClan = mine.value;
     this.clanLoading = false;
+    /*
+     * Only the owner's own queue counts.
+     *
+     * `pending` comes back on the detail for anybody who can see the clan, so
+     * counting it unconditionally would badge the Profile tile of every member
+     * with requests they have no power to answer.
+     */
+    this.clanRequests =
+      mine?.ok && mine.value.ownerId === this.pilot ? mine.value.pending.length : 0;
 
     if (this.screen === 'clan') this.paintClan();
   }
@@ -2302,6 +2415,7 @@ class App {
     }
 
     this.challenge = result.value;
+    rememberChallenge(result.value);
     this.challengeNotice = null;
     this.showChallengeScreen();
   }
@@ -2319,6 +2433,7 @@ class App {
     }
 
     this.challenge = result.value;
+    rememberChallenge(result.value);
     this.showChallengeScreen();
   }
 
@@ -2349,7 +2464,10 @@ class App {
       seed: run.mission.seed,
     });
 
-    if (result.ok) this.challenge = result.value;
+    if (result.ok) {
+      this.challenge = result.value;
+      rememberChallenge(result.value);
+    }
     else this.challengeNotice = result.error;
   }
 

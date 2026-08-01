@@ -4714,3 +4714,170 @@ body.is-fullscreen .foot,
 .handoff__cta .button {
   width: 100%;
 }
+
+/* Profile -----------------------------------------------------------------
+   Everything that is yours, on one page. The home grid moved Loadout, Clan
+   and Signals here, so the tile styles above are reused rather than restated:
+   the two pages have to read as one system or the move looks like a split. */
+
+.profile {
+  gap: 14px;
+}
+
+.profile__rank {
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  box-shadow: var(--lift-sm);
+  padding: 14px 16px;
+  display: grid;
+  gap: 6px;
+}
+
+.profile__ranktier {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--accent);
+  margin: 0;
+}
+
+.profile__rankname {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
+  margin: 0;
+}
+
+/* The bar is the only motion on the page, and it does not animate: it is a
+   measurement, and a measurement that slides in reads as a loading state. */
+.profile__bar {
+  height: 8px;
+  border: 2px solid var(--ink);
+  background: var(--canvas);
+  overflow: hidden;
+}
+
+.profile__barfill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.profile__ranknext {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-muted);
+  margin: 0;
+}
+
+.profile__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.profile__figure {
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  padding: 9px 10px;
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.profile__figurevalue {
+  font-family: var(--mono);
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile__figurelabel {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: var(--ink-muted);
+}
+
+.profile__wallet {
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  padding: 14px 16px;
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.profile__head {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--accent);
+  margin: 0;
+}
+
+.profile__addr {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Every "we do not know" on this page. Deliberately not styled as an error:
+   no wallet in a browser is the ordinary case, not a fault. */
+.profile__say {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-muted);
+  margin: 0;
+  max-width: 52ch;
+}
+
+.profile__balance {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+}
+
+.profile__balancenum {
+  font-family: var(--mono);
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.profile__balanceunit {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: var(--ink-muted);
+}
+
+@media (max-width: 380px) {
+  .profile__stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Settings: the switches that came off the home page ---------------------- */
+
+.settings__switches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* A heading over the scheme rows, now that they are no longer the only thing
+   on the page and the eyebrow cannot do the job alone. */
+.settings__group {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--ink-muted);
+  margin: 14px 0 0;
+}

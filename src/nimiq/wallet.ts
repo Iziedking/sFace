@@ -264,3 +264,60 @@ export async function inConsensus(): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * What is actually in the connected wallet, in NIM.
+ *
+ * ## There is no balance method, so this goes through the RPC
+ *
+ * The Mini App SDK at 0.1.0 has `listAccounts`, `sign`, the send helpers and
+ * `isConsensusEstablished`, and nothing that returns a balance. What it does
+ * expose is `getRPC()`, a handle on the node the host is already talking to, so
+ * the balance is one standard Albatross call away rather than a second network
+ * dependency of our own.
+ *
+ * `getRPC()` returns undefined when the host has not configured one, which is
+ * why every failure here funnels to null instead of zero. Those are completely
+ * different statements: zero means the wallet is empty and null means nobody
+ * asked. Printing "0 NIM" at somebody who has funds, because we could not
+ * reach a node, is the kind of wrong number that makes a player distrust every
+ * other figure on the screen.
+ *
+ * ## Not verified, and it does not need to be
+ *
+ * This is a display. Nothing is authorised against it: a stake is approved in
+ * the wallet's own dialog, against its own idea of the balance, so a stale or
+ * missing figure here cannot let anybody spend what they do not have.
+ */
+export async function balanceNim(address: string): Promise<number | null> {
+  const nimiq = await getProvider();
+  if (!nimiq) return null;
+
+  try {
+    const rpc = nimiq.getRPC();
+    if (!rpc) return null;
+
+    const answer = await rpc.call<{ data?: { balance?: number } } | { balance?: number }>({
+      jsonrpc: '2.0',
+      method: 'getAccountByAddress',
+      params: [address],
+    });
+
+    /*
+     * Albatross wraps results in `{ data }`, but the shape has moved between
+     * node versions and this is a display, so both are accepted rather than
+     * pinning one and returning null on the other.
+     */
+    const raw =
+      answer && typeof answer === 'object' && 'data' in answer
+        ? (answer as { data?: { balance?: number } }).data?.balance
+        : (answer as { balance?: number } | null)?.balance;
+
+    if (typeof raw !== 'number' || !Number.isFinite(raw) || raw < 0) return null;
+    return lunasToNim(raw);
+  } catch {
+    // Unreachable node, a method this host does not serve, or a shape we did
+    // not expect. All of them mean the same thing to the player: not known.
+    return null;
+  }
+}

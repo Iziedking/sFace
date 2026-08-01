@@ -14,6 +14,17 @@ import { button, el, mount } from './dom';
 export interface PauseOptions {
   onResume: () => void;
   onQuit: () => void;
+  /**
+   * Sound, because this is the only place it is genuinely urgent.
+   *
+   * The toggle moved off the home page into Settings, which is right for a
+   * thing you set once. It is wrong for the case that actually matters:
+   * somebody twenty seconds into a run in a quiet room who needs it off now.
+   * Making them give up the run to reach a setting would be the tidying
+   * costing more than it saved.
+   */
+  soundOn: boolean;
+  onToggleSound: () => void;
 }
 
 export function renderPause(root: HTMLElement, options: PauseOptions): void {
@@ -32,6 +43,7 @@ export function renderPause(root: HTMLElement, options: PauseOptions): void {
         'div',
         { class: 'actions' },
         button('Resume', options.onResume),
+        button(options.soundOn ? 'Sound on' : 'Sound off', options.onToggleSound, 'quiet'),
         button('Give up the run', options.onQuit, 'ghost'),
       ),
       // No key hint here. The controls screen is where controls are explained,

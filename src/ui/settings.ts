@@ -1,13 +1,24 @@
 /**
- * Settings. Currently one decision, which is the point.
+ * Everything you would change about the app, rather than about your pilot.
  *
- * A settings screen is where features go to hide, so this holds only things a
- * player genuinely needs to change about how the game responds to them, and
- * nothing that is really a preference we were too undecided to make.
+ * ## Why the toggles moved here after all
  *
- * Sound and fullscreen stay on the brief where they already are: those are
- * one-tap toggles you reach for mid-session, and burying them a level deeper
- * to tidy the home page would be a worse app arranged more neatly.
+ * This file used to argue the opposite: that sound and fullscreen should stay
+ * on the home page because they are one-tap toggles you reach for mid-session,
+ * and burying them would be a worse app arranged more neatly.
+ *
+ * The argument was right about the toggles and wrong about the total. Four
+ * quiet buttons under six tiles under two sign-in actions under a primary
+ * button is not a home page a stranger can read, and the cost of the tidying
+ * is one tap on controls nobody uses more than once a session. Sound is set
+ * once. Fullscreen is set once. The intro is replayed almost never.
+ *
+ * What is genuinely mid-run lives in the pause menu, which is where a player
+ * actually reaches for it, and that has not moved.
+ *
+ * The split with Profile is state versus preference. Rank, Face, balance, clan
+ * and gun are things you have, and they are next door. Everything here is a
+ * thing you decide.
  */
 
 import { networkLabel, onTestnet, setNetwork, TESTNET_FAUCET } from '../core/network';
@@ -26,6 +37,15 @@ export interface SettingsOptions {
   onBack: () => void;
   /** Re-render, so the chosen row updates under the thumb that chose it. */
   onChange: () => void;
+  /** Current sound state, for the toggle's label. */
+  soundOn: boolean;
+  onToggleSound: () => void;
+  /** Null on a phone, where fullscreen is refused or actively harmful. */
+  onFullscreen: (() => void) | null;
+  fullscreen: boolean;
+  onReplayIntro: () => void;
+  /** The illustrated how-to-play guide, which is a document, not a setting. */
+  onControls: () => void;
   /**
    * The connected wallet's address, when there is one.
    *
@@ -49,6 +69,32 @@ export function renderSettings(root: HTMLElement, options: SettingsOptions): voi
 
       el('p', { class: 'eyebrow', text: 'Settings' }),
       el('h1', { text: 'How you fly' }),
+
+      /*
+       * The one-tap switches, above the scheme rows.
+       *
+       * First because they are what somebody opening Settings most often came
+       * for, and the control scheme is a thing you set once and forget. The
+       * guide is in the same row rather than in a section of its own: it is one
+       * link, and a heading over a single link is a category pretending to be
+       * one.
+       */
+      el(
+        'div',
+        { class: 'settings__switches' },
+        button(options.soundOn ? 'Sound on' : 'Sound off', options.onToggleSound, 'quiet'),
+        options.onFullscreen
+          ? button(
+              options.fullscreen ? 'Exit fullscreen' : 'Fullscreen',
+              options.onFullscreen,
+              'quiet',
+            )
+          : null,
+        button('Replay intro', options.onReplayIntro, 'quiet'),
+        button('How to play', options.onControls, 'quiet'),
+      ),
+
+      el('p', { class: 'settings__group', text: 'CONTROLS' }),
       el('p', {
         class: 'guide__lead',
         text: 'Both schemes are always available on a phone. This only decides which one is listening.',
