@@ -26,6 +26,10 @@ export type ApiResult<T> = { ok: true; value: T } | { ok: false; error: string }
  * board could not show it: exposed in the API and invisible in the app, which
  * is the same as not having done it.
  */
+import type { Contest, ContestKind, ContestVisibility } from '../data/contests';
+
+export type { Contest } from '../data/contests';
+
 export interface BoardProof {
   publicKey: string;
   signature: string;
@@ -397,4 +401,63 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<ApiResu
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Bind a wallet to a run already on the board.
+ *
+ * Separate from postScore because the board only replaces a row on a better
+ * score, and because the score route folds every submission into the lifetime
+ * profile: re-posting to attach a signature would count the run's Face twice.
+ */
+export async function signPostedScore(body: {
+  deviceId: string;
+  date: string;
+  seed: string;
+  stage: number;
+  score: number;
+  publicKey: string;
+  signature: string;
+}): Promise<ApiResult<{ ok: boolean; recorded: boolean; address?: string }>> {
+  return request('/board/sign', { method: 'POST', body: JSON.stringify(body) });
+}
+
+// Contests -----------------------------------------------------------------
+
+/**
+ * The contests anybody may enter.
+ *
+ * Private ones are never in this list. That is enforced on the service rather
+ * than filtered here: a client-side filter over a payload that contained them
+ * would be a privacy promise kept by the honesty of the reader.
+ */
+export async function fetchContests(): Promise<ApiResult<Contest[]>> {
+  return request<Contest[]>('/contests');
+}
+
+export async function fetchContest(id: string): Promise<ApiResult<Contest>> {
+  return request<Contest>(`/contests/${encodeURIComponent(id)}`);
+}
+
+export async function createContest(body: {
+  deviceId: string;
+  name: string;
+  avatarUrl: string | null;
+  kind: ContestKind;
+  stages: number[];
+  stakeNim: number;
+  seats: number;
+  visibility: ContestVisibility;
+}): Promise<ApiResult<Contest>> {
+  return request<Contest>('/contests', { method: 'POST', body: JSON.stringify(body) });
+}
+
+export async function joinContest(
+  id: string,
+  body: { deviceId: string; name: string; avatarUrl: string | null },
+): Promise<ApiResult<Contest>> {
+  return request<Contest>(`/contests/${encodeURIComponent(id)}/join`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
 }

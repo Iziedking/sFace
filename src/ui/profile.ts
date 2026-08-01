@@ -59,6 +59,7 @@ export interface ProfileOptions {
   onClan: () => void;
   onSignals: () => void;
   onChallenge: () => void;
+  onChallengeFriend: () => void;
   onBack: () => void;
 }
 
@@ -168,6 +169,14 @@ export function renderProfile(root: HTMLElement, options: ProfileOptions): void 
             )
           : null,
         tile('Signals', 'who talks to you', options.onSignals),
+        /*
+         * Opening a contest lives here rather than on the home page.
+         *
+         * It is a thing you do with your own account: your clan, your stake,
+         * your stages. Contests on the home page is where you go to find one
+         * somebody else opened.
+         */
+        tile('Challenge a friend', 'set the terms', options.onChallengeFriend),
       ),
 
       el('div', { class: 'actions' }, button('Done', options.onBack)),

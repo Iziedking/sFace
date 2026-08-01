@@ -79,6 +79,7 @@ import {
   unlockSignals,
   postGhost,
   postScore,
+  signPostedScore,
   reportSettlement,
   type BoardEntry,
   type Challenge,
@@ -135,8 +136,29 @@ import { buy } from './game/consume';
 import { slotIntent } from './game/intent';
 import { CONSUMABLES } from './data/consumables';
 import { signClaim } from './nimiq/wallet';
+
+/**
+ * The exact string a score is signed over.
+ *
+ * One definition, used by the automatic path and the button, because two
+ * copies that drift produce a signature the service verifies against a
+ * different message and rejects as tampering.
+ */
+function claimMessage(run: RunState): string {
+  return `sface:${run.mission.date}:${run.mission.seed}:s${run.stage.n}:${run.score}`;
+}
 import { renderSettings } from './ui/settings';
 import { renderProfile } from './ui/profile';
+import { trackViewport } from './core/viewport';
+import { renderContests, type ContestFilter } from './ui/contests';
+import type { AppNotification } from './ui/notifications';
+import { renderContestNew, type ContestDraft } from './ui/contest-new';
+import { stageRange, type Contest } from './data/contests';
+import {
+  createContest,
+  fetchContests,
+  joinContest,
+} from './net/api';
 import { CAR_REACH, carStopped } from './game/car';
 import { answerNode } from './game/node';
 import { answerGate } from './game/ally';
@@ -150,6 +172,8 @@ type Screen =
   | 'about'
   | 'settings'
   | 'profile'
+  | 'contests'
+  | 'contest-new'
   | 'loadout'
   | 'clan'
   | 'campaign'
@@ -445,10 +469,51 @@ class App {
   private cardShareFile: File | null = null;
   private postError: string | null = null;
 
+  /**
+   * Whether the run just posted carries a wallet signature.
+   *
+   * Drives the button on the results screen. Null while nothing has been
+   * posted, so a fresh session does not offer to sign a run that does not
+   * exist.
+   */
+  private signedRun: boolean | null = null;
+  private signing = false;
+  private signNotice: string | null = null;
+
   private challenge: Challenge | null = null;
   private pendingChallengeId: string | null = null;
   /** Clan requests waiting on this pilot to decide, when they own one. */
   private clanRequests = 0;
+  /** A clan they asked for while already in one, awaiting confirmation. */
+  private pendingJoin: string | null = null;
+  private bellOpen = false;
+  /** Notification ids the player has cleared, so they do not come back. */
+  private dismissed = new Set<string>();
+
+  // Contests ---------------------------------------------------------------
+  private contests: Contest[] = [];
+  private contestFilter: ContestFilter = 'all';
+  private contestsLoading = false;
+  private contestsOffline: string | null = null;
+  private contestNotices: Record<string, string> = {};
+  private joiningContest: string | null = null;
+  private contestBusy = false;
+  private contestNotice: string | null = null;
+  /**
+   * The terms being drafted, kept on the app rather than in the screen.
+   *
+   * The screen is a pure render, so the draft has to outlive it: every tap on a
+   * stepper repaints, and a draft owned by the screen would reset itself on the
+   * first change anybody made.
+   */
+  private draft: ContestDraft = {
+    kind: 'duel',
+    from: 1,
+    to: 1,
+    stakeNim: 5,
+    seats: 2,
+    visibility: 'open',
+  };
   private challengeNotice: string | null = null;
   private settling = false;
 
@@ -1174,7 +1239,79 @@ class App {
       clanTag: this.profile?.clanTag ?? null,
       onHome: () => this.playIntro(),
       onRank: () => void this.showBoard('allTime'),
+      notifications: this.notifications(),
+      bellOpen: this.bellOpen,
+      onToggleBell: () => {
+        this.bellOpen = !this.bellOpen;
+        this.paintChrome();
+      },
+      onClearNotifications: () => {
+        /*
+         * Dismiss, never resolve.
+         *
+         * Clearing hides what is listed; it does not answer a clan request or
+         * settle a contest. Those still exist on their own screens, which is
+         * why this only records what has been seen.
+         */
+        this.dismissed = new Set(this.notifications().map((n) => n.id));
+        this.paintChrome();
+      },
     });
+  }
+
+  /**
+   * What is waiting on this player, derived rather than stored.
+   *
+   * Every entry is computed from state the app already has, so there is no
+   * separate list to fall out of step with the thing it is about: a clan
+   * request that has been answered stops being a notification because the
+   * request is gone, not because something remembered to remove it.
+   *
+   * Only things with somewhere to go. A bell that fills with items you cannot
+   * act on teaches people to ignore the bell, and then the clan request goes
+   * unanswered again with an extra feature in the way.
+   */
+  private notifications(): AppNotification[] {
+    const out: AppNotification[] = [];
+
+    if (this.clanRequests > 0) {
+      out.push({
+        id: `clan-requests:${this.clanRequests}`,
+        kind: 'clan-request',
+        text: `${this.clanRequests} pilot${this.clanRequests === 1 ? '' : 's'} asked to join ${this.profile?.clanTag ?? 'your clan'}.`,
+        at: Date.now(),
+        go: () => void this.cross(() => this.openClan()),
+      });
+    }
+
+    const open = this.liveChallenge();
+    if (open) {
+      out.push({
+        id: `challenge:${open.id}`,
+        kind: 'contest-waiting',
+        text: `A ${open.stakeNim} NIM challenge is still open.`,
+        at: Date.now(),
+        go: () => void this.openChallenge(open.id),
+      });
+    }
+
+    for (const contest of this.contests) {
+      if (contest.hostId !== this.pilot) continue;
+      if (contest.entrants.length === 0) continue;
+
+      out.push({
+        id: `contest:${contest.id}:${contest.entrants.length}`,
+        kind: contest.status === 'settled' ? 'contest-settled' : 'contest-joined',
+        text:
+          contest.status === 'settled'
+            ? `Your ${contest.stakeNim} NIM contest has a result.`
+            : `${contest.entrants.length} in your ${contest.stakeNim} NIM contest.`,
+        at: Date.now(),
+        go: () => void this.cross(() => this.showContests()),
+      });
+    }
+
+    return out.filter((n) => !this.dismissed.has(n.id));
   }
 
   /**
@@ -1319,6 +1456,154 @@ class App {
    * on it would make the slowest thing on the screen decide when the screen
    * appears. The card renders "reading" and fills itself in.
    */
+  /**
+   * Everything open to enter.
+   *
+   * Painted before the fetch answers, so the screen appears at once and fills
+   * in. A list that waits on the network shows a blank page for as long as the
+   * slowest thing on it takes.
+   */
+  private showContests(): void {
+    this.ui.className = '';
+    this.screen = 'contests';
+    this.paintContests();
+    void this.loadContests();
+  }
+
+  private paintContests(): void {
+    if (this.screen !== 'contests') return;
+
+    renderContests(this.ui, {
+      contests: this.contests,
+      loading: this.contestsLoading,
+      offline: this.contestsOffline,
+      filter: this.contestFilter,
+      me: { id: this.pilot, clanTag: this.profile?.clanTag ?? null },
+      notices: this.contestNotices,
+      joining: this.joiningContest,
+      onFilter: (next) => {
+        this.contestFilter = next;
+        this.paintContests();
+      },
+      onJoin: (contest) => void this.takeSeat(contest),
+      // Until a contest has its own page, opening one lands on the contests
+      // list it came from rather than a screen that does not exist yet.
+      onOpen: () => this.paintContests(),
+      onCreate: () => void this.cross(() => this.showContestNew()),
+      onBack: () => void this.cross(() => this.showBrief()),
+    });
+  }
+
+  private async loadContests(): Promise<void> {
+    if (!apiConfigured()) {
+      this.contestsOffline = 'Contests need the service, which is not configured here.';
+      this.paintContests();
+      return;
+    }
+
+    this.contestsLoading = true;
+    this.contestsOffline = null;
+    this.paintContests();
+
+    const result = await fetchContests();
+    this.contestsLoading = false;
+
+    if (result.ok) {
+      this.contests = result.value;
+      this.contestsOffline = null;
+    } else {
+      this.contestsOffline = result.error;
+    }
+
+    this.paintContests();
+  }
+
+  private async takeSeat(contest: Contest): Promise<void> {
+    if (this.joiningContest) return;
+
+    this.joiningContest = contest.id;
+    delete this.contestNotices[contest.id];
+    this.paintContests();
+
+    const result = await joinContest(contest.id, {
+      deviceId: this.pilot,
+      name: this.displayName(),
+      avatarUrl: this.me?.avatarUrl ?? null,
+    });
+
+    this.joiningContest = null;
+
+    if (result.ok) {
+      // Replace in place rather than refetching the whole list, so the seat
+      // count updates without the page blinking through a spinner.
+      this.contests = this.contests.map((c) => (c.id === result.value.id ? result.value : c));
+    } else {
+      this.contestNotices[contest.id] = result.error;
+    }
+
+    this.paintContests();
+  }
+
+  private showContestNew(): void {
+    this.ui.className = '';
+    this.screen = 'contest-new';
+    this.paintContestNew();
+  }
+
+  private paintContestNew(): void {
+    if (this.screen !== 'contest-new') return;
+
+    renderContestNew(this.ui, {
+      draft: this.draft,
+      onChange: (next) => {
+        this.draft = next;
+        this.paintContestNew();
+      },
+      clanTag: this.profile?.clanTag ?? null,
+      stagesCleared: this.cleared(),
+      busy: this.contestBusy,
+      notice: this.contestNotice,
+      onOpen: () => void this.openContest(),
+      onBack: () => void this.cross(() => this.showProfile()),
+    });
+  }
+
+  private async openContest(): Promise<void> {
+    if (this.contestBusy) return;
+
+    if (!apiConfigured()) {
+      this.contestNotice = 'Contests need the service, which is not configured here.';
+      this.paintContestNew();
+      return;
+    }
+
+    this.contestBusy = true;
+    this.contestNotice = null;
+    this.paintContestNew();
+
+    const result = await createContest({
+      deviceId: this.pilot,
+      name: this.displayName(),
+      avatarUrl: this.me?.avatarUrl ?? null,
+      kind: this.draft.kind,
+      stages: stageRange(this.draft.from, this.draft.to),
+      stakeNim: this.draft.stakeNim,
+      seats: this.draft.seats,
+      visibility: this.draft.visibility,
+    });
+
+    this.contestBusy = false;
+
+    if (!result.ok) {
+      this.contestNotice = result.error;
+      this.paintContestNew();
+      return;
+    }
+
+    this.contests = [result.value, ...this.contests];
+    void this.cross(() => this.showContests());
+  }
+
   private showProfile(): void {
     this.ui.className = '';
     this.screen = 'profile';
@@ -1346,6 +1631,9 @@ class App {
           const open = this.liveChallenge();
           if (open) void this.openChallenge(open.id);
         },
+        onChallengeFriend: this.needsName('Contests', () =>
+          void this.cross(() => this.showContestNew()),
+        ),
         onBack: () => void this.cross(() => this.showBrief()),
       });
     };
@@ -1414,6 +1702,11 @@ class App {
       profileValue: this.profileTileValue(),
       profileAlert: this.openChallenge !== null,
       onProfile: () => void this.cross(() => this.showProfile()),
+      contestsValue: this.contests.length
+        ? `${this.contests.length} open`
+        : 'head to head, clans',
+      contestsAlert: this.contests.some((c) => c.hostId === this.pilot),
+      onContests: this.needsName('Contests', () => void this.cross(() => this.showContests())),
       stage: stageAt(this.activeStage()),
       stagesCleared: this.cleared(),
       contracts: this.todaysContracts(),
@@ -1703,7 +1996,32 @@ class App {
       suggested: this.invitedTag,
       notice: this.clanNotice,
       busy: this.clanBusy,
-      onJoin: (tag) => void this.setClan(tag),
+      /*
+       * Joining while already in a clan asks first.
+       *
+       * Leaving is immediate and the new clan has to agree, so there is a real
+       * window where somebody is in neither. That is worth a sentence before
+       * it happens rather than a surprise afterwards.
+       */
+      onJoin: (tag) => {
+        const current = this.profile?.clanTag ?? null;
+        if (current && current !== tag) {
+          this.pendingJoin = tag;
+          this.paintClan();
+          return;
+        }
+        void this.setClan(tag);
+      },
+      pendingJoin: this.pendingJoin,
+      onConfirmJoin: () => {
+        const tag = this.pendingJoin;
+        this.pendingJoin = null;
+        if (tag) void this.setClan(tag);
+      },
+      onCancelJoin: () => {
+        this.pendingJoin = null;
+        this.paintClan();
+      },
       onLookup: async (tag) => {
         if (!apiConfigured()) return null;
         const found = await fetchClan(tag);
@@ -2220,7 +2538,87 @@ class App {
       practice: this.practice,
       needsWallet: this.needsWallet,
       onConnectX: this.xAvailable ? () => void this.doConnectX() : null,
+
+      /*
+       * Signing, offered rather than sprung.
+       *
+       * Only when the run actually landed on the board unsigned and there is a
+       * wallet that could sign it. In a plain browser there is nothing to
+       * offer, and on a signed run there is nothing left to do.
+       */
+      canSign:
+        this.signedRun === false &&
+        !this.practice &&
+        (this.session?.available ?? false) &&
+        (this.rank ?? 0) > 0,
+      signing: this.signing,
+      signNotice: this.signNotice,
+      onSign: () => void this.signRun(run),
     });
+  }
+
+  /**
+   * Sign a run that is already on the board.
+   *
+   * ## Why this is a button and not part of posting
+   *
+   * It used to happen during the post, which put a wallet dialog in front of
+   * somebody in the two seconds they were reading their own score, and asked
+   * for it whenever a wallet was merely present rather than connected, so
+   * inside Nimiq Pay it failed every time.
+   *
+   * The score is already safe by the time this runs. Nothing here can lose it:
+   * the board has always taken unsigned rows, and this only ever adds proof to
+   * one that exists.
+   *
+   * Connecting first when there is no address yet, because that is the actual
+   * reason the old version failed and making somebody find the button on
+   * another screen to fix it would be a worse version of the same bug.
+   */
+  private async signRun(run: RunState): Promise<void> {
+    if (this.signing) return;
+
+    this.signing = true;
+    this.signNotice = null;
+    this.showResults();
+
+    try {
+      // requireAddress is the one path that prompts, and it caches the
+      // approval, so a player who has already connected sees no second dialog.
+      const address = await this.requireAddress();
+      if (!address) {
+        this.signNotice =
+          'The wallet did not hand over an account, so there was nothing to sign with. Your score is still on the board.';
+        return;
+      }
+
+      const claim = await signClaim(claimMessage(run));
+      if (!claim) {
+        this.signNotice = 'The wallet did not sign. Your score is still on the board.';
+        return;
+      }
+
+      const told = await signPostedScore({
+        deviceId: this.pilot,
+        date: run.mission.date,
+        seed: run.mission.seed,
+        stage: run.stage.n,
+        score: run.score,
+        publicKey: claim.publicKey,
+        signature: claim.signature,
+      });
+
+      if (!told.ok) {
+        this.signNotice = told.error;
+        return;
+      }
+
+      this.signedRun = true;
+      this.signNotice = null;
+    } finally {
+      this.signing = false;
+      this.showResults();
+    }
   }
 
   private async showBoard(tab: BoardTab = this.boardTab): Promise<void> {
@@ -2292,19 +2690,24 @@ class App {
     }
 
     /*
-     * Ask the wallet to sign the claim, when there is a wallet to ask.
+     * Sign only when an account has actually been approved.
      *
-     * After the run and before the post, so the player is signing a number
-     * they can already see rather than authorising something abstract. A
-     * refusal costs nothing: the run posts unsigned, exactly as it always did
-     * in a browser.
+     * This used to test `available`, which is true inside Nimiq Pay whether or
+     * not the player has ever connected. Since connecting became a deliberate
+     * act rather than something boot did, that meant asking the wallet to sign
+     * with no approved account: a dialog nobody asked for, arriving in the two
+     * seconds somebody is reading their own score, and failing every time.
+     *
+     * So a connected wallet still signs here, silently and without a decision,
+     * because the approval already happened. Everyone else posts unsigned and
+     * is offered the button on the results screen. The score is never at risk
+     * either way; the board has always taken unsigned rows.
      */
     let claim: { publicKey: string; signature: string } | null = null;
-    if (this.session?.available && !this.practice) {
-      claim = await signClaim(
-        `sface:${run.mission.date}:${run.mission.seed}:s${run.stage.n}:${run.score}`,
-      );
+    if (this.session?.address && !this.practice) {
+      claim = await signClaim(claimMessage(run));
     }
+    this.signedRun = claim !== null;
 
     // Captured before the post, so a tier crossed by this run can be detected
     // by comparing against where the pilot stood a moment ago.
@@ -2959,6 +3362,16 @@ function winnerAddressOf(challenge: Challenge, meId: string): string | null {
   }
   return challenge.opponentId === meId ? null : challenge.opponentAddress;
 }
+
+/*
+ * Correct the app box before anything measures itself against it.
+ *
+ * Ahead of the App, because the renderer sizes its canvas from the element on
+ * the first frame and an uncorrected box would draw one frame at the wrong
+ * height. On Android that frame is the one with the consumable strip off the
+ * bottom of the screen.
+ */
+trackViewport();
 
 const app = new App();
 

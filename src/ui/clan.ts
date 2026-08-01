@@ -45,6 +45,18 @@ export interface ClanOptions {
   onLeave: () => void;
   onInvite: () => void;
   onBack: () => void;
+
+  /**
+   * A tag they have asked to join while already in a clan.
+   *
+   * Set by the caller when the join needs confirming, which is whenever they
+   * are in one already. Joining is not reversible in the way a setting is: the
+   * old clan loses their Face the moment they go, and somebody who tapped a
+   * card in a reel deserves to be told that before it happens rather than after.
+   */
+  pendingJoin: string | null;
+  onConfirmJoin: () => void;
+  onCancelJoin: () => void;
 }
 
 export function renderClan(root: HTMLElement, options: ClanOptions): void {
@@ -93,6 +105,18 @@ export function renderClan(root: HTMLElement, options: ClanOptions): void {
         : options.awaiting
           ? waitingPanel(options)
           : joinPanel(options, carried),
+
+      leaveConfirm(options),
+
+      /*
+       * The reel, above the table.
+       *
+       * Searching for a tag only works if you already know one, which meant the
+       * only way into a clan was an invite from somebody who had one. A reel of
+       * the clans that exist is the browsing half that was missing: swipe, read
+       * who leads it, and take the one you like.
+       */
+      reel(options),
 
       el('p', { class: 'stat__label', text: 'STANDINGS' }),
       el('p', {
@@ -406,4 +430,111 @@ function ordinal(place: number): string {
   const ones = place % 10;
   const suffix = ones === 1 ? 'st' : ones === 2 ? 'nd' : ones === 3 ? 'rd' : 'th';
   return `${place}${suffix}`;
+}
+
+/**
+ * Clans you could join, as a swipe.
+ *
+ * ## Why a reel and not more rows
+ *
+ * The standings below are a ranking: they answer "who is winning". This answers
+ * a different question, which is "which of these would I actually want to be
+ * in", and that needs the things a ranked row has no room for: how many pilots,
+ * who leads it, and a button. A second table would have buried both.
+ *
+ * Horizontal, because on a phone a vertical list of rich cards is a scroll
+ * through everything to see anything, and a reel makes the cost of looking at
+ * the next one one thumb movement. Scroll snapping so it settles on a card
+ * rather than halfway between two.
+ */
+function reel(options: ClanOptions): HTMLElement | null {
+  if (options.loading) return null;
+
+  // Their own clan is not on offer, and neither is a tag they are waiting on.
+  const shown = options.table
+    .filter((row) => row.tag !== options.myTag && row.tag !== options.awaiting)
+    .slice(0, 12);
+
+  if (shown.length === 0) return null;
+
+  return el(
+    'div',
+    { class: 'reelwrap' },
+    el('p', { class: 'stat__label', text: options.myTag ? 'OTHER CLANS' : 'CLANS TO JOIN' }),
+    el(
+      'div',
+      { class: 'reel', role: 'list', 'aria-label': 'Clans you can join' },
+      ...shown.map((row) => reelCard(row, options)),
+    ),
+  );
+}
+
+function reelCard(row: ClanRow, options: ClanOptions): HTMLElement {
+  const join = el('button', {
+    class: 'button button--ghost reel__join',
+    type: 'button',
+    text: options.busy ? 'Working...' : options.myTag ? 'Switch to this' : 'Ask to join',
+    ...(options.busy ? { disabled: 'true' } : {}),
+  });
+  join.addEventListener('click', () => options.onJoin(row.tag));
+
+  return el(
+    'div',
+    { class: 'reel__card', role: 'listitem' },
+    el(
+      'div',
+      { class: 'reel__head' },
+      el('span', { class: 'reel__tag', text: row.tag }),
+      el('span', { class: 'reel__members', text: plural(row.members, 'pilot') }),
+    ),
+    el('p', { class: 'reel__face', text: `${row.face.toLocaleString()} Face` }),
+    row.topPilot
+      ? el('p', { class: 'reel__lead', text: `Led by ${row.topPilot}` })
+      : el('p', { class: 'reel__lead', text: 'No runs posted yet' }),
+    join,
+  );
+}
+
+/**
+ * The alert before a switch.
+ *
+ * Naming the clan being left rather than saying "your current clan", because
+ * the whole risk is somebody who forgot which one they were in. A confirmation
+ * that does not tell you what you are about to lose is a speed bump, not a
+ * safeguard.
+ *
+ * It also says what actually happens next, which is that the new clan's owner
+ * has to agree. Somebody who leaves expecting to arrive, and instead lands
+ * nowhere while a request sits unanswered, has been misled by an omission.
+ */
+function leaveConfirm(options: ClanOptions): HTMLElement | null {
+  if (!options.pendingJoin) return null;
+
+  const cancel = el('button', {
+    class: 'button button--ghost',
+    type: 'button',
+    text: 'Stay put',
+  });
+  cancel.addEventListener('click', options.onCancelJoin);
+
+  const go = el('button', {
+    class: 'button',
+    type: 'button',
+    text: options.busy ? 'Asking...' : `Leave and ask ${options.pendingJoin}`,
+    ...(options.busy ? { disabled: 'true' } : {}),
+  });
+  go.addEventListener('click', options.onConfirmJoin);
+
+  return el(
+    'div',
+    { class: 'notice notice--confirm', role: 'alertdialog' },
+    el('p', {
+      class: 'notice__lead',
+      text: `Leave ${options.myTag} to ask for ${options.pendingJoin}?`,
+    }),
+    el('p', {
+      text: `You leave ${options.myTag} straight away and your Face stops counting toward it. ${options.pendingJoin} only has you once its owner agrees, so you may be in neither for a while.`,
+    }),
+    el('div', { class: 'actions actions--row' }, go, cancel),
+  );
 }

@@ -24,6 +24,7 @@ import { el } from './dom';
 import { rankFor } from '../data/story';
 import type { DailyMission } from '../game/mission';
 import type { Profile } from '../net/profile';
+import { bell, bellPanel, type AppNotification } from './notifications';
 
 export interface ChromeOptions {
   /** Null until the mission has landed, which is before any screen with a bar. */
@@ -39,6 +40,18 @@ export interface ChromeOptions {
   onHome: () => void;
   /** The rank chip opens the ladder, which is the thing it is a number from. */
   onRank: () => void;
+
+  /**
+   * Things waiting on the player, and the panel's open state.
+   *
+   * Owned by the app rather than the bar, because the bar is rebuilt on every
+   * repaint and a panel that closed itself whenever a screen changed would be
+   * unusable on exactly the screens it sends you to.
+   */
+  notifications: AppNotification[];
+  bellOpen: boolean;
+  onToggleBell: () => void;
+  onClearNotifications: () => void;
 }
 
 export function renderChrome(root: HTMLElement, options: ChromeOptions): void {
@@ -164,14 +177,41 @@ export function renderChrome(root: HTMLElement, options: ChromeOptions): void {
   );
   chain.addEventListener('click', () => setNetwork(net === 'test' ? 'main' : 'test'));
 
+  const bellOptions = {
+    items: options.notifications,
+    open: options.bellOpen,
+    onToggle: options.onToggleBell,
+    onClearAll: options.onClearNotifications,
+  };
+
   root.replaceChildren(
-    ...[mark, wreck, el('div', { class: 'chrome__spacer' }), clan, chain, rank].filter(
-      (node): node is HTMLElement => node !== null,
-    ),
+    ...[
+      mark,
+      wreck,
+      el('div', { class: 'chrome__spacer' }),
+      clan,
+      chain,
+      bell(bellOptions),
+      rank,
+    ].filter((node): node is HTMLElement => node !== null),
   );
+
+  /*
+   * The panel is fixed and mounted outside the bar.
+   *
+   * Inside it, the bar's own overflow and stacking would clip a 320px panel
+   * hanging off a 38px button. Pinned to the document instead, positioned
+   * under the bell in CSS.
+   */
+  document.querySelector('.bellpanel')?.remove();
+  const panel = bellPanel(bellOptions);
+  if (panel) document.body.appendChild(panel);
 }
 
 export function hideChrome(root: HTMLElement): void {
   root.hidden = true;
   root.replaceChildren();
+  // The panel lives on the body, so hiding the bar would otherwise leave it
+  // floating over a run with no bell to close it.
+  document.querySelector('.bellpanel')?.remove();
 }

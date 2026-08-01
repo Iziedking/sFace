@@ -50,6 +50,10 @@ export interface BriefOptions {
   profileValue: string;
   /** True when something in there wants attention, so the tile can say so. */
   profileAlert: boolean;
+  /** How many contests are open, or an invitation when none are. */
+  contestsValue: string;
+  contestsAlert: boolean;
+  onContests: () => void;
   /** The stage about to be flown, and how far up the campaign they are. */
   stage: Stage;
   stagesCleared: number;
@@ -239,6 +243,14 @@ export function renderBrief(root: HTMLElement, options: BriefOptions): void {
             // Named for what it is. "Board" was a tile nobody read as the
             // leaderboard, so the leaderboard was effectively missing.
             tile('Leaderboard', 'today and all time', options.onBoard),
+            /*
+             * Contests, beside the leaderboard rather than inside the profile.
+             *
+             * A board is what happened and a contest is what you can enter, so
+             * they are the same kind of destination: today's game, out there,
+             * with other people in it. The profile is for what is yours.
+             */
+            tile('Contests', options.contestsValue, options.onContests, options.contestsAlert),
             /*
              * Profile and Settings, and nothing else.
              *
@@ -509,6 +521,18 @@ export interface ResultsOptions {
   practice: boolean;
   /** Set when a money path refused for want of a wallet. Carries the door. */
   needsWallet: boolean;
+  /**
+   * Whether this run is on the board unsigned, with a wallet that could sign.
+   *
+   * The signature is offered, never sprung. It used to be asked for during the
+   * post, which put a dialog in front of somebody reading their own score, and
+   * asked whenever a wallet was present rather than connected, so it failed.
+   */
+  canSign: boolean;
+  signing: boolean;
+  /** What went wrong last time, or null. Never implies the score is at risk. */
+  signNotice: string | null;
+  onSign: () => void;
   /** Null when X connect is not configured on this deployment. */
   onConnectX: (() => void) | null;
   onBoard: () => void;
@@ -734,6 +758,8 @@ export function renderResults(root: HTMLElement, options: ResultsOptions): void 
             : options.postError
               ? el('div', { class: 'notice notice--error', text: options.postError })
               : null,
+
+          signOffer(options),
 
           /*
            * The practice bill, presented after a run they enjoyed rather than
@@ -1077,5 +1103,52 @@ function field(label: string, value: string): HTMLElement {
     { class: 'board__field' },
     el('span', { class: 'board__fieldlabel', text: label }),
     el('span', { class: 'board__fieldvalue', text: value }),
+  );
+}
+
+/**
+ * The offer to bind this run to a wallet.
+ *
+ * ## What it does and does not say
+ *
+ * It does not say "store this on chain", because that is not what happens.
+ * Signing produces an Ed25519 signature over the date, seed, stage and score.
+ * Nothing is sent, no transaction exists, and a player who signed and then went
+ * looking on an explorer would find nothing and reasonably conclude the app had
+ * lied to them. The board draws the same line: the signature proves the run,
+ * the wallet link opens an account.
+ *
+ * It also does not say the score is lost without this. It is not. The board has
+ * always taken unsigned rows and marks them as such, and a plain browser has no
+ * wallet at all. Threatening a loss that will not happen would buy one extra tap
+ * at the cost of the one thing this product is actually selling, which is that
+ * what it tells you is true.
+ *
+ * So it says what signing buys: a mark on the row, tied to an address, that a
+ * stranger can check without trusting us.
+ */
+function signOffer(options: ResultsOptions): HTMLElement | null {
+  if (!options.canSign) return null;
+
+  return el(
+    'div',
+    { class: 'notice notice--sign' },
+    el('p', {
+      class: 'notice__lead',
+      text: 'Your score is on the board. Want to prove it is yours?',
+    }),
+    el('p', {
+      text: 'Your wallet signs this exact run, and the board publishes the signature beside it. Anyone can check it against your address without trusting us. It costs no NIM and sends no transaction.',
+    }),
+    options.signNotice
+      ? el('p', { class: 'notice__warn', text: options.signNotice })
+      : null,
+    el(
+      'div',
+      { class: 'actions' },
+      button(options.signing ? 'Waiting for the wallet...' : 'Sign this run', options.onSign, 'ghost', {
+        disabled: options.signing,
+      }),
+    ),
   );
 }

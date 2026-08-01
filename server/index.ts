@@ -20,6 +20,7 @@ import { getMission, startRefreshLoop, utcDate } from './daily';
 import * as board from './leaderboard';
 import * as challenges from './challenges';
 import * as clans from './clans';
+import * as contests from './contests';
 import * as ghosts from './ghosts';
 import * as signals from './xsignals';
 import * as profiles from './profiles';
@@ -172,6 +173,42 @@ const scoreBody = z.object({
   signature: z.string().regex(/^[0-9a-fA-F]{128}$/).optional(),
 });
 
+/**
+ * Signing a run that was already posted.
+ *
+ * Everything needed to rebuild the exact signed message, and nothing else. No
+ * score is written from this and no profile is touched, so the fields that
+ * would move a ranking are deliberately absent from the schema rather than
+ * accepted and ignored.
+ */
+/** Opening a contest. The terms, and nothing that could move a result. */
+const contestBody = z.object({
+  deviceId,
+  name: pilotName,
+  avatarUrl: avatarUrl.nullable().optional(),
+  kind: z.enum(['duel', 'clan', 'gauntlet']),
+  stages: z.array(z.number().int().min(1).max(7)).min(1).max(7),
+  stakeNim: z.number().int().min(contests.MIN_STAKE_NIM).max(contests.MAX_STAKE_NIM),
+  seats: z.number().int().min(2).max(6),
+  visibility: z.enum(['open', 'private']),
+});
+
+const joinContestBody = z.object({
+  deviceId,
+  name: pilotName,
+  avatarUrl: avatarUrl.nullable().optional(),
+});
+
+const signBody = z.object({
+  deviceId,
+  date: isoDate,
+  seed,
+  stage: z.number().int().min(1).max(7),
+  score: z.number().int().min(0).max(board.SCORE_CEILING),
+  publicKey: z.string().regex(/^[0-9a-fA-F]{64}$/),
+  signature: z.string().regex(/^[0-9a-fA-F]{128}$/),
+});
+
 const createBody = z.object({
   deviceId,
   name: pilotName,
@@ -304,29 +341,6 @@ app.post('/board', limit(20, 10), async (req, res) => {
   const body = parsed.data;
 
   /*
-   * A rehearsal is scored, checked and told the truth, then not written down.
-   *
-   * The submission still runs the whole path above and below this: the level is
-   * rebuilt, the ceiling is enforced, the signature is verified. That is the
-   * point of a test network, and stopping earlier would mean the one thing
-   * testnet cannot exercise is the thing most worth exercising.
-   *
-   * What it does not do is land on the daily board. That board is a public
-   * ranking with real stakes attached, and a row from a network where NIM is
-   * free is not comparable to one from a network where it is not. Mixing them
-   * would quietly devalue every honest entry.
-   */
-  if (networkOf(req) === 'test') {
-    res.json({
-      ok: true,
-      recorded: false,
-      network: 'test',
-      note: 'Testnet run. Scored and verified, but kept off the mainnet board.',
-    });
-    return;
-  }
-
-  /*
    * Verify the signature, if there is one, and derive who signed.
    *
    * A bad signature is refused rather than quietly downgraded to an unsigned
@@ -414,6 +428,19 @@ app.post('/board', limit(20, 10), async (req, res) => {
    * claims. A score can only land on the board it was played on, and the client
    * is trusted with this exactly because declaring testnet can only ever mean
    * less: no metered reads, and a row that stays off the mainnet board.
+   *
+   * ## Testnet lands, on its own board
+   *
+   * This used to return early for a rehearsal, above the verification, with a
+   * comment claiming the whole path still ran. It did not: the signature was
+   * never checked and the level was never rebuilt, so the one network that
+   * exists to exercise those was the only one that skipped them.
+   *
+   * It also made two things the app says untrue. Testnet has its own board and
+   * its own lifetime Face, keyed by network everywhere from server/leaderboard
+   * to server/profiles, and none of it could ever fill because nothing was
+   * written. The separation is what keeps free NIM out of a real rank; it was
+   * never a reason to discard the rehearsal itself.
    */
   const result = board.submit({ ...body, network: networkOf(req), address, proof });
   if (!result.ok) {
@@ -427,6 +454,23 @@ app.post('/board', limit(20, 10), async (req, res) => {
    * counted on one and missed on the other, which would show a player a rank
    * that disagrees with their own results screen.
    */
+  /*
+   * Contests are updated here rather than by a second call.
+   *
+   * A separate request is a second chance to fail: the score lands on the board
+   * and the contest entry does not, so somebody has a run they can see and a
+   * stake that does not know about it. In the same request they arrive together
+   * or not at all.
+   */
+  contests.recordScore({
+    network: networkOf(req),
+    pilotId: parsed.data.deviceId,
+    date: parsed.data.date,
+    seed: parsed.data.seed,
+    stage: parsed.data.stage ?? 1,
+    score: parsed.data.score,
+  });
+
   const profile = profiles.record({
     id: parsed.data.deviceId,
     name: parsed.data.name,
@@ -453,6 +497,178 @@ app.post('/board', limit(20, 10), async (req, res) => {
  * disagree with its own members. The reasoning, including why anyone is allowed
  * to join any tag, is at the top of server/clans.ts.
  */
+/**
+ * Bind a wallet to a run that is already on the board.
+ *
+ * ## Why this is separate from posting
+ *
+ * The wallet used to be asked to sign during the post, which meant the prompt
+ * arrived unannounced, in the two seconds a player is reading their own score,
+ * and could not be retried if it failed. Worse, it was asked whenever a wallet
+ * was merely present, including when no account had ever been approved, so
+ * inside Nimiq Pay it reliably failed.
+ *
+ * So the score posts first and always, and signing is a button afterwards.
+ * That needs its own route, because re-posting would be refused by the board
+ * (it only replaces on a better score) and would add the run's Face to the
+ * lifetime profile a second time.
+ *
+ * Nothing here changes a ranking. It attaches proof to a row that already
+ * exists, or refuses.
+ */
+app.post('/board/sign', limit(20, 10), (req, res) => {
+  const parsed = signBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: firstIssue(parsed.error) });
+    return;
+  }
+
+  const body = parsed.data;
+
+  // Testnet runs are verified and never written down, so there is no row to
+  // sign. Said plainly rather than returning a success nothing came of.
+  if (networkOf(req) === 'test') {
+    res.json({ ok: true, recorded: false, note: 'Testnet runs are not kept on the board.' });
+    return;
+  }
+
+  const attested = verifyClaim({
+    claim: { date: body.date, seed: body.seed, stage: body.stage, score: body.score },
+    publicKey: body.publicKey,
+    signature: body.signature,
+  });
+
+  if (!attested) {
+    res.status(422).json({ error: 'That signature does not match the run it was sent with.' });
+    return;
+  }
+
+  const result = board.attachProof({
+    network: networkOf(req),
+    date: body.date,
+    deviceId: body.deviceId,
+    score: body.score,
+    address: attested.address,
+    proof: {
+      publicKey: body.publicKey,
+      signature: body.signature,
+      seed: body.seed,
+      stage: body.stage,
+    },
+  });
+
+  if (!result.ok) {
+    res.status(404).json({ error: result.reason });
+    return;
+  }
+
+  res.json({ ok: true, recorded: true, address: attested.address });
+});
+
+/*
+ * Contests ------------------------------------------------------------------
+ *
+ * The list is public and the terms are fixed at creation. Nothing here holds a
+ * stake: settlement is wallet to wallet against an address on the payer's own
+ * screen, exactly as challenges already work, so the worst a wrong answer here
+ * can do is describe a result incorrectly.
+ */
+
+app.get('/contests', limit(120, 40), (req, res) => {
+  res.json(contests.list(networkOf(req)));
+});
+
+app.get('/contests/:id', limit(120, 40), (req, res) => {
+  const found = contests.get(String(req.params.id ?? ''), networkOf(req));
+  if (!found.ok) {
+    res.status(found.code).json({ error: found.reason });
+    return;
+  }
+  res.json(contests.toPublic(found.value));
+});
+
+app.post('/contests', limit(12, 6), async (req, res) => {
+  const parsed = contestBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: firstIssue(parsed.error) });
+    return;
+  }
+
+  const body = parsed.data;
+  const network = networkOf(req);
+
+  /*
+   * Pinned to the service's own mission, never to anything the client sent.
+   *
+   * Every entrant has to fly the identical level, and a caller who could name
+   * the seed could open a contest on a level they had already learned. The date
+   * and seed come from the same cache the daily board verifies against.
+   */
+  const mission = await getMission({ rehearsal: network === 'test' });
+  if (!mission) {
+    res.status(503).json({ error: 'No mission to pin a contest to right now.' });
+    return;
+  }
+
+  // The clan comes from the profile, not the request. A contest that named a
+  // clan the host is not in would credit a roster nobody on it agreed to enter.
+  const profile = profiles.get(body.deviceId, network);
+
+  const result = contests.create({
+    network,
+    hostId: body.deviceId,
+    hostName: body.name,
+    hostAvatarUrl: body.avatarUrl ?? null,
+    hostClanTag: profile?.clanTag ?? null,
+    kind: body.kind,
+    stages: body.stages,
+    stakeNim: body.stakeNim,
+    seats: body.seats,
+    visibility: body.visibility,
+    date: mission.payload.date,
+    seed: mission.payload.seed,
+    now: Date.now(),
+  });
+
+  if (!result.ok) {
+    res.status(result.code).json({ error: result.reason });
+    return;
+  }
+
+  res.json(contests.toPublic(result.value));
+});
+
+app.post('/contests/:id/join', limit(20, 10), (req, res) => {
+  const parsed = joinContestBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: firstIssue(parsed.error) });
+    return;
+  }
+
+  const network = networkOf(req);
+  const body = parsed.data;
+  // Ensured, because taking a seat is a perfectly reasonable first thing to do
+  // and refusing somebody until they have posted a run would make an invite
+  // look broken to exactly the person it was meant to bring in.
+  const profile = profiles.ensure(body.deviceId, body.name, network);
+
+  const result = contests.join({
+    id: String(req.params.id ?? ''),
+    network,
+    pilotId: body.deviceId,
+    name: body.name,
+    avatarUrl: body.avatarUrl ?? null,
+    clanTag: profile.clanTag,
+  });
+
+  if (!result.ok) {
+    res.status(result.code).json({ error: result.reason });
+    return;
+  }
+
+  res.json(contests.toPublic(result.value));
+});
+
 app.get('/clans', limit(120, 40), (req, res) => {
   res.json(clans.table(50, networkOf(req)));
 });
@@ -889,6 +1105,7 @@ function snapshot() {
     profiles: profiles.serialise(),
     ghosts: ghosts.serialise(),
     clans: clans.serialise(),
+    contests: contests.serialise(),
     signals: signals.serialise(),
   };
 }
@@ -904,6 +1121,7 @@ async function main(): Promise<void> {
     profiles.restore((restored as { profiles?: unknown }).profiles);
     ghosts.restore((restored as { ghosts?: unknown }).ghosts);
     clans.restore((restored as { clans?: unknown }).clans);
+    contests.restore((restored as { contests?: unknown }).contests);
     signals.restore((restored as { signals?: unknown }).signals);
     console.log('[sface] restored snapshot');
 
@@ -946,6 +1164,7 @@ async function main(): Promise<void> {
   profiles.onChange(() => scheduleSave(snapshot));
   ghosts.onChange(() => scheduleSave(snapshot));
   clans.onChange(() => scheduleSave(snapshot));
+  contests.onChange(() => scheduleSave(snapshot));
   signals.onChange(() => scheduleSave(snapshot));
 
   startRefreshLoop();
@@ -955,6 +1174,7 @@ async function main(): Promise<void> {
     () => {
       board.prune(utcDate());
       challenges.prune();
+      contests.prune(Date.now());
       signals.pruneUnlocks();
       // Traces are the bulkiest thing stored and a seed is only playable on
       // its own day, so everything but today's room goes.
