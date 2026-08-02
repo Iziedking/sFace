@@ -28,8 +28,20 @@ const MIN_VIEW_H = 760;
  * people are betting NIM on the same seed. The minimum keeps the game
  * playable, the maximum keeps it fair, and the maximum wins when they fight.
  */
-const MAX_VIEW_W = 900;
-const MAX_VIEW_H = 1000;
+/**
+ * The widest any device may see, and the most total world it may see.
+ *
+ * Width is the competitive axis, because the level runs left to right and
+ * seeing further ahead is worth something in a staked run. It is capped at
+ * 1200 rather than the old 900: a short landscape viewport has to be allowed to
+ * pull back to get any sky at all, and 900 made it impossible.
+ *
+ * Area is what stops that becoming an advantage. Whatever shape a screen is, it
+ * gets the same total amount of world as a portrait phone, so a wide short view
+ * buys height at the cost of nothing and reach at the cost of sky.
+ */
+const MAX_VIEW_W = 1200;
+const MAX_VIEW_AREA = 900 * 1000;
 
 /** How far ahead of the ship the camera leads, at full speed. */
 const LOOKAHEAD = 130;
@@ -54,9 +66,27 @@ export class Camera {
     // neither dimension exceeds the maximum. Taking the larger of the two
     // lower bounds is what makes the fairness cap win over the comfort floor.
     const toFitMinimum = Math.min(cssWidth / MIN_VIEW_W, cssHeight / MIN_VIEW_H);
-    const toCapMaximum = Math.max(cssWidth / MAX_VIEW_W, cssHeight / MAX_VIEW_H);
 
-    this.scale = Math.max(toFitMinimum, toCapMaximum);
+    /*
+     * The ceiling is on AREA, plus a hard limit on width.
+     *
+     * It used to cap each dimension on its own, and on a short landscape screen
+     * the width cap was the one that bound: a 660 by 280 viewport inside the
+     * wallet resolved to a scale of 0.73 and about 380 world units of height.
+     * The ship flies out of the top of that. Reported as not being able to see
+     * things flying up, and it was the camera zooming IN to obey a rule meant to
+     * stop it zooming out.
+     *
+     * Capping the area instead lets a short screen pull back until it sees a
+     * comfortable amount of sky, while still never seeing more of the level in
+     * total than a tall one. The width limit stays because the level runs left
+     * to right, so horizontal reach is the axis a staked challenge could be won
+     * on; it is simply looser than the old flat 900 rather than absent.
+     */
+    const toCapArea = Math.sqrt((cssWidth * cssHeight) / MAX_VIEW_AREA);
+    const toCapWidth = cssWidth / MAX_VIEW_W;
+
+    this.scale = Math.max(toFitMinimum, toCapArea, toCapWidth);
     this.viewW = cssWidth / this.scale;
     this.viewH = cssHeight / this.scale;
   }
