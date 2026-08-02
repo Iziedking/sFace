@@ -28,7 +28,7 @@ import * as profiles from './profiles';
 import * as xauth from './xauth';
 import { attachLive } from './live';
 import { backupSnapshot, flush, loadSnapshot, saveNow, scheduleSave } from './store';
-import { verifyClaim } from './attest';
+import { claimMessage, verifyClaim } from './attest';
 import { levelFacts, refuse } from './verify';
 
 const PORT = Number(process.env.PORT ?? 8790);
@@ -421,6 +421,32 @@ app.post('/board', limit(20, 10), async (req, res) => {
      */
     if (!attested) {
       signatureRefused = true;
+      /*
+       * Logged with enough to tell WHY, because nothing else can.
+       *
+       * Not one row in production has ever carried a signature. Either the
+       * wallet never produced one, or every one it produced failed this check,
+       * and from the outside those look identical: the score lands unsigned
+       * either way and nobody is told anything.
+       *
+       * The message is what the service rebuilt and tried to verify against.
+       * If the wallet signed something else, comparing that string to what the
+       * client sent is the whole diagnosis. Public keys and signatures are
+       * public by definition, so there is nothing here worth hiding.
+       */
+      console.warn(
+        '[sface] signature refused',
+        JSON.stringify({
+          message: claimMessage({
+            date: body.date,
+            seed: body.seed,
+            stage: body.stage ?? 1,
+            score: body.score,
+          }),
+          publicKey: body.publicKey,
+          signature: body.signature,
+        }),
+      );
     } else {
       address = attested.address;
       /*
@@ -623,6 +649,21 @@ app.post('/board/sign', limit(20, 10), (req, res) => {
   });
 
   if (!attested) {
+    // Same reasoning as the score route: this is the only way to learn whether
+    // the wallet is signing something other than what we verify against.
+    console.warn(
+      '[sface] sign refused',
+      JSON.stringify({
+        message: claimMessage({
+          date: body.date,
+          seed: body.seed,
+          stage: body.stage,
+          score: body.score,
+        }),
+        publicKey: body.publicKey,
+        signature: body.signature,
+      }),
+    );
     res.status(422).json({ error: 'That signature does not match the run it was sent with.' });
     return;
   }
