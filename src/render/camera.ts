@@ -43,6 +43,15 @@ const MIN_VIEW_H = 760;
 const MAX_VIEW_W = 1200;
 const MAX_VIEW_AREA = 900 * 1000;
 
+/**
+ * Below this many CSS pixels of height, playability wins over the width cap.
+ *
+ * The wallet in landscape lands around here once its own chrome is taken out.
+ * A screen this short is already seeing less of the world than anything else;
+ * holding it to a width cap on top of that just makes it unplayable.
+ */
+const CRAMPED_HEIGHT = 340;
+
 /** How far ahead of the ship the camera leads, at full speed. */
 const LOOKAHEAD = 130;
 /** Fraction of the gap closed per second. Loose enough to feel alive. */
@@ -84,7 +93,24 @@ export class Camera {
      * on; it is simply looser than the old flat 900 rather than absent.
      */
     const toCapArea = Math.sqrt((cssWidth * cssHeight) / MAX_VIEW_AREA);
-    const toCapWidth = cssWidth / MAX_VIEW_W;
+
+    /*
+     * The width cap lifts on a screen too short to play on.
+     *
+     * Capping area was supposed to buy back the sky, and on a genuinely tiny
+     * viewport it never binds: the wallet in landscape leaves about 200 usable
+     * pixels of height, where the width cap alone forces a scale that leaves
+     * 358 world units of sky. The ship still flies out of the top and the fix
+     * did nothing.
+     *
+     * Below the threshold the area cap is the only limit. That does buy a wider
+     * view, and it is the right trade rather than a loophole: the same screen is
+     * seeing far LESS sky than a portrait phone, and in a game where attackers
+     * come from above and you climb to reach people, height is the axis that
+     * decides whether it is playable at all. Nobody gains by picking a 200 pixel
+     * window, and the total world on screen is still the same for everyone.
+     */
+    const toCapWidth = cssHeight < CRAMPED_HEIGHT ? 0 : cssWidth / MAX_VIEW_W;
 
     this.scale = Math.max(toFitMinimum, toCapArea, toCapWidth);
     this.viewW = cssWidth / this.scale;

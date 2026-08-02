@@ -42,8 +42,35 @@ export interface SafeInsets {
 const CLOCK_WARNING = 15;
 const BAR_HEIGHT = 46;
 
+/**
+ * How long the gate card stays up after arriving at a wall.
+ *
+ * Long enough to read a question and three tickers without hurrying, short
+ * enough that it is gone before it becomes scenery.
+ */
+const GATE_CARD_SECONDS = 6;
+
+/**
+ * How wide the arc counts as being at the gap, in radians either side.
+ *
+ * Roughly matches where attackers stand, so the card is up exactly where the
+ * stage is contested and down while you are circling looking for the opening.
+ */
+const GATE_ARC = 0.7;
+
 export class Hud {
   private insets: SafeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
+
+  /** Which gate the card is currently about, and when it came up. */
+  private gateShownFor: number | null = null;
+  private gateOpenedAt = 0;
+  /**
+   * Whether the card was drawn on the last frame.
+   *
+   * Read by the loop to decide whether its rows are tappable. A hit target that
+   * outlives what it belongs to would answer a gate nobody can see.
+   */
+  gateCardVisible = false;
 
   /**
    * Top of the play area, which the input layer needs to place the gate rows.
@@ -640,9 +667,39 @@ export class Hud {
     top: number,
     height: number,
   ): void {
-    if (state.openGateId === null) return;
+    this.gateCardVisible = false;
+
+    if (state.openGateId === null) {
+      this.gateShownFor = null;
+      return;
+    }
     const gate = state.gates.find((g) => g.id === state.openGateId);
     if (!gate) return;
+
+    /*
+     * Up when it is useful, not for the whole run.
+     *
+     * On the ring city a gate is open for the entire band outside its wall,
+     * which is most of a stage. That is right for answering, because circling a
+     * wall looking for the gap should not cost you the ability to answer it. It
+     * is wrong for drawing: the card sat over the level from the moment you
+     * entered a band until you left it, and was reported as blocking the game.
+     *
+     * So it shows when you arrive at a wall, which is when you need to read the
+     * question, and again whenever you are near the gap, which is where you act
+     * on it. In between it gets out of the way and the ring map carries the
+     * place. Answering is untouched: the keys and the taps work whether the card
+     * is drawn or not.
+     */
+    if (this.gateShownFor !== gate.id) {
+      this.gateShownFor = gate.id;
+      this.gateOpenedAt = state.time;
+    }
+
+    const justArrived = state.time - this.gateOpenedAt < GATE_CARD_SECONDS;
+    if (!justArrived && !nearGap(state, gate)) return;
+
+    this.gateCardVisible = true;
 
     /*
      * Compact, and you can see through it.
@@ -802,9 +859,22 @@ export class Hud {
     const rings = state.rings;
     if (!rings) return;
 
-    const size = 124;
+    /*
+     * Smaller, and off the left edge, because that is where a thumb lives.
+     *
+     * At 124 in the bottom left corner it sat exactly under the hand steering
+     * the ship, so the one thing that tells you where you are in the ring city
+     * was the one thing covered for the whole run. Reported from a phone.
+     *
+     * On a short screen it shrinks and moves inward past the stick. Everywhere
+     * else it keeps its size: a laptop has no thumb over the corner and the map
+     * is worth the space.
+     */
+    const cramped = height < 520;
+    const size = cramped ? 96 : 124;
     const scale = size / rings.width;
-    const x = this.insets.left + 12;
+    // Clear of the stick, which owns the bottom left of a phone screen.
+    const x = this.insets.left + (cramped ? 96 : 12);
     const padClearance = usingPads() ? 150 : 0;
     const y = height - this.insets.bottom - size - 12 - padClearance;
 
@@ -1376,4 +1446,25 @@ function clip(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): st
   let cut = text.length;
   while (cut > 1 && ctx.measureText(`${text.slice(0, cut)}...`).width > maxWidth) cut--;
   return `${text.slice(0, cut).trimEnd()}...`;
+}
+
+/**
+ * Is the player standing near the gap this gate guards?
+ *
+ * The ring city only. Everywhere else a gate is already a point on the level
+ * rather than a whole band, so it is near by definition and the card behaves as
+ * it always did.
+ */
+function nearGap(state: RunState, gate: { ring: number }): boolean {
+  const rings = state.rings;
+  if (!rings) return true;
+
+  const ring = rings.rings[gate.ring];
+  if (!ring) return true;
+
+  const angle = Math.atan2(state.player.y - rings.cy, state.player.x - rings.cx);
+  let apart = Math.abs(angle - ring.gapAt) % (Math.PI * 2);
+  if (apart > Math.PI) apart = Math.PI * 2 - apart;
+
+  return apart <= GATE_ARC;
 }

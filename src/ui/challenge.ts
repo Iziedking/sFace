@@ -34,6 +34,15 @@ export interface ChallengeOptions {
   onPlay: () => void;
   onSettle: () => void;
   onShare: () => void;
+  /**
+   * Across to Contests, which is where this idea now lives.
+   *
+   * The original challenge is one stage against one person. Contests carry
+   * stage ranges, seats, clans, standings and settlement, and somebody looking
+   * at this screen wondering where the rest of it is should have a door rather
+   * than a dead end.
+   */
+  onContests: () => void;
   onDismiss: () => void;
 }
 
@@ -158,6 +167,7 @@ function resolveBody(options: ChallengeOptions, mine: boolean): Body {
       receipt: null,
       actions: [
         button(t('shareRun'), options.onShare),
+        button('Open Contests instead', options.onContests, 'ghost'),
         button('Back', options.onDismiss, 'ghost'),
       ],
     };

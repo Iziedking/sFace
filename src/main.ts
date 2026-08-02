@@ -66,7 +66,6 @@ import { cardDataFrom, cardFile, drawScoreCard, shareLink, shareRun } from './ui
 import {
   acceptChallenge,
   apiConfigured,
-  createChallenge,
   fetchAllTime,
   fetchBoard,
   fetchChallenge,
@@ -157,7 +156,7 @@ import { renderContests, type ContestFilter } from './ui/contests';
 import type { AppNotification } from './ui/notifications';
 import { renderContestNew, type ContestDraft } from './ui/contest-new';
 import { renderContest } from './ui/contest';
-import { stageRange, type Contest } from './data/contests';
+import { remainingFor, stageRange, stagesLabel, type Contest } from './data/contests';
 import {
   createContest,
   fetchContest,
@@ -192,9 +191,6 @@ type Screen =
   | 'results'
   | 'board'
   | 'challenge';
-
-/** Default stake when a player creates a challenge without picking one. */
-const DEFAULT_STAKE_NIM = 5;
 
 /**
  * Floor on how long the loading screen is shown.
@@ -1667,8 +1663,69 @@ class App {
       notice: this.payNotice,
       onPay: () => void this.payContestDebt(),
       onShare: () => void this.shareContest(contest),
+      ...this.contestRun(contest),
       onBack: () => void this.cross(() => this.showContests()),
     });
+  }
+
+  /**
+   * The next stage this contest wants from you, and whether you can fly it.
+   *
+   * ## Why the contest does not need telling
+   *
+   * A score posts with its date, seed and stage, and the service folds it into
+   * every contest that matches and lists the pilot. So flying the right stage on
+   * the right day is the whole mechanism: there is no separate contest run mode
+   * to enter or forget to leave.
+   *
+   * What this does is stop somebody being sent to fly a stage that will not
+   * count. The campaign gates stages on progress, so a pilot who took a seat in
+   * a contest over stage five with two cleared would otherwise be quietly
+   * dropped to stage three by the unlock rule, fly it, and wonder why nothing
+   * landed.
+   */
+  private contestRun(contest: Contest): {
+    onRun: (() => void) | null;
+    nextStage: number | null;
+    lockedReason: string | null;
+  } {
+    const me = contest.entrants.find((e) => e.id === this.pilot);
+    if (!me || contest.status === 'settled') {
+      return { onRun: null, nextStage: null, lockedReason: null };
+    }
+
+    const next = remainingFor(contest, me)[0] ?? null;
+    if (next === null) {
+      return { onRun: null, nextStage: null, lockedReason: null };
+    }
+
+    // Today's mission only. A contest is pinned to one day's level and the
+    // service holds one day, so yesterday's contest cannot be flown or checked.
+    if (this.mission && this.mission.seed !== contest.seed) {
+      return {
+        onRun: null,
+        nextStage: next,
+        lockedReason: 'This contest was opened on a different day, so its level is gone.',
+      };
+    }
+
+    if (!stageUnlocked(next, this.cleared())) {
+      return {
+        onRun: null,
+        nextStage: next,
+        lockedReason: `Stage ${next} is not open to you yet. Clear the campaign up to it and the contest is waiting.`,
+      };
+    }
+
+    return {
+      onRun: () => {
+        this.stage = next;
+        writeStage(next);
+        this.startRun();
+      },
+      nextStage: next,
+      lockedReason: null,
+    };
   }
 
   /**
@@ -1732,16 +1789,50 @@ class App {
   }
 
   /** The link, so somebody can be invited into a private one. */
+  /**
+   * Hand the link over, by whatever the host actually supports.
+   *
+   * ## Three ways, because one is never enough
+   *
+   * The clipboard alone was the whole implementation and it did nothing inside
+   * Nimiq Pay: `navigator.clipboard` needs a secure context and a permission
+   * the WebView does not grant, so the write rejected, the catch printed the
+   * URL, and from the outside the button looked dead.
+   *
+   * The share sheet is tried first because it is what somebody pressing Share
+   * on a phone means: it hands the link to their messages rather than to a
+   * clipboard they then have to paste from. Clipboard second, for a desktop
+   * browser where there is no sheet. And the link itself last, on screen and
+   * selectable, which always works and is never worse than nothing.
+   */
   private async shareContest(contest: Contest): Promise<void> {
     const link = `${window.location.origin}/?contest=${encodeURIComponent(contest.id)}`;
+    const stakes = contest.stakeNim > 0 ? `${contest.stakeNim} NIM` : 'nothing but pride';
+    const text = `Take a seat in my sFace contest. ${stagesLabel(contest.stages)} for ${stakes}.`;
+
+    if (typeof navigator.share === 'function') {
+      try {
+        await navigator.share({ title: 'sFace contest', text, url: link });
+        this.payNotice = null;
+        this.paintContest();
+        return;
+      } catch {
+        /*
+         * Dismissed, or the host refused. Not an error worth reporting: a
+         * cancelled share sheet is somebody changing their mind, and the
+         * fallbacks below still give them the link.
+         */
+      }
+    }
+
     try {
       await navigator.clipboard.writeText(link);
       this.payNotice = 'Link copied.';
     } catch {
-      // Clipboard refused, which happens without a user gesture in some
-      // WebViews. The link is still the thing they need, so show it.
+      // Neither works. Show the link so it can at least be selected by hand.
       this.payNotice = link;
     }
+
     this.paintContest();
   }
 
@@ -2850,7 +2941,21 @@ class App {
       onCampaign: () => this.showCampaign(),
       onHome: () => this.showBrief(),
       onReplay: () => this.startRun(),
-      onChallenge: () => void this.createChallenge(),
+      /*
+       * Straight to the contest terms, not the old two-player challenge.
+       *
+       * There were two systems doing the same job. Challenge a friend opened
+       * the original one, which is a single stage against one person and has
+       * its own waiting screen, while Contests is the one that carries stage
+       * ranges, seats, clans, standings and settlement. Somebody pressing this
+       * after a run landed in the smaller one with no way across.
+       *
+       * The old flow still answers its own links, so a challenge already sent
+       * keeps working. Nothing new is routed into it.
+       */
+      onChallenge: this.needsName('Contests', () =>
+        void this.cross(() => this.showContestNew()),
+      ),
       onShare: () => void this.share(),
       onBoard: () => void this.showBoard(),
       practice: this.practice,
@@ -3091,55 +3196,6 @@ class App {
     }
   }
 
-  private async createChallenge(): Promise<void> {
-    const run = this.run;
-    if (!run) return;
-
-    if (!apiConfigured()) {
-      this.postError = 'Challenges need the service. Playing solo for now.';
-      this.needsWallet = false;
-      this.showResults();
-      return;
-    }
-
-    /*
-     * A challenge needs an address to pay to, so this is where we ask for one.
-     *
-     * The prompt used to happen during boot, before the player had done
-     * anything at all. Asking here means the dialog arrives attached to a
-     * reason: they pressed Challenge a friend, and a bet needs somewhere to
-     * send the money.
-     */
-    const payTo = await this.requireAddress();
-
-    if (!payTo) {
-      this.postError = t('challengeNoWallet');
-      this.needsWallet = true;
-      this.showResults();
-      return;
-    }
-
-    const result = await createChallenge({
-      deviceId: this.pilot,
-      name: this.displayName(),
-      address: payTo,
-      date: run.mission.date,
-      seed: run.mission.seed,
-      stakeNim: DEFAULT_STAKE_NIM,
-      score: run.score,
-    });
-
-    if (!result.ok) {
-      this.postError = result.error;
-      this.showResults();
-      return;
-    }
-
-    this.challenge = result.value;
-    rememberChallenge(result.value);
-    this.challengeNotice = null;
-    this.showChallengeScreen();
-  }
 
   /** Opened from a deeplink. Show the terms before the run, not after. */
   private async openChallenge(id: string): Promise<void> {
@@ -3225,6 +3281,7 @@ class App {
       onPlay: () => this.startRun(),
       onSettle: () => void this.settleChallenge(),
       onShare: () => void this.shareChallenge(),
+      onContests: () => void this.cross(() => this.showContests()),
       onDismiss: () => {
         this.challenge = null;
         this.challengeNotice = null;
@@ -3574,7 +3631,14 @@ class App {
        * gate that closes because the player moved away cannot leave a live hit
        * target behind on an empty screen.
        */
-      const openGate = run.gates.find((g) => g.id === run.openGateId);
+      /*
+       * Only while the card is actually drawn.
+       *
+       * The HUD now hides it between arriving at a wall and reaching its gap,
+       * and a hit target that outlives the thing it belongs to is worse than
+       * none: a tap in clear air would answer a gate the player cannot see.
+       */
+      const openGate = this.hud.gateCardVisible ? run.gates.find((g) => g.id === run.openGateId) : undefined;
       this.input.gateCard = openGate
         ? {
             optionCount: openGate.options.length,

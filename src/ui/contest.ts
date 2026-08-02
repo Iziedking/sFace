@@ -36,6 +36,17 @@ export interface ContestOptions {
   notice: string | null;
   onPay: () => void;
   onShare: () => void;
+  /**
+   * Fly the next stage this contest still wants from you.
+   *
+   * Null when there is nothing to fly: every stage flown, or the contest is
+   * over. A button that starts nothing is worse than an absent one.
+   */
+  onRun: (() => void) | null;
+  /** The stage that button would start, for the label. */
+  nextStage: number | null;
+  /** Set when that stage is not open to this pilot yet. */
+  lockedReason: string | null;
   onBack: () => void;
 }
 
@@ -138,9 +149,20 @@ export function renderContest(root: HTMLElement, options: ContestOptions): void 
 
       settled && contest.stakeNim > 0 ? settlement(options) : null,
 
+      /*
+       * The run comes first, because it is the only thing that changes
+       * anything. Everything above it is a report.
+       */
+      options.lockedReason
+        ? el('div', { class: 'notice', text: options.lockedReason })
+        : null,
+
       el(
         'div',
         { class: 'actions' },
+        options.onRun && options.nextStage !== null
+          ? button(`Fly stage ${options.nextStage}`, options.onRun)
+          : null,
         button('Share the link', options.onShare, 'ghost'),
         button('Back', options.onBack, 'ghost'),
       ),
