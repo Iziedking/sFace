@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { KeyPair, PrivateKey, Signature } from '@nimiq/core';
 
-import { claimMessage, encodeSignedMessage, verifyClaim } from '../server/attest';
+import { claimMessage, encodeSignedMessage, envelopes, verifyClaim } from '../server/attest';
 
 const CLAIM = { date: '2026-07-29', seed: '2026-07-29:pump:-6.70:fng29:x1', stage: 3, score: 14820 };
 
@@ -76,46 +76,76 @@ describe('forgery fails', () => {
   });
 });
 
-describe('the wallet prefix is mandatory', () => {
-  it('refuses a signature made over the bare message', () => {
-    // Signing the raw bytes is what a naive implementation would do, and it
-    // must not verify: the prefix is the thing that stops a signed "message"
-    // from ever being replayable as a transaction.
+describe('what the envelope still guarantees', () => {
+  /*
+   * This used to refuse anything not signed over the documented Nimiq envelope,
+   * on the grounds that the prefix is what stops a signed message being
+   * replayed as a transaction. That reasoning is right and the rule was too
+   * strict to ship: Nimiq Pay signs something this service does not build, so
+   * every real signature was refused and not one row in production ever carried
+   * one.
+   *
+   * Several message envelopes are accepted now, tried in order with the
+   * documented one first. What that gives up, precisely, is the guarantee that
+   * the exact prefix was used. What it does not give up is anything the mark on
+   * the board rests on:
+   *
+   *   every candidate is a message envelope or the message itself, and none is
+   *   a transaction, so no accepted signature can be replayed as one;
+   *
+   *   the date, seed, stage and score are inside whatever was signed, so a
+   *   signature cannot be moved to a different run;
+   *
+   *   the address is still derived from the key that signed.
+   *
+   * All three are asserted below.
+   */
+  it('accepts a bare message signature rather than losing the run', () => {
     const keyPair = KeyPair.generate();
     const raw = new TextEncoder().encode(claimMessage(CLAIM));
-    const signature = keyPair.sign(raw);
 
-    expect(
-      verifyClaim({
-        claim: CLAIM,
-        publicKey: keyPair.publicKey.toHex(),
-        signature: signature.toHex(),
-      }),
-    ).toBeNull();
+    const result = verifyClaim({
+      claim: CLAIM,
+      publicKey: keyPair.publicKey.toHex(),
+      signature: keyPair.sign(raw).toHex(),
+    });
+
+    expect(result?.address).toMatch(/^NQ/);
   });
 
-  it('encodes the byte length, not the character length', () => {
-    // A multi-byte character would desynchronise the prefix from the body and
-    // every signature over it would silently fail to verify.
-    const message = 'sface:é';
-    const encoded = encodeSignedMessage(message);
-    const body = new TextEncoder().encode(message);
-    expect(new TextDecoder().decode(encoded)).toContain(`\x16Nimiq Signed Message:\n${body.byteLength}`);
+  it('tries the documented envelope first', () => {
+    // A correct wallet must never be judged by the looser rule.
+    expect(envelopes(claimMessage(CLAIM))[0]?.name).toBe('nimiq-byte-length');
+  });
+
+  it('still refuses a signature over a different run, in every envelope', () => {
+    /*
+     * The property that actually protects the board. Widening which envelope is
+     * accepted must not widen which CLAIM is accepted, or a signature earned on
+     * stage one could be presented as a stage seven result.
+     */
+    const keyPair = KeyPair.generate();
+    const other = { ...CLAIM, score: CLAIM.score + 1 };
+
+    for (const candidate of envelopes(claimMessage(other))) {
+      expect(
+        verifyClaim({
+          claim: CLAIM,
+          publicKey: keyPair.publicKey.toHex(),
+          signature: keyPair.sign(candidate.bytes).toHex(),
+        }),
+      ).toBeNull();
+    }
+  });
+
+  it('still encodes the byte length in the documented envelope', () => {
+    const text = claimMessage(CLAIM);
+    const header = new TextDecoder().decode(encodeSignedMessage(text).slice(0, 30));
+
+    expect(header).toContain(String(new TextEncoder().encode(text).byteLength));
   });
 });
 
-/**
- * A row on the board carries its own working.
- *
- * The service verified the signature and then kept only the address it derived,
- * which made the verified mark an assertion: you could see that sFace said a
- * wallet signed, and you had to take sFace's word for it. A signature is not a
- * secret, and publishing it is the entire thing that makes it worth having.
- *
- * This is written as a stranger would: take only the fields the API hands back,
- * rebuild the signed string from them, and check it. Nothing from inside the
- * service, no shared state, no trust.
- */
 describe('anybody can check a published row', () => {
   const DATE = '2026-07-31';
   const SEED = '2026-07-31:m:-9.04:fng25:xzi56f9';

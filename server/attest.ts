@@ -50,6 +50,55 @@ export function encodeSignedMessage(message: string): Uint8Array {
   return out;
 }
 
+function join(prefix: string, body: Uint8Array): Uint8Array {
+  const head = encoder.encode(prefix);
+  const out = new Uint8Array(head.byteLength + body.byteLength);
+  out.set(head);
+  out.set(body, head.byteLength);
+  return out;
+}
+
+/**
+ * Every shape a wallet might have signed, best first.
+ *
+ * ## Why this accepts more than one
+ *
+ * Not a single row in production ever carried a signature. A player then signed
+ * in Nimiq Pay and the service answered 422: the key and the signature were the
+ * right length and the right alphabet, and it still did not verify. Hex,
+ * correct length, wrong bytes. Something is being signed other than what this
+ * file builds, and no test here can find out which, because a headless browser
+ * has no wallet.
+ *
+ * So instead of one shape and a refusal, this tries the shapes a wallet
+ * plausibly uses and reports which one worked. A signature over a message
+ * naming the date, seed, stage and score is a valid attestation whichever
+ * envelope carried it: the envelope exists to stop a message signature being
+ * replayed as a transaction, and every candidate below is a message envelope or
+ * the message itself. None of them is a transaction.
+ *
+ * Order matters. The first is what Nimiq documents and what this verified
+ * against before, and the rest are only reached once it fails, so a correct
+ * wallet is never judged by a looser rule than it should be.
+ */
+export function envelopes(message: string): Array<{ name: string; bytes: Uint8Array }> {
+  const body = encoder.encode(message);
+
+  return [
+    { name: 'nimiq-byte-length', bytes: encodeSignedMessage(message) },
+    {
+      name: 'nimiq-char-length',
+      bytes: join('\x16Nimiq Signed Message:\n' + String(message.length), body),
+    },
+    { name: 'nimiq-no-length', bytes: join('\x16Nimiq Signed Message:\n', body) },
+    {
+      name: 'nimiq-no-prefix-byte',
+      bytes: join('Nimiq Signed Message:\n' + String(body.byteLength), body),
+    },
+    { name: 'bare-message', bytes: body },
+  ];
+}
+
 export interface ScoreClaim {
   date: string;
   seed: string;
@@ -89,12 +138,28 @@ export function verifyClaim(input: {
   signature: string;
 }): Attestation | null {
   try {
-    const message = encodeSignedMessage(claimMessage(input.claim));
+    const text = claimMessage(input.claim);
 
     const publicKey = PublicKey.fromHex(input.publicKey);
     const signature = Signature.fromHex(input.signature);
 
-    if (!publicKey.verify(signature, message)) return null;
+    const matched = envelopes(text).find((candidate) =>
+      publicKey.verify(signature, candidate.bytes),
+    );
+
+    if (!matched) return null;
+
+    /*
+     * Say so when it was not the documented one.
+     *
+     * Loud, once per accepted signature, because it means every wallet is
+     * signing something other than what Nimiq documents and this file should
+     * eventually just build that instead. Silence here would leave the fallback
+     * carrying production forever with nobody knowing.
+     */
+    if (matched.name !== 'nimiq-byte-length') {
+      console.warn(`[sface] signature verified with fallback envelope: ${matched.name}`);
+    }
 
     // Derived, never accepted from the client. An address supplied alongside a
     // signature is a claim about the signature; an address derived from the
