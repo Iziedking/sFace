@@ -233,6 +233,45 @@ export function atCore(city: RingCity, x: number, y: number): boolean {
  * it belongs to, so what you need for a wall is always on the side of it you are
  * standing on.
  */
+/**
+ * A spot in a band, near the gap the player has to come through.
+ *
+ * ## Why uniform placement made the finale empty
+ *
+ * `spotOutside` picks any angle on the circle, which is right for scattering
+ * caches and people and wrong for attackers. A band out at radius 2,400 is
+ * nearly 15,000 units around, so seven attackers spread evenly across it sit
+ * about 2,000 apart and a player standing anywhere on it sees none of them.
+ * Stage seven was played end to end on a phone without meeting one, on a level
+ * holding thirty.
+ *
+ * The player's route is not the circle, it is the gaps: you arrive at a wall,
+ * find its one opening, answer for it and go through. So attackers belong near
+ * the openings, which is where somebody actually has to be and where standing
+ * still to read a gate has a cost.
+ *
+ * `spread` is in radians of arc either side of the gap. Wide enough that they
+ * are not a wall of bodies in the doorway, tight enough to be met.
+ */
+export function spotNearGap(
+  city: RingCity,
+  rng: Rng,
+  ringIndex: number,
+  spread = 0.55,
+): { x: number; y: number } {
+  const ring = city.rings[ringIndex];
+  if (!ring) return spotOutside(city, rng, ringIndex);
+
+  const inner = ring.radius + ring.thickness;
+  const next = city.rings[ringIndex + 1];
+  const outer = next ? next.radius - next.thickness : inner + RING_SPACING * 0.8;
+
+  const r = rng.range(inner + 70, Math.max(inner + 90, outer - 70));
+  const a = ring.gapAt + rng.range(-spread, spread);
+
+  return { x: city.cx + Math.cos(a) * r, y: city.cy + Math.sin(a) * r };
+}
+
 export function spotOutside(
   city: RingCity,
   rng: Rng,

@@ -39,6 +39,7 @@
 import { resolve } from './city';
 import { PATROL_CAR_RADIUS } from './enemy';
 import { lineBlocked } from './city';
+import { resolve as resolveRings, solidAt as ringSolidAt } from './rings';
 import { spawnBullet } from './bullet';
 import type { Enemy, RunState } from './state';
 
@@ -93,15 +94,53 @@ export function senseRange(state: RunState, enemy?: Enemy): number {
 
 /** True when this attacker currently has a clear line to the player. */
 export function canSense(state: RunState, enemy: Enemy): boolean {
-  const city = state.city;
-  if (!city) return false;
+  const world = state.freeWorld;
+  if (!world) return false;
 
   const player = state.player;
   const distance = Math.hypot(player.x - enemy.x, player.y - enemy.y);
   if (distance > senseRange(state, enemy)) return false;
 
-  // Walls hide you. The city is made of cover and it has to mean something.
-  return !lineBlocked(city, enemy.x, enemy.y, player.x, player.y);
+  // Walls hide you. Both worlds are made of cover and it has to mean something.
+  return !blocked(state, enemy.x, enemy.y, player.x, player.y);
+}
+
+/**
+ * Is there something solid between these two points?
+ *
+ * A city answers this from its own blocks. The ring city has no blocks, only
+ * concentric walls, so the line is sampled against them instead: cheap, and
+ * accurate enough for deciding whether somebody can see you when the walls are
+ * hundreds of units thick.
+ *
+ * Sampled rather than solved because a ray against a set of arcs is real work
+ * for a question asked once per attacker per frame, and being a few units wrong
+ * about where a wall starts changes nothing about the answer.
+ */
+function blocked(
+  state: RunState,
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+): boolean {
+  if (state.city) return lineBlocked(state.city, fromX, fromY, toX, toY);
+
+  const rings = state.rings;
+  if (!rings) return false;
+
+  const dx = toX - fromX;
+  const dy = toY - fromY;
+  const span = Math.hypot(dx, dy);
+  if (span < 1) return false;
+
+  // A step well under the thinnest wall, so nothing is stepped over.
+  const steps = Math.min(48, Math.max(4, Math.ceil(span / 40)));
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    if (ringSolidAt(rings, fromX + dx * t, fromY + dy * t)) return true;
+  }
+  return false;
 }
 
 /**
@@ -113,8 +152,8 @@ export function canSense(state: RunState, enemy: Enemy): boolean {
  * get wrong.
  */
 export function updatePatrol(state: RunState, enemy: Enemy, dt: number): void {
-  const city = state.city;
-  if (!city || !enemy.alive) return;
+  const world = state.freeWorld;
+  if (!world || !enemy.alive) return;
 
   const player = state.player;
   const sensed = canSense(state, enemy);
@@ -155,7 +194,19 @@ export function updatePatrol(state: RunState, enemy: Enemy, dt: number): void {
     walkPatch(enemy, dt);
   }
 
-  const pushed = resolve(city, enemy.x, enemy.y, enemy.driving ? PATROL_CAR_RADIUS : 18);
+  /*
+   * Pushed out of whatever is solid here.
+   *
+   * The two worlds answer this differently: a city has blocks, the ring city
+   * has concentric walls. Both hand back the same shape, so the rest of the
+   * patrol does not need to know which one it is standing in.
+   */
+  const radius = enemy.driving ? PATROL_CAR_RADIUS : 18;
+  const pushed = state.city
+    ? resolve(state.city, enemy.x, enemy.y, radius)
+    : state.rings
+      ? resolveRings(state.rings, enemy.x, enemy.y, radius)
+      : { x: enemy.x, y: enemy.y, hit: false };
   if (pushed.hit) {
     enemy.x = pushed.x;
     enemy.y = pushed.y;
@@ -164,8 +215,8 @@ export function updatePatrol(state: RunState, enemy: Enemy, dt: number): void {
   }
 
   const edge = enemy.driving ? PATROL_CAR_RADIUS : 18;
-  enemy.x = Math.max(edge, Math.min(city.width - edge, enemy.x));
-  enemy.y = Math.max(edge, Math.min(city.height - edge, enemy.y));
+  enemy.x = Math.max(edge, Math.min(world.width - edge, enemy.x));
+  enemy.y = Math.max(edge, Math.min(world.height - edge, enemy.y));
 }
 
 /** Walking, or driving, the patch. Unbothered either way. */

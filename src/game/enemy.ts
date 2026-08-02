@@ -141,7 +141,24 @@ export function updateEnemies(state: RunState, dt: number): void {
    * woke a vertical strip rather than the neighbourhood the player is in. From
    * inside that reads as a city where nothing ever comes. See game/patrol.ts.
    */
-  if (state.city) {
+  /*
+   * Any world without a left-to-right ground line patrols instead.
+   *
+   * This used to test `city`, so the ring finale fell through to the path
+   * below, which wakes an attacker when `enemy.x - player.x` drops under a
+   * threshold and abandons it once the player is far enough past. Both assume
+   * the level runs left to right and the player advances along it.
+   *
+   * The ring city runs inward. The player's x barely changes for a whole run,
+   * so the waking test picked out a vertical strip of a world 5,800 across and
+   * the abandon test discarded most of what was left. Played end to end on a
+   * phone without meeting a single attacker, on a stage that had thirty of them
+   * standing in it.
+   *
+   * The comment above already described this exact failure for cities. The
+   * finale simply never got the same treatment.
+   */
+  if (state.freeWorld) {
     for (const enemy of state.enemies) updatePatrol(state, enemy, dt);
     return;
   }

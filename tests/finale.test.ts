@@ -20,6 +20,7 @@ import { practiceMission } from '../src/game/mission';
 import { RunState } from '../src/game/state';
 import { solidAt } from '../src/game/rings';
 import { answerGate } from '../src/game/ally';
+import { canSense } from '../src/game/patrol';
 
 const MISSION = practiceMission('2026-07-31');
 
@@ -189,5 +190,74 @@ describe('the camera has a world to follow', () => {
   it('still gives a city one', () => {
     const city = new RunState(MISSION, 'sidearm', 5);
     expect(city.freeWorld).toBe(city.city);
+  });
+});
+
+describe('the finale has attackers you actually meet', () => {
+  /*
+   * Played end to end on a phone without meeting one, on a level holding
+   * thirty. Two separate faults, neither of which reduced the count.
+   *
+   * Waking keyed on `enemy.x - player.x`, which is a left-to-right rule. The
+   * ring city runs inward, so the player's x barely moves for a whole run and
+   * that test picked out a vertical strip of a world 5,800 across. The same
+   * failure was already fixed for cities and the finale never got it.
+   *
+   * And placement was uniform around each band. A band at radius 2,400 is
+   * nearly 15,000 units around, so scattering attackers evenly leaves about
+   * 2,000 between each one and standing anywhere on it meets nobody.
+   */
+  it('patrols rather than waiting to be walked past', () => {
+    // The rule that decides which behaviour a world gets.
+    const run = finale();
+    expect(run.freeWorld).not.toBeNull();
+  });
+
+  it('puts most of them near the gaps, which is where the route goes', () => {
+    const run = finale();
+    const rings = run.rings!;
+
+    /** Angle from the centre, normalised to how far it is from a ring's gap. */
+    const offGap = (e: { x: number; y: number }): number => {
+      const angle = Math.atan2(e.y - rings.cy, e.x - rings.cx);
+      let best = Math.PI;
+      for (const ring of rings.rings) {
+        let d = Math.abs(angle - ring.gapAt) % (Math.PI * 2);
+        if (d > Math.PI) d = Math.PI * 2 - d;
+        best = Math.min(best, d);
+      }
+      return best;
+    };
+
+    const nearAGap = run.enemies.filter((e) => offGap(e) < 0.8).length;
+    expect(nearAGap).toBeGreaterThan(run.enemies.length / 2);
+  });
+
+  it('still leaves some wandering, so skirting a wall is not a free ride', () => {
+    const run = finale();
+    const rings = run.rings!;
+
+    const offGap = (e: { x: number; y: number }): number => {
+      const angle = Math.atan2(e.y - rings.cy, e.x - rings.cx);
+      let best = Math.PI;
+      for (const ring of rings.rings) {
+        let d = Math.abs(angle - ring.gapAt) % (Math.PI * 2);
+        if (d > Math.PI) d = Math.PI * 2 - d;
+        best = Math.min(best, d);
+      }
+      return best;
+    };
+
+    expect(run.enemies.filter((e) => offGap(e) >= 0.8).length).toBeGreaterThan(0);
+  });
+
+  it('notices a player standing next to one', () => {
+    // The whole point. Before this, nothing in the ring world could ever wake.
+    const run = finale();
+    const target = run.enemies[0]!;
+    run.player.x = target.x + 40;
+    run.player.y = target.y;
+
+    expect(canSense(run, target)).toBe(true);
   });
 });

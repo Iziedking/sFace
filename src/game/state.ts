@@ -28,7 +28,7 @@ import { openPurse, rollDrop, type ScripPurse } from './scrip';
 import { lockUp } from './cell';
 import { makeConvoy, type Convoy } from './convoy';
 import { buildCity, openSpot, roomSpot, type City } from './city';
-import { buildRingCity, spotOutside, type RingCity } from './rings';
+import { buildRingCity, spotNearGap, spotOutside, type RingCity } from './rings';
 import { makeCar, type Car } from './car';
 import { layOutNodes, type StoryNode } from './node';
 import { BASELINE_ASSIST, type AssistLevel } from './assist';
@@ -650,12 +650,25 @@ export class RunState {
         ally.y = spot.y;
       });
 
-      for (const enemy of this.enemies) {
-        const spot = band();
+      /*
+       * Attackers stand near the gaps, not evenly around the circle.
+       *
+       * A band out at radius 2,400 is nearly 15,000 units around, so scattering
+       * them uniformly puts about 2,000 units between each one and a player
+       * anywhere on that circle meets nobody. The route through this level is
+       * gap to gap, so that is where they belong.
+       *
+       * A few are left wandering the band so the space between gates is not
+       * provably empty, which is what would make skirting the wall a free ride.
+       */
+      this.enemies.forEach((enemy, index) => {
+        const ring = levelRng.int(0, rings.rings.length - 1);
+        const spot =
+          index % 4 === 3 ? spotOutside(rings, levelRng, ring) : spotNearGap(rings, levelRng, ring);
         enemy.x = spot.x;
         enemy.y = spot.y;
         enemy.homeY = enemy.y;
-      }
+      });
       for (const face of this.faces) {
         const spot = band();
         face.x = spot.x;
