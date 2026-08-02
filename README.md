@@ -24,10 +24,6 @@ never the same mission twice.
   <p><em>Every visit opens here. The tap starts the story and unlocks the voice.</em></p>
 </div>
 
-<div align="center">
-  <img src="docs/shots/home.png" width="820" alt="The sFace home screen showing today's coin and its 24 hour move">
-  <p><em>The home screen: today's coin, its move, and the ways in.</em></p>
-</div>
 
 ## What you are flying
 
@@ -350,11 +346,6 @@ real browser against the dev server and puts the game into each state, so the
 images cannot drift from the build they sit beside.
 
 ---
-
-<div align="center">
-  <img src="docs/shots/docs.png" width="820" alt="The in-app documentation page">
-  <p><em>The same explanation ships inside the app, reachable from the footer on every screen.</em></p>
-</div>
 
 <div align="center">
   <sub><strong>The market builds the level.</strong></sub>
