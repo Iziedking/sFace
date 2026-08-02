@@ -128,7 +128,7 @@ export class Hud {
     this.drawAssistMark(ctx, state, width - padX, top + BAR_HEIGHT + 16);
     this.drawHint(ctx, state, width / 2, top + BAR_HEIGHT + 62);
     this.drawRead(ctx, state, width, top + BAR_HEIGHT);
-    this.drawGate(ctx, state, width, top + BAR_HEIGHT);
+    this.drawGate(ctx, state, width, top + BAR_HEIGHT, height);
     // A city has no progress along a line, so it gets a map instead.
     if (state.rings) this.drawRingMap(ctx, state, height);
     else if (state.city) this.drawMap(ctx, state, height);
@@ -626,6 +626,7 @@ export class Hud {
     state: RunState,
     width: number,
     top: number,
+    height: number,
   ): void {
     if (state.openGateId === null) return;
     const gate = state.gates.find((g) => g.id === state.openGateId);
@@ -645,18 +646,38 @@ export class Hud {
      * something moving behind it costs nothing in legibility and hands most of
      * that band back.
      */
-    const cardW = Math.min(width - 24, 430);
-    const x = (width - cardW) / 2;
-    const rowH = 26;
-    const headH = 28;
+    /*
+     * Docked out of the flying lane on a short screen.
+     *
+     * Centred is fine in portrait, where the card sits well above the player.
+     * In the wallet in landscape the view is about 280 tall, the card is a
+     * hundred of that, and centring puts it exactly across the band the player
+     * and everything shooting at them are moving through. Reported twice as
+     * blocking the game.
+     *
+     * So on a short screen it goes to the left edge, under the bar and above
+     * the map, and the middle stays clear. It is the same card either way: what
+     * changes is which part of a cramped screen it is willing to own.
+     */
+    const short = height < 520;
+    const rowH = short ? 22 : 26;
+    const headH = short ? 24 : 28;
+    const cardW = Math.min(width - 24, short ? 320 : 430);
+    const x = short ? 12 : (width - cardW) / 2;
     // Room for the price line when there is one to show.
     const unknownCount = gate.options.filter((id) => {
       const ally = state.allies.find((a) => a.id === id);
       return ally !== undefined && !ally.known;
     }).length;
-    const cardH = headH + gate.options.length * rowH + (unknownCount > 0 ? 22 : 8);
-    // Clear of the pause control, which owns the top centre.
-    const y = top + 44;
+    const cardH = headH + gate.options.length * rowH + (unknownCount > 0 ? 20 : 8);
+    /*
+     * Under the bar on a short screen, below the pause control otherwise.
+     *
+     * The pause control owns the top centre, so a centred card has to clear it.
+     * A card docked left does not, and every row of vertical space matters more
+     * than the gap does on a viewport this size.
+     */
+    const y = short ? top + 6 : top + 44;
 
     ctx.save();
 
@@ -675,13 +696,26 @@ export class Hud {
 
     ctx.textAlign = 'left';
     ctx.fillStyle = theme.accent;
-    ctx.font = `700 11px ${MONO}`;
-    ctx.fillText(gateQuestion(gate, state.mission.ticker), x + 12, y + 18);
+    ctx.font = `700 ${short ? 10 : 11}px ${MONO}`;
+    ctx.fillText(gateQuestion(gate, state.mission.ticker), x + 12, y + (short ? 16 : 18));
 
-    ctx.textAlign = 'right';
-    ctx.fillStyle = gate.missed > 0 ? theme.danger : theme.inkFaint;
-    ctx.font = `600 10px ${MONO}`;
-    ctx.fillText(gate.missed > 0 ? 'WRONG ONCE' : 'WRONG WAKES THEM', x + cardW - 12, y + 18);
+    /*
+     * The warning drops on a narrow card rather than being squeezed.
+     *
+     * At 320 wide it would run into the question, and the question is the thing
+     * somebody is standing there to read. The consequence is already learned
+     * the first time it happens, and a wrong answer still says so.
+     */
+    if (!short || cardW > 300) {
+      ctx.textAlign = 'right';
+      ctx.fillStyle = gate.missed > 0 ? theme.danger : theme.inkFaint;
+      ctx.font = `600 ${short ? 9 : 10}px ${MONO}`;
+      ctx.fillText(
+        gate.missed > 0 ? 'WRONG ONCE' : short ? 'WRONG WAKES' : 'WRONG WAKES THEM',
+        x + cardW - 12,
+        y + (short ? 16 : 18),
+      );
+    }
 
     /*
      * The price of a read, when there is anything left to buy.
