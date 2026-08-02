@@ -14,7 +14,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { parseBrief } from '../server/xsense';
+import { parseBrief , ROSTER_SIZE } from '../server/xsense';
 import { parseRoster, practiceMission, parseMission, TERRAIN_POINTS } from '../src/game/mission';
 import { FACES } from '../src/data/faces';
 import { RunState } from '../src/game/state';
@@ -94,7 +94,7 @@ describe('parseBrief', () => {
     expect(brief?.roster).toHaveLength(1);
   });
 
-  it('never returns more than five, however many the model offers', () => {
+  it('never returns more than the cast size, however many the model offers', () => {
     const many = Array.from({ length: 20 }, (_, i) => ({
       handle: `user${i}`,
       displayName: `User ${i}`,
@@ -102,7 +102,7 @@ describe('parseBrief', () => {
       quirk: 'talker',
       bounty: 300,
     }));
-    expect(parseBrief(JSON.stringify({ ...GOOD_BRIEF, roster: many }))?.roster).toHaveLength(5);
+    expect(parseBrief(JSON.stringify({ ...GOOD_BRIEF, roster: many }))?.roster).toHaveLength(ROSTER_SIZE);
   });
 
   it('clamps sentiment and bounty into the ranges the game can use', () => {

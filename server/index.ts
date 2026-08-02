@@ -21,6 +21,7 @@ import * as board from './leaderboard';
 import * as challenges from './challenges';
 import * as clans from './clans';
 import * as contests from './contests';
+import { ROSTER_SIZE } from './xsense';
 import * as contestRules from '../src/data/contests';
 import * as ghosts from './ghosts';
 import * as signals from './xsignals';
@@ -162,7 +163,8 @@ const scoreBody = z.object({
   date: isoDate,
   seed,
   score: z.number().int().min(0).max(board.SCORE_CEILING),
-  facesExtracted: z.number().int().min(0).max(5),
+  // The day's cast is eight. See ROSTER_SIZE in server/xsense.ts.
+  facesExtracted: z.number().int().min(0).max(ROSTER_SIZE),
   attackersCleared: z.number().int().min(0).max(200),
   duration: z.number().min(0).max(board.MAX_DURATION),
   // Added with the profile. Optional so an older client keeps working.
@@ -255,7 +257,8 @@ const ghostBody = z.object({
   name: pilotName,
   seed,
   score: z.number().int().min(0).max(board.SCORE_CEILING),
-  facesExtracted: z.number().int().min(0).max(5),
+  // The day's cast is eight. See ROSTER_SIZE in server/xsense.ts.
+  facesExtracted: z.number().int().min(0).max(ROSTER_SIZE),
   // Length and alphabet only. The client's decoder is the real validator, and
   // it returns null rather than throwing on anything malformed.
   trace: z.string().min(8).max(ghosts.MAX_TRACE_CHARS).regex(/^[A-Za-z0-9+/]+={0,2}$/),

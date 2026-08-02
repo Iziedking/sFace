@@ -223,7 +223,7 @@ describe('a stage is a different level', () => {
 
 describe('objectives', () => {
   const perfect = {
-    extracted: 5,
+    extracted: 8,
     caches: 11,
     relic: true,
     attackers: 40,
@@ -475,7 +475,7 @@ describe('what a stage says you missed', () => {
    * cannot disagree.
    */
   const perfect = {
-    extracted: 5,
+    extracted: 8,
     caches: 12,
     relic: true,
     attackers: 40,
@@ -497,7 +497,7 @@ describe('what a stage says you missed', () => {
     const missed = missedDemands(stageAt(7), run);
 
     expect(missed.map((d) => d.text)).toEqual([
-      'Get 5 out',
+      'Get 6 out',
       'Take the relic',
       'Recover 8 caches',
     ]);

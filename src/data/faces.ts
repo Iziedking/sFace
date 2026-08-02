@@ -71,6 +71,38 @@ export const FACES: readonly FaceDef[] = [
     bounty: 500,
     weight: 1,
   },
+  /*
+   * Three added when the cast went from five to eight.
+   *
+   * These only ever appear when the X read failed, so they are the shape of the
+   * game rather than the content of a day. Same rule as the five above: a type
+   * anybody would recognise, one dry line, and nothing that could be read as
+   * being about a specific real person.
+   */
+  {
+    id: 'airdrop-farmer',
+    name: 'The Airdrop Farmer',
+    line: 'Fourteen months of this and it vests over two years.',
+    quirk: 'skittish',
+    bounty: 300,
+    weight: 3,
+  },
+  {
+    id: 'liquidated-whale',
+    name: 'The Liquidated Whale',
+    line: 'It was not leverage. It was conviction, at five times.',
+    quirk: 'heavy',
+    bounty: 450,
+    weight: 2,
+  },
+  {
+    id: 'permanent-bull',
+    name: 'The Permanent Bull',
+    line: 'This is the bottom. I have said that four times and I meant it each time.',
+    quirk: 'talker',
+    bounty: 280,
+    weight: 3,
+  },
 ];
 
 /** Weighted pick, driven by the seeded RNG so every client agrees. */

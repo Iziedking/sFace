@@ -237,6 +237,16 @@ describe('collecting', () => {
       step(run, DT, IDLE);
     }
 
-    expect(boosted.score).toBe(plain.score * 2);
+    /*
+     * Within a point, not exactly double.
+     *
+     * The score floors once at the end, and floor(raw * 2) is not always
+     * floor(raw) * 2: a raw total with a fraction in it loses a different
+     * amount at each multiplier. The claim being made is that the market
+     * bounty scales the whole score, and one point of rounding does not
+     * weaken it. Asserting exact equality was passing on the old cast by
+     * luck rather than by rule.
+     */
+    expect(Math.abs(boosted.score - plain.score * 2)).toBeLessThanOrEqual(1);
   });
 });

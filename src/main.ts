@@ -2764,9 +2764,21 @@ class App {
      * Shown before the results card, because the results card is a score and
      * this is the point of the whole thing. The score is still there behind it.
      */
+    /*
+     * Cleared, not merely survived.
+     *
+     * This tested `phase === 'extracted'`, which only means the pad was
+     * reached. Stage seven asks for five people out, the relic and eight
+     * caches, so a run could land on the pad three short and still be handed
+     * the ending: the market figures, the voice, the whole argument, for a
+     * campaign that was not finished.
+     *
+     * It is the payoff for the last stage. Giving it to a run that did not
+     * clear it costs the run that does.
+     */
     if (
       run.stage.n === STAGES.length &&
-      run.phase === 'extracted' &&
+      this.stageCleared &&
       !run.practice &&
       !this.endingShown
     ) {

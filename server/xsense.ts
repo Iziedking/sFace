@@ -32,11 +32,25 @@
 import { resolve, type XCandidate } from './xposts';
 
 const API_URL = 'https://api.x.ai/v1/responses';
+
+/**
+ * How many people are in the day's wreck.
+ *
+ * Raised from five. Five is a thin cast for a seven stage campaign and it made
+ * the finale in particular feel small: the same handful, every stage, every
+ * day. Eight is enough that the roster changes shape between days and that the
+ * last stage can ask for more of them without asking for all of them.
+ *
+ * Every one is a real account with a real handle and picture, and the game
+ * still shows nothing about them that is not linked to a post, so the cost of
+ * a wider cast is a slightly longer read rather than a weaker claim.
+ */
+export const ROSTER_SIZE = 8;
 const MODEL = process.env.XAI_MODEL ?? 'grok-4.5';
 /**
  * Generous on purpose.
  *
- * This is a search-backed model call composing a headline, five people, six
+ * This is a search-backed model call composing a headline, eight people, six
  * posts and up to four ongoing situations, and it runs once a day on a
  * background tick rather than on a request. Nobody is waiting on it, so the
  * only thing a short timeout buys is a mission with no story in it. Forty-five
@@ -277,7 +291,7 @@ function requestBody(input: {
           '1. headline: one sentence, present tense, plain language, no hype words and no exclamation marks. What is the story today. Under 120 characters.',
           '2. sentiment: an integer from -100 (capitulation) to 100 (euphoria), read from the timeline rather than from the price.',
           '3. topics: two to four short phrases naming what people are arguing about. Two or three words each.',
-          '4. roster: exactly five well known crypto accounts who were genuinely being discussed today.',
+          '4. roster: exactly eight well known crypto accounts who were genuinely being discussed today. Mix the very large accounts with mid sized ones that were central to the day, so the list is not the same eight names every time.',
           '5. posts: the heaviest items from THE NUMBERED LIST BELOW, three to six of them. Choose what somebody who was away all day would want to know. Refer to each ONLY by its number. Do not write a handle, a link, a date or an id: they are already known.',
           '6. threads: zero to four ongoing situations that are still running across days. Rug pulls being investigated, exploits being traced, disputes not yet settled, filings awaiting a decision. Leave the array empty rather than inventing one.',
           '',
@@ -468,7 +482,7 @@ export function parseBrief(
         bounty: clamp(Math.round(numberOf(entry.bounty) ?? 350), 200, 800),
       });
 
-      if (roster.length === 5) break;
+      if (roster.length === ROSTER_SIZE) break;
     }
   }
 

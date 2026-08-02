@@ -25,7 +25,7 @@ function context(overrides: Partial<ContractContext> = {}): ContractContext {
   };
 }
 
-const perfect = { extracted: 5, caches: 12, relic: true, attackers: 40, survived: true, hull: 1 };
+const perfect = { extracted: 8, caches: 12, relic: true, attackers: 40, survived: true, hull: 1 };
 const nothing = { extracted: 0, caches: 0, relic: false, attackers: 0, survived: false, hull: 0 };
 
 describe('the fair bet', () => {

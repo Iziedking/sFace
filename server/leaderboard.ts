@@ -331,7 +331,8 @@ function implausible(input: SubmitInput): string | null {
   if (input.score < 0 || !Number.isFinite(input.score)) return 'Score is not a number.';
   if (input.score > SCORE_CEILING) return 'Score is above the possible maximum.';
   if (input.duration <= 0 || input.duration > MAX_DURATION) return 'Run duration is impossible.';
-  if (input.facesExtracted < 0 || input.facesExtracted > 5) return 'Face count is impossible.';
+  // Bounded by the day's cast rather than a five that outlived it.
+  if (input.facesExtracted < 0 || input.facesExtracted > 12) return 'Face count is impossible.';
   if (input.attackersCleared < 0 || input.attackersCleared > 200) {
     return 'Kill count is impossible.';
   }

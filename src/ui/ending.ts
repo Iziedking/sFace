@@ -151,12 +151,6 @@ export function renderEnding(root: HTMLElement, options: EndingOptions): void {
           options.onContinue();
         }),
       ),
-      el('p', {
-        class: 'ending__skip',
-        // Said plainly, because somebody who does not want a voice reading at
-        // them should not have to guess whether pressing Done cuts it off.
-        text: 'Done stops the voice and takes you to your score.',
-      }),
     ),
   );
 

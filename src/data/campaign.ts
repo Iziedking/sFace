@@ -509,7 +509,15 @@ export const STAGES: readonly Stage[] = [
      * holds it to. A margin that has been eaten down to zero is not a margin,
      * it is the next thing to break silently.
      */
-    seconds: 250,
+    /*
+     * Five minutes. The longest run in the game by a distance.
+     *
+     * The finale is not a sprint, it is four walls each holding a question you
+     * can only answer by having gone and looked. Four ten was enough to finish
+     * and not enough to explore, so the honest version of this stage needs the
+     * room to be worked out rather than rushed.
+     */
+    seconds: 300,
     /*
      * A fraction of what the stage used to field.
      *
@@ -534,7 +542,19 @@ export const STAGES: readonly Stage[] = [
      * quieter than the city. The count still moves with the fear index and the
      * chart's own volatility, so a violent day fields noticeably more.
      */
-    density: 0.45,
+    /*
+     * Raised again, to 1.6.
+     *
+     * 0.45 put it around stage three, which was the right shape for a stage
+     * about thinking and still too quiet to be the finale. This is the last
+     * thing standing between the player and the season, so it should feel
+     * defended. Just under stage six's 1.8, over a clock twice as long, in a
+     * world where attackers stand at the gaps you have to come through.
+     *
+     * Not a fixed number either way: it scales with the fear index and the
+     * chart's own volatility, so a violent day fields noticeably more.
+     */
+    density: 1.6,
     minDifficulty: 5,
     caches: 11,
     refills: 6,
@@ -553,7 +573,7 @@ export const STAGES: readonly Stage[] = [
       scene: 'The whole day, end to end, with the ones that outlasted it waiting in it.',
       threat: 'Gates that ask instead of shoot. Fly past a project and you cannot answer.',
     },
-    demands: [survived, extracted(5), relic, caches(8)],
+    demands: [survived, extracted(6), relic, caches(8)],
   },
 ];
 

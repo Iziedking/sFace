@@ -93,9 +93,18 @@ describe('level generation', () => {
     );
   });
 
-  it('places one of every face archetype', () => {
-    const quirks = new RunState(mission).faces.map((f) => f.quirk).sort();
-    expect(quirks).toEqual(['heavy', 'mercenary', 'paranoid', 'skittish', 'talker']);
+  it('places every face archetype, and repeats rather than dropping one', () => {
+    /*
+     * The cast went from five to eight and there are only five quirks, so the
+     * list now has duplicates. What must not happen is a quirk disappearing:
+     * each one drives a different behaviour, and losing one silently would make
+     * a whole class of person stop existing on some days.
+     */
+    const quirks = new RunState(mission).faces.map((f) => f.quirk);
+
+    for (const quirk of ['heavy', 'mercenary', 'paranoid', 'skittish', 'talker']) {
+      expect(quirks).toContain(quirk);
+    }
   });
 
   it('never places a face or enemy inside the ground', () => {

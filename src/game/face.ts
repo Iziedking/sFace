@@ -188,9 +188,23 @@ function follow(state: RunState, face: Face, dt: number): void {
   face.x += (target.x - face.x) * pull;
   face.y += (target.y - face.y) * pull;
 
-  // Never let a follower render inside a hill.
-  const ground = state.terrain.groundAt(face.x) - FACE_RADIUS;
-  face.y = clamp(face.y, CEILING + FACE_RADIUS, ground);
+  /*
+   * Never let a follower render inside a hill, on a stage that has hills.
+   *
+   * A city and the ring city have no ground line, and `groundAt` still answers
+   * with one: a y somewhere in the old chart's band, which is near the top of a
+   * ring world 5,800 tall. Clamping to it dragged the whole chain up there and
+   * left it behind while the player worked inward, so the people you had just
+   * freed were not with you and could not shoot for you.
+   *
+   * Nothing to clamp against in those worlds. The spring above already keeps
+   * followers on the trail the player actually flew, which never goes through
+   * a wall.
+   */
+  if (!state.freeWorld) {
+    const ground = state.terrain.groundAt(face.x) - FACE_RADIUS;
+    face.y = clamp(face.y, CEILING + FACE_RADIUS, ground);
+  }
 }
 
 /** Quirks that make a follower stop moving for a while. */
