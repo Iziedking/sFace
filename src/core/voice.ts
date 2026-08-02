@@ -213,6 +213,8 @@ function splitLong(text: string, max: number): string[] {
 
 export class Narrator {
   private speaking = false;
+  /** Whether the engine has been started inside a gesture at least once. */
+  private primed = false;
   private muted = false;
   /**
    * Bumped by every `say()` and every `stop()`.
@@ -238,6 +240,43 @@ export class Narrator {
    * Never rejects. A narrator that throws would take the intro down with it,
    * and the intro has to survive a device with no voices at all.
    */
+  /**
+   * Unlock the speech engine, from inside a user gesture.
+   *
+   * ## Why the audio unlock was not enough
+   *
+   * A tap already unlocked the AudioContext, and speech was treated as though
+   * that covered it. It does not: `speechSynthesis` has its own gesture rule on
+   * iOS and on mobile Chrome, and the first `speak()` outside one is dropped
+   * with no error and no sound. The intro then ran its full length in silence,
+   * which reads as the voice being skipped.
+   *
+   * The first `speak()` in the opening does happen inside the tap, but only the
+   * first chunk of the first line does; everything after it is awaited, so the
+   * gesture is gone by then. Speaking one silent utterance here marks the engine
+   * as started while the gesture is definitely still in hand, and every later
+   * line inherits that.
+   *
+   * Safe to call repeatedly and safe to call where speech does not exist, which
+   * includes the Nimiq Pay WebView. There it does nothing and the opening falls
+   * back to holding each beat for as long as it takes to read.
+   */
+  prime(): void {
+    if (this.primed || this.muted || !voiceAvailable()) return;
+    this.primed = true;
+
+    try {
+      // A space rather than an empty string: some engines discard an utterance
+      // with no content before it counts as having started.
+      const silent = new SpeechSynthesisUtterance(' ');
+      silent.volume = 0;
+      window.speechSynthesis.speak(silent);
+      window.speechSynthesis.resume();
+    } catch {
+      // No engine here. The opening reads at its own pace instead.
+    }
+  }
+
   async say(text: string): Promise<void> {
     if (this.muted || !voiceAvailable()) return;
 
@@ -295,6 +334,20 @@ export class Narrator {
         utterance.addEventListener('error', finish);
 
         window.speechSynthesis.speak(utterance);
+
+        /*
+         * Nudge it awake straight after speaking.
+         *
+         * Chrome leaves the engine in a paused state often enough that a queued
+         * utterance sits there silently until something resumes it, and the
+         * watchdog below then cancels a line that never started. Resume is a
+         * no-op when it is already running.
+         */
+        try {
+          window.speechSynthesis.resume();
+        } catch {
+          // Nothing to resume.
+        }
 
         /*
          * If the engine never reports back, stop it before moving on.
