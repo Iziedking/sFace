@@ -1108,7 +1108,21 @@ function receipts(entry: BoardEntry): HTMLElement | null {
             class: 'board__prooflead',
             text: `Signed for stage ${proof.stage} on seed ${proof.seed.slice(0, 12)}. Anyone can check this against the public key.`,
           })
-        : null,
+        : el('p', {
+            class: 'board__prooflead',
+            /*
+             * The weaker claim, said as the weaker claim.
+             *
+             * A daily row is one run and one run can be signed. Lifetime Face
+             * is the sum of dozens, so no signature covers the number beside
+             * it and saying otherwise would be the one dishonest thing on a
+             * board built to be checkable. What the address does prove is that
+             * this account bound a wallet and signed a run with it at least
+             * once, which is the difference between a name anybody can
+             * regenerate and one with an address behind it.
+             */
+            text: 'This pilot has proved a wallet by signing a run. The total beside it is not itself signed.',
+          }),
       proof ? field('PUBLIC KEY', proof.publicKey) : null,
       proof ? field('SIGNATURE', proof.signature) : null,
       entry.address ? field('WALLET', entry.address) : null,

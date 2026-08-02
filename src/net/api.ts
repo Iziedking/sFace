@@ -66,6 +66,15 @@ export async function fetchAllTime(): Promise<ApiResult<BoardEntry[]>> {
       score: numberOf(row.lifetimeFace),
       avatarUrl: typeof row.avatarUrl === 'string' ? row.avatarUrl : null,
       clanTag: typeof row.clanTag === 'string' ? row.clanTag : null,
+      /*
+       * The wallet this pilot has proved, when they have.
+       *
+       * Not a signature over the total, and the row says so: it opens a wallet
+       * on chain rather than a verified mark. Lifetime Face is a sum of dozens
+       * of runs and no signature covers it, so this is the strongest honest
+       * claim the ladder can make.
+       */
+      address: typeof row.address === 'string' ? row.address : null,
       lifetimeFace: numberOf(row.lifetimeFace),
     })),
   };

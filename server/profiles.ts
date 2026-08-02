@@ -114,6 +114,28 @@ interface Account {
   avatarUrl: string | null;
   /** Four characters, uppercase. Null until they join one. */
   clanTag: string | null;
+  /**
+   * The wallet that has signed for this pilot, once one has.
+   *
+   * ## Why it lives on the account rather than per chain
+   *
+   * Identity is one thing here and scoring is another. A wallet is who you are,
+   * so it follows you across the switch the same way your name and clan do.
+   *
+   * ## Why the board needs it
+   *
+   * The daily board carries a signature per row, because a daily row is one run
+   * and one run can be signed. Lifetime Face is the sum of dozens, so there is
+   * no single signature over it and the all-time board had no verification of
+   * any kind: every row looked the same whether a wallet stood behind it or
+   * nobody did.
+   *
+   * This is the weaker claim that is still worth making. It does not attest to
+   * the total, and nothing here says it does. It says this account has bound a
+   * wallet and proved it at least once, which is the difference between a name
+   * anybody can regenerate and one with an address behind it.
+   */
+  address: string | null;
   firstSeen: number;
   lastSeen: number;
   /** Keyed by network id. Absent means they have never flown there. */
@@ -128,6 +150,8 @@ export interface Profile extends Progress {
   network: string;
   avatarUrl: string | null;
   clanTag: string | null;
+  /** The wallet that has signed for this pilot, or null. */
+  address: string | null;
   firstSeen: number;
   lastSeen: number;
 }
@@ -195,6 +219,7 @@ function newAccount(id: string, name: string): Account {
     name,
     avatarUrl: null,
     clanTag: null,
+    address: null,
     firstSeen: now,
     lastSeen: now,
     chains: {},
@@ -209,6 +234,7 @@ function view(account: Account, network: string): Profile {
     network,
     avatarUrl: account.avatarUrl,
     clanTag: account.clanTag,
+    address: account.address,
     firstSeen: account.firstSeen,
     lastSeen: account.lastSeen,
     ...(account.chains[network] ?? emptyProgress()),
@@ -347,6 +373,9 @@ export function merge(
   // The account keeps its own name and picture, which came from X and are
   // more authoritative than a generated callsign.
   into.avatarUrl = into.avatarUrl ?? from.avatarUrl;
+  // A wallet already proved on the account wins; otherwise inherit the device's,
+  // so somebody who signed before connecting X does not lose the binding.
+  into.address = into.address ?? from.address;
   // A clan already joined on the account wins; otherwise inherit the device's,
   // so somebody who joined one before signing in does not lose it.
   into.clanTag = into.clanTag ?? from.clanTag;
@@ -392,6 +421,25 @@ export function recordSettlement(id: string, network = DEFAULT_NETWORK): void {
     ...before,
     stakesSettled: Math.min(before.stakesOwed, before.stakesSettled + 1),
   };
+  persist();
+}
+
+/**
+ * Record the wallet that just proved a score for this pilot.
+ *
+ * Only ever called with an address the service derived from a signature it
+ * verified, never with one a client sent. That is the whole reason the mark on
+ * the board means anything: an address in a request is a claim, and an address
+ * derived from a working signature is its author.
+ *
+ * Last one wins. Somebody who changes wallets is still one person, and the
+ * useful statement is that this account has a wallet behind it now.
+ */
+export function bindAddress(id: string, address: string): void {
+  const account = accounts.get(id);
+  if (!account || account.address === address) return;
+
+  account.address = address;
   persist();
 }
 
@@ -510,6 +558,7 @@ export function restore(raw: unknown): void {
     const account = newAccount(item.id, item.name ?? 'Pilot');
     account.avatarUrl = item.avatarUrl ?? null;
     account.clanTag = item.clanTag ?? null;
+    account.address = typeof item.address === 'string' ? item.address : null;
     if (typeof item.firstSeen === 'number') account.firstSeen = item.firstSeen;
     if (typeof item.lastSeen === 'number') account.lastSeen = item.lastSeen;
 

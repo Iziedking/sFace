@@ -250,3 +250,57 @@ describe('a clan holds seven', () => {
     expect(clans.sizeOf(tag)).toBe(clans.MAX_MEMBERS);
   });
 });
+
+describe('the wallet behind a pilot', () => {
+  /*
+   * The all-time board ranks on lifetime Face, which is the sum of dozens of
+   * runs, so no signature covers the number on a row. Binding the address that
+   * proved a run is the weaker claim the ladder can still make honestly.
+   */
+  it('follows the pilot across chains, because a wallet is identity', () => {
+    const addr = 'NQ07 0000 0000 0000 0000 0000 0000 0000 0000';
+    play(PILOT, 'main', 5_000);
+    profiles.bindAddress(PILOT, addr);
+
+    expect(profiles.get(PILOT, 'main')?.address).toBe(addr);
+    expect(profiles.get(PILOT, 'test')?.address).toBe(addr);
+  });
+
+  it('is absent until a run has actually been signed', () => {
+    // A pilot who has never proved anything must not carry a mark.
+    play(PILOT, 'main', 5_000);
+    expect(profiles.get(PILOT, 'main')?.address).toBeNull();
+  });
+
+  it('does nothing for a pilot who does not exist', () => {
+    expect(() => profiles.bindAddress('nobody', 'NQ07 0000')).not.toThrow();
+  });
+
+  it('takes the newer wallet when somebody changes one', () => {
+    play(PILOT, 'main', 5_000);
+    profiles.bindAddress(PILOT, 'NQ07 AAAA');
+    profiles.bindAddress(PILOT, 'NQ07 BBBB');
+
+    expect(profiles.get(PILOT, 'main')?.address).toBe('NQ07 BBBB');
+  });
+
+  it('survives a restart', () => {
+    play(PILOT, 'main', 5_000);
+    profiles.bindAddress(PILOT, 'NQ07 CCCC');
+
+    profiles.restore(profiles.serialise() as unknown[]);
+
+    expect(profiles.get(PILOT, 'main')?.address).toBe('NQ07 CCCC');
+  });
+
+  it('keeps a binding when two devices are merged', () => {
+    // Somebody who signed on their phone before connecting X on a laptop.
+    play(PILOT, 'main', 5_000);
+    play(OTHER, 'main', 1_000);
+    profiles.bindAddress(PILOT, 'NQ07 DDDD');
+
+    profiles.merge(PILOT, OTHER);
+
+    expect(profiles.get(OTHER, 'main')?.address).toBe('NQ07 DDDD');
+  });
+});

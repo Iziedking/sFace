@@ -423,6 +423,16 @@ app.post('/board', limit(20, 10), async (req, res) => {
       signatureRefused = true;
     } else {
       address = attested.address;
+      /*
+       * Remembered on the profile as well as on the row.
+       *
+       * A daily row carries its own signature. Lifetime Face is the sum of
+       * dozens of runs, so there is no single signature over it, and without
+       * this the all-time board had no verification of any kind. Binding the
+       * address here is the weaker claim that is still worth making: this
+       * account has proved a wallet at least once.
+       */
+      profiles.bindAddress(body.deviceId, attested.address);
       proof = {
         publicKey: body.publicKey,
         signature: body.signature,
@@ -616,6 +626,10 @@ app.post('/board/sign', limit(20, 10), (req, res) => {
     res.status(422).json({ error: 'That signature does not match the run it was sent with.' });
     return;
   }
+
+  // Signing an old run binds the wallet too, so the ladder catches up with
+  // somebody who proved a run days after flying it.
+  profiles.bindAddress(body.deviceId, attested.address);
 
   const result = board.attachProof({
     network: networkOf(req),

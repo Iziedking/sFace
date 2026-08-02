@@ -239,3 +239,38 @@ describe('a bad signature must not cost a score', () => {
     expect(attested?.address).toMatch(/^NQ/);
   });
 });
+
+describe('what the ladder can honestly claim', () => {
+  /*
+   * The all-time board had no verification of any kind. Every row looked the
+   * same whether a wallet stood behind it or nobody did, which on a board whose
+   * whole argument is that claims are checkable is the weakest place to be.
+   *
+   * The reason is real: a daily row is one run and one run can be signed.
+   * Lifetime Face is the sum of dozens, so no signature covers it. The fix is
+   * to make the weaker claim rather than none, and to say it is the weaker one.
+   */
+  it('binds only an address the service derived from a signature', () => {
+    /*
+     * The property that makes the mark mean anything. An address in a request
+     * is a claim; an address derived from a working signature is its author.
+     * verifyClaim is the only thing that produces one, and it returns null
+     * rather than an address when the signature does not hold.
+     */
+    const claim = { date: '2026-08-02', seed: 'seed-one', stage: 3, score: 4_200 };
+    const good = signed(claim);
+    const attested = verifyClaim({
+      claim,
+      publicKey: good.publicKey,
+      signature: good.signature,
+    });
+
+    expect(attested?.address).toMatch(/^NQ/);
+
+    // Same claim, a signature over a different score. No address to bind.
+    const wrong = signed({ ...claim, score: 1 });
+    expect(
+      verifyClaim({ claim, publicKey: wrong.publicKey, signature: wrong.signature }),
+    ).toBeNull();
+  });
+});
