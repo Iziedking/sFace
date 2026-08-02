@@ -431,6 +431,14 @@ const AIM_INTENT = 0.15;
  * a command, including a replay, not only for the one path that happens to
  * build commands from a live pointer.
  */
+/**
+ * How much clear air below counts as room to shoot downward.
+ *
+ * Roughly two player heights. Below that a downward shot hits the ground before
+ * it reaches anything, so the heading is worth correcting rather than obeying.
+ */
+const GROUND_AIM_ROOM = 70;
+
 function aim(state: RunState, command: PlayerCommand): void {
   const player = state.player;
 
@@ -461,7 +469,34 @@ function aim(state: RunState, command: PlayerCommand): void {
   // and a phone player who has not touched the fire pad are both on, so leaving
   // it unassisted would mean assist only worked once you were already aiming
   // well.
-  const drift = steerAim(state, command.moveX / intent, command.moveY / intent);
+  let fx = command.moveX / intent;
+  let fy = command.moveY / intent;
+
+  /*
+   * Never aim into the floor.
+   *
+   * The fallback follows thrust, which is right in the air and wrong near the
+   * ground. On a cramped landscape pad a resting thumb sits low, so the stick
+   * reports a steady downward push, and the gun tracked it into the dirt and
+   * stayed there. Reported from the wallet as the gun facing downwards, and it
+   * was doing exactly what it was told.
+   *
+   * Shooting at ground you are standing on is never the intent, so a downward
+   * heading is flattened when there is no room below to shoot into. Sideways is
+   * kept, since that is the half of the push that meant something. Straight down
+   * with no sideways component falls back to the way the character is facing,
+   * which is the last direction they actually chose.
+   */
+  const room = state.terrain.groundAt(player.x) - player.y;
+  if (fy > 0 && room < GROUND_AIM_ROOM) {
+    fy = 0;
+    if (Math.abs(fx) < 0.05) fx = player.facing >= 0 ? 1 : -1;
+    const length = Math.hypot(fx, fy) || 1;
+    fx /= length;
+    fy /= length;
+  }
+
+  const drift = steerAim(state, fx, fy);
   player.aimX = drift.x;
   player.aimY = drift.y;
 }
