@@ -145,7 +145,17 @@ export class Renderer {
    * sustained problem rather than by a noisy patch, and it gives the rolling
    * average time to reflect the new resolution before it is judged again.
    */
+  /**
+   * Frames between quality changes, and why dropping is quicker than raising.
+   *
+   * Ninety frames each way was symmetric and wrong in one direction. A device
+   * that is missing frames spends a second and a half missing them before
+   * anything is done, which is exactly the stretch somebody describes as the
+   * game feeling dragged. Recovering slowly costs nothing by comparison: the
+   * picture is already fine, it is just softer than it needs to be.
+   */
   private static readonly HOLD_FRAMES = 90;
+  private static readonly HOLD_FRAMES_DOWN = 24;
 
   private sinceChange = 0;
 
@@ -163,11 +173,13 @@ export class Renderer {
     this.frameAverage = this.frameAverage * 0.9 + Math.min(ms, 100) * 0.1;
     this.sinceChange++;
 
-    if (this.sinceChange < Renderer.HOLD_FRAMES) return;
+    const struggling = this.frameAverage > Renderer.TOO_SLOW_MS;
+    // Quicker to give up than to recover. See HOLD_FRAMES_DOWN.
+    if (this.sinceChange < (struggling ? Renderer.HOLD_FRAMES_DOWN : Renderer.HOLD_FRAMES)) return;
 
     const was = this.quality;
 
-    if (this.frameAverage > Renderer.TOO_SLOW_MS && this.quality > 0.6) {
+    if (struggling && this.quality > 0.6) {
       this.quality = Math.max(0.6, this.quality - 0.15);
     } else if (this.frameAverage < Renderer.COMFORTABLE_MS && this.quality < 1) {
       // Climbs back in smaller steps than it falls, so recovering is gentle and

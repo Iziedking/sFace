@@ -52,6 +52,16 @@ const MAX_VIEW_AREA = 900 * 1000;
  */
 const CRAMPED_HEIGHT = 340;
 
+/**
+ * How much world a cramped screen may draw.
+ *
+ * Lower than everyone else's on purpose, and it is not a fairness rule. A
+ * viewport this short is a phone inside a wallet, and it is the device least
+ * able to step and draw a large view. Giving it the full budget bought sky at
+ * the cost of the frame rate, which is the worse of the two.
+ */
+const CRAMPED_VIEW_AREA = 620 * 1000;
+
 /** How far ahead of the ship the camera leads, at full speed. */
 const LOOKAHEAD = 130;
 /** Fraction of the gap closed per second. Loose enough to feel alive. */
@@ -92,7 +102,23 @@ export class Camera {
      * to right, so horizontal reach is the axis a staked challenge could be won
      * on; it is simply looser than the old flat 900 rather than absent.
      */
-    const toCapArea = Math.sqrt((cssWidth * cssHeight) / MAX_VIEW_AREA);
+    /*
+     * A smaller budget on a cramped screen, because it is drawing on a phone.
+     *
+     * Lifting the width cap bought sky and cost frames. On a 670 by 200
+     * viewport the view went from about 430,000 world units to 900,000: more
+     * than double the terrain, attackers and people to step and draw, on the
+     * weakest device running this. Reported straight after as movement being
+     * dragged and slow, which is what a halved frame rate feels like.
+     *
+     * The aspect is what forces the trade. On a screen three times wider than
+     * it is tall, any height has to be bought with width, so the only lever is
+     * how much total world is allowed at all. This lands around 430 units of
+     * sky: still a fifth more than the cut-off version that could not be
+     * played, and nowhere near twice the work.
+     */
+    const budget = cssHeight < CRAMPED_HEIGHT ? CRAMPED_VIEW_AREA : MAX_VIEW_AREA;
+    const toCapArea = Math.sqrt((cssWidth * cssHeight) / budget);
 
     /*
      * The width cap lifts on a screen too short to play on.

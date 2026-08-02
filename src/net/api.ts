@@ -133,6 +133,23 @@ export interface Challenge {
   settlementTx: string | null;
 }
 
+/**
+ * The sentence a refusal came with, or null.
+ *
+ * Never throws. A body that is not JSON, or is JSON without an error string, is
+ * the same as no explanation, and a failure to read one must not turn a refused
+ * request into a crash.
+ */
+async function readError(response: Response): Promise<string | null> {
+  try {
+    const body = (await response.json()) as { error?: unknown };
+    const said = typeof body.error === 'string' ? body.error.trim() : '';
+    return said.length > 0 ? said.slice(0, 200) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function apiConfigured(): boolean {
   return API_BASE.length > 0;
 }
@@ -400,7 +417,22 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<ApiResu
     });
 
     if (!response.ok) {
-      return { ok: false, error: `Service returned ${response.status}.` };
+      /*
+       * Say what the service said, not what number it said it with.
+       *
+       * Every refusal here carries a sentence written for the player: which
+       * count was above what the level contains, that a signature did not match
+       * the run, that a contest is full. All of it was thrown away and replaced
+       * with the status code, so a run refused for a specific, stateable reason
+       * read as "Service returned 422" and every report of it had to be
+       * diagnosed from scratch.
+       *
+       * The body is JSON with an `error` string on every route that refuses.
+       * When it is not, the code is still better than nothing, so that stays as
+       * the fallback rather than the default.
+       */
+      const said = await readError(response);
+      return { ok: false, error: said ?? `Service returned ${response.status}.` };
     }
 
     return { ok: true, value: (await response.json()) as T };
