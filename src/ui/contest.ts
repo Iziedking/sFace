@@ -80,6 +80,8 @@ export function renderContest(root: HTMLElement, options: ContestOptions): void 
           )
         : el('span', { class: 'contest__free', text: 'FREE' }),
 
+      settled ? result(options) : null,
+
       // Your own row first, because "where am I" is the question somebody
       // opening this actually has.
       mine
@@ -167,6 +169,78 @@ export function renderContest(root: HTMLElement, options: ContestOptions): void 
         button('Back', options.onBack, 'ghost'),
       ),
     ),
+  );
+}
+
+/**
+ * Who won, said once, at the top.
+ *
+ * ## Why this is a banner rather than a row in the table
+ *
+ * A settled contest showed a ranked list and a bill. Both are correct and
+ * neither answers the question somebody opens the page for, which is who took
+ * it. Reading a result off a sorted table is work, and the person who lost
+ * should not have to do arithmetic to find that out.
+ *
+ * A clan contest names the clan, because the clan is what was entered and what
+ * the standings are computed on. The individual who scored highest is still in
+ * the table underneath.
+ */
+function result(options: ContestOptions): HTMLElement | null {
+  const { contest } = options;
+
+  if (contest.kind === 'clan') {
+    const top = clanStandings(contest)[0];
+    if (!top || top.average === null) return null;
+
+    const mine = contest.entrants.find((e) => e.id === options.meId);
+    const won = mine?.clanTag === top.tag;
+
+    return el(
+      'div',
+      { class: won ? 'result result--won' : 'result' },
+      el('p', { class: 'result__head', text: won ? 'YOUR CLAN TOOK IT' : 'RESULT' }),
+      el('p', { class: 'result__who', text: top.tag }),
+      el('p', {
+        class: 'result__say',
+        text: `${top.average.toLocaleString()} average across ${top.finished} of ${top.entered} who flew.`,
+      }),
+    );
+  }
+
+  const table = standings(contest);
+  const top = table[0];
+  if (!top || top.average === null) return null;
+
+  const won = top.entrant.id === options.meId;
+  const runnerUp = table[1];
+  const margin =
+    runnerUp && runnerUp.average !== null ? top.average - runnerUp.average : null;
+
+  return el(
+    'div',
+    { class: won ? 'result result--won' : 'result' },
+    el('p', { class: 'result__head', text: won ? 'YOU TOOK IT' : 'RESULT' }),
+    el('p', { class: 'result__who', text: won ? 'You' : top.entrant.name }),
+    el('p', {
+      class: 'result__say',
+      text:
+        margin !== null && margin > 0
+          ? `${top.average.toLocaleString()} average, ${margin.toLocaleString()} clear of second.`
+          : `${top.average.toLocaleString()} average.`,
+    }),
+    /*
+     * What it was worth, next to who won it, rather than only down in the
+     * settlement panel. A free contest says so plainly instead of leaving a
+     * gap where a number would be.
+     */
+    el('p', {
+      class: 'result__stake',
+      text:
+        contest.stakeNim > 0
+          ? `${contest.stakeNim} NIM from each of the ${Math.max(0, contest.entrants.length - 1)} who did not.`
+          : 'Nothing was staked on this one.',
+    }),
   );
 }
 
