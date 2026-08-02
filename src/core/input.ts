@@ -38,6 +38,7 @@ const MOUSE_AIM_TTL_MS = 1200;
 const EMPTY_BUYS: number[] = [];
 
 import { hit, padLayout, padVector, slotStrip, useRegion, type PadLayout } from './pads';
+import { gateCardLayout, rowAt } from './gatecard';
 import { snapsToDirections, usingPads } from './scheme';
 
 export class Input {
@@ -241,6 +242,20 @@ export class Input {
   slotCount = 0;
 
   /**
+   * The gate card on screen, or null when there is not one.
+   *
+   * Set by the loop each frame from the run. The input layer needs it because
+   * the card's rows are tappable: on a phone there is no 1, 2 or 3 to press, and
+   * answering through the consumable strip is an indirect mapping nothing
+   * explains and which is off the fold on a short landscape screen. Reported as
+   * there being no way to choose.
+   *
+   * Only the two numbers the layout needs, so the input layer stays ignorant of
+   * gates, allies and everything else about the finale.
+   */
+  gateCard: { optionCount: number; hasReadLine: boolean; top: number } | null = null;
+
+  /**
    * Whether the use button is on screen right now.
    *
    * Set by the app each frame from the run state, and read by BOTH the hit test
@@ -281,6 +296,32 @@ export class Input {
       const region = useRegion(this.canvas.clientWidth, this.canvas.clientHeight);
       if (hit(region, point.x, point.y, 12)) {
         this.use();
+        return;
+      }
+    }
+
+    /*
+     * The gate card, before anything else on screen.
+     *
+     * It sits over the play area while it is up, so a tap that lands on it was
+     * meant for it. Checked first for the same reason a dialog takes clicks
+     * before the page behind it: the card is the thing being read.
+     *
+     * A row press goes through the same path a number key does, so both mean
+     * one thing and the rule about which slot answers what stays in one place.
+     */
+    if (this.gateCard) {
+      const layout = gateCardLayout({
+        width: this.canvas.clientWidth,
+        height: this.canvas.clientHeight,
+        top: this.gateCard.top,
+        optionCount: this.gateCard.optionCount,
+        hasReadLine: this.gateCard.hasReadLine,
+      });
+
+      const row = rowAt(layout, point.x, point.y);
+      if (row !== null) {
+        this.press(row);
         return;
       }
     }

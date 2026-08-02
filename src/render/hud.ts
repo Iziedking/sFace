@@ -18,6 +18,7 @@
 
 import { theme, MONO } from './theme';
 import { hintFor } from './hints';
+import { gateCardLayout } from '../core/gatecard';
 import type { Input, StickView } from '../core/input';
 import type { RunState } from '../game/state';
 import { PLAYER_MAX_HEALTH } from '../game/state';
@@ -43,6 +44,17 @@ const BAR_HEIGHT = 46;
 
 export class Hud {
   private insets: SafeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
+
+  /**
+   * Top of the play area, which the input layer needs to place the gate rows.
+   *
+   * Read from the HUD rather than recomputed, because it depends on the safe
+   * area insets and those are re-read on every resize. Two copies would agree
+   * until somebody rotated a phone with a notch.
+   */
+  get playTop(): number {
+    return this.insets.top + BAR_HEIGHT;
+  }
   private probe: HTMLDivElement | null = null;
 
   /** Re-read on every resize, since rotating a phone changes the insets. */
@@ -646,38 +658,31 @@ export class Hud {
      * something moving behind it costs nothing in legibility and hands most of
      * that band back.
      */
-    /*
-     * Docked out of the flying lane on a short screen.
-     *
-     * Centred is fine in portrait, where the card sits well above the player.
-     * In the wallet in landscape the view is about 280 tall, the card is a
-     * hundred of that, and centring puts it exactly across the band the player
-     * and everything shooting at them are moving through. Reported twice as
-     * blocking the game.
-     *
-     * So on a short screen it goes to the left edge, under the bar and above
-     * the map, and the middle stays clear. It is the same card either way: what
-     * changes is which part of a cramped screen it is willing to own.
-     */
-    const short = height < 520;
-    const rowH = short ? 22 : 26;
-    const headH = short ? 24 : 28;
-    const cardW = Math.min(width - 24, short ? 320 : 430);
-    const x = short ? 12 : (width - cardW) / 2;
     // Room for the price line when there is one to show.
     const unknownCount = gate.options.filter((id) => {
       const ally = state.allies.find((a) => a.id === id);
       return ally !== undefined && !ally.known;
     }).length;
-    const cardH = headH + gate.options.length * rowH + (unknownCount > 0 ? 20 : 8);
+
     /*
-     * Under the bar on a short screen, below the pause control otherwise.
+     * Laid out in core/gatecard.ts, which the input layer reads too.
      *
-     * The pause control owns the top centre, so a centred card has to clear it.
-     * A card docked left does not, and every row of vertical space matters more
-     * than the gap does on a viewport this size.
+     * The rows are tappable, so where they are drawn and where a tap counts
+     * have to be the same rectangle. Two copies of that arithmetic agreeing by
+     * coincidence is how a hit target ends up a few pixels off the thing it
+     * belongs to.
      */
-    const y = short ? top + 6 : top + 44;
+    const layout = gateCardLayout({
+      width,
+      height,
+      top,
+      optionCount: gate.options.length,
+      hasReadLine: unknownCount > 0,
+    });
+
+    const { x, y, headH, rowH, short } = layout;
+    const cardW = layout.width;
+    const cardH = layout.height;
 
     ctx.save();
 

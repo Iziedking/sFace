@@ -3555,6 +3555,25 @@ class App {
     });
 
     if (this.screen === 'run') {
+      /*
+       * Tell the input layer where the gate card is, if one is up.
+       *
+       * Set from the run each frame rather than pushed when a gate opens, so a
+       * gate that closes because the player moved away cannot leave a live hit
+       * target behind on an empty screen.
+       */
+      const openGate = run.gates.find((g) => g.id === run.openGateId);
+      this.input.gateCard = openGate
+        ? {
+            optionCount: openGate.options.length,
+            hasReadLine: openGate.options.some((id) => {
+              const ally = run.allies.find((a) => a.id === id);
+              return ally !== undefined && !ally.known;
+            }),
+            top: this.hud.playTop,
+          }
+        : null;
+
       this.hud.draw(
         this.renderer.context,
         run,
