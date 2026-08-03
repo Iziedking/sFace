@@ -254,38 +254,102 @@ export function renderContestNew(root: HTMLElement, options: ContestNewOptions):
 }
 
 /**
- * Any amount the presets do not carry.
+ * A field somebody can actually type a number into.
  *
- * Bounded to the same range the service enforces, so nothing typed here can be
- * refused on the far side. Clamped on the way out rather than blocked on the
- * way in: somebody typing 100 passes through 1 and 10, and rejecting keystrokes
- * as they arrive makes the field feel broken while it is being used.
+ * ## What was wrong with the obvious version
+ *
+ * It clamped the value into range on every keystroke and handed it straight
+ * back to the screen, which repainted. Three separate things went wrong at
+ * once, and together they made both custom boxes impossible to use.
+ *
+ * The repaint destroyed the element being typed into, so the second character
+ * went nowhere. The clamp fought the typist: on the way to 45 minutes you pass
+ * through 4, which is below the floor, so it became 30 and the next keystroke
+ * built on 30 instead of 4. And on the stake, typing 1 produced a value that is
+ * one of the presets, so the field decided it was no longer in use and blanked
+ * itself mid-word.
+ *
+ * ## The rule here
+ *
+ * While the field has focus it belongs to the person typing. Nothing rewrites
+ * its text. A value inside the allowed range is committed as it is typed, so
+ * the sentence underneath keeps up; a value outside it is simply not committed
+ * yet, because half a number is not a smaller number. Leaving the field is what
+ * settles it: on blur the value is clamped, and the text is corrected to match
+ * what was actually kept.
+ *
+ * `data-keep` is what lets the repaint hand the text back if one happens
+ * anyway. See mount in ui/dom.ts.
  */
-function stakeField(options: ContestNewOptions): HTMLElement {
-  const preset = STAKES.includes(options.draft.stakeNim);
-
+function numberField(input: {
+  keep: string;
+  className: string;
+  on: boolean;
+  min: number;
+  max: number;
+  placeholder: string;
+  label: string;
+  value: string;
+  commit: (n: number) => void;
+}): HTMLElement {
   const field = el('input', {
-    class: preset ? 'stakefield' : 'stakefield stakefield--on',
-    type: 'number',
+    class: input.on ? `${input.className} ${input.className}--on` : input.className,
+    /*
+     * Text rather than number, deliberately.
+     *
+     * A number input refuses to report a caret position, so a repaint cannot
+     * put somebody back where they were, and it comes with spinners and an
+     * exponent notation nobody wants in a stake. The numeric keypad on a phone
+     * comes from inputmode, which is the part that was ever worth having.
+     */
+    type: 'text',
     inputmode: 'numeric',
-    min: String(MIN_STAKE),
-    max: String(MAX_STAKE),
-    step: '1',
-    placeholder: 'Custom',
-    value: preset ? '' : String(options.draft.stakeNim),
-    'aria-label': `Custom stake in NIM, ${MIN_STAKE} to ${MAX_STAKE}`,
+    'data-keep': input.keep,
+    placeholder: input.placeholder,
+    value: input.value,
+    'aria-label': input.label,
   }) as HTMLInputElement;
 
   field.addEventListener('input', () => {
-    const typed = Number.parseInt(field.value, 10);
+    const typed = Number.parseInt(field.value.replace(/[^0-9]/g, ''), 10);
     if (!Number.isFinite(typed)) return;
-    options.onChange({
-      ...options.draft,
-      stakeNim: Math.max(MIN_STAKE, Math.min(MAX_STAKE, typed)),
-    });
+    // Out of range means still being typed. Committing a clamped version would
+    // rewrite what is under the caret.
+    if (typed < input.min || typed > input.max) return;
+    input.commit(typed);
+  });
+
+  field.addEventListener('blur', () => {
+    const typed = Number.parseInt(field.value.replace(/[^0-9]/g, ''), 10);
+    if (!Number.isFinite(typed)) {
+      // Nothing usable was left in it. The presets still hold whatever is set.
+      field.value = '';
+      return;
+    }
+
+    const settled = Math.max(input.min, Math.min(input.max, typed));
+    field.value = String(settled);
+    input.commit(settled);
   });
 
   return field;
+}
+
+/** Any amount the presets do not carry. */
+function stakeField(options: ContestNewOptions): HTMLElement {
+  const preset = STAKES.includes(options.draft.stakeNim);
+
+  return numberField({
+    keep: 'stake',
+    className: 'stakefield',
+    on: !preset,
+    min: MIN_STAKE,
+    max: MAX_STAKE,
+    placeholder: 'Custom',
+    label: `Custom stake in NIM, ${MIN_STAKE} to ${MAX_STAKE}`,
+    value: preset ? '' : String(options.draft.stakeNim),
+    commit: (stakeNim) => options.onChange({ ...options.draft, stakeNim }),
+  });
 }
 
 /**
@@ -298,28 +362,17 @@ function windowField(options: ContestNewOptions): HTMLElement {
   const { openMinutes } = options.draft;
   const preset = WINDOWS.some((w) => w.minutes === openMinutes);
 
-  const field = el('input', {
-    class: preset ? 'stakefield' : 'stakefield stakefield--on',
-    type: 'number',
-    inputmode: 'numeric',
-    min: String(MIN_OPEN_MINUTES),
-    max: String(MAX_OPEN_MINUTES),
-    step: '5',
+  return numberField({
+    keep: 'window',
+    className: 'stakefield',
+    on: !preset,
+    min: MIN_OPEN_MINUTES,
+    max: MAX_OPEN_MINUTES,
     placeholder: 'Minutes',
+    label: `Custom window in minutes, ${MIN_OPEN_MINUTES} to ${MAX_OPEN_MINUTES}`,
     value: preset || openMinutes === null ? '' : String(openMinutes),
-    'aria-label': `Custom window in minutes, ${MIN_OPEN_MINUTES} to ${MAX_OPEN_MINUTES}`,
-  }) as HTMLInputElement;
-
-  field.addEventListener('input', () => {
-    const typed = Number.parseInt(field.value, 10);
-    if (!Number.isFinite(typed)) return;
-    options.onChange({
-      ...options.draft,
-      openMinutes: Math.max(MIN_OPEN_MINUTES, Math.min(MAX_OPEN_MINUTES, typed)),
-    });
+    commit: (openMinutes) => options.onChange({ ...options.draft, openMinutes }),
   });
-
-  return field;
 }
 
 /**
