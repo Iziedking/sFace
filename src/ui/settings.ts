@@ -40,9 +40,24 @@ export interface SettingsOptions {
   /** Current sound state, for the toggle's label. */
   soundOn: boolean;
   onToggleSound: () => void;
-  /** Null on a phone, where fullscreen is refused or actively harmful. */
+  /**
+   * Null where the browser has no Fullscreen API, or where it would do nothing.
+   *
+   * Android Chrome has it. iOS Safari does not, and the wallet draws its own
+   * header that no web API can remove, so a button there would name something
+   * it cannot do.
+   */
   onFullscreen: (() => void) | null;
   fullscreen: boolean;
+  /**
+   * True where fullscreen is impossible but installing to the home screen is
+   * not, which in practice means iOS Safari.
+   *
+   * The helper for this existed and was wired to nothing, so an iPhone showed
+   * no way to get rid of the browser chrome and no explanation of why. Reported
+   * as no fullscreen at all on mobile.
+   */
+  canInstall: boolean;
   onReplayIntro: () => void;
   /** The illustrated how-to-play guide, which is a document, not a setting. */
   onControls: () => void;
@@ -93,6 +108,26 @@ export function renderSettings(root: HTMLElement, options: SettingsOptions): voi
         button('Replay intro', options.onReplayIntro, 'quiet'),
         button('How to play', options.onControls, 'quiet'),
       ),
+
+      /*
+       * What to do when there is no fullscreen button.
+       *
+       * iOS has no Fullscreen API at all, so the honest answer is not a button
+       * that fails: it is the one route that does work there. Installed from
+       * the share sheet the app opens standalone, with no address bar and no
+       * toolbar, which is the thing being asked for.
+       */
+      options.canInstall
+        ? el(
+            'div',
+            { class: 'settings__install' },
+            el('p', { class: 'settings__installhead', text: 'FULL SCREEN ON IPHONE' }),
+            el('p', {
+              class: 'settings__installsay',
+              text: 'Safari has no fullscreen for web apps. Tap Share, then Add to Home Screen, and open sFace from the icon. It runs with no address bar and no toolbar, which is the whole screen.',
+            }),
+          )
+        : null,
 
       el('p', { class: 'settings__group', text: 'CONTROLS' }),
       el('p', {

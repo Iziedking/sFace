@@ -59,6 +59,7 @@ import { narrator } from './core/voice';
 import {
   fullscreenAvailable,
   isFullscreen,
+  installInsteadOfFullscreen,
   onFullscreenChange,
   toggleFullscreen,
 } from './core/fullscreen';
@@ -1741,6 +1742,7 @@ class App {
       },
       fullscreen: isFullscreen(),
       onFullscreen: fullscreenAvailable() ? () => void toggleFullscreen() : null,
+      canInstall: installInsteadOfFullscreen(),
       onReplayIntro: () => this.playIntro(),
       onControls: () => this.showControls(),
     });

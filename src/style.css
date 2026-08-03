@@ -4965,6 +4965,32 @@ body.is-fullscreen .foot,
    name still leads. On your own row it sits on the accent, so it takes the ink
    colour there for the same reason the proof mark does. */
 
+/* No fullscreen here, but there is a way ------------------------------------
+   Shown only on a device with no Fullscreen API and no home-screen install yet,
+   which is iOS Safari. Written as instructions rather than as an advert. */
+
+.settings__install {
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  padding: 12px 14px;
+  display: grid;
+  gap: 4px;
+}
+
+.settings__installhead {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--ink-muted);
+  margin: 0;
+}
+
+.settings__installsay {
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0;
+}
+
 .board__wallet {
   font-family: var(--mono);
   font-size: 10px;

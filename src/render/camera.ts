@@ -40,8 +40,32 @@ const MIN_VIEW_H = 760;
  * gets the same total amount of world as a portrait phone, so a wide short view
  * buys height at the cost of nothing and reach at the cost of sky.
  */
-const MAX_VIEW_W = 1200;
 const MAX_VIEW_AREA = 900 * 1000;
+
+/**
+ * The widest any device may see, as a guard rather than as the rule.
+ *
+ * ## Why this stopped being the rule
+ *
+ * It was 1200, applied as a floor on the scale, which meant a wide screen was
+ * forced to zoom IN until it saw no more than 1200 units across. On a desktop
+ * that barely bites. On a phone held sideways it bites hard, and the cost comes
+ * out of the only axis a short screen has none of: a landscape phone was left
+ * with about 440 units of height against a desktop's 663.
+ *
+ * So the cap meant to keep the game fair was handing the desktop half as much
+ * sky again, and the phone could not see what was diving at it. Measured across
+ * eight real viewports before changing it.
+ *
+ * Area is the fair rule and always was; it is what the comment above describes.
+ * Every device now sees the same total amount of world, and the shape of its
+ * screen decides how that is spent: a wide short window buys reach with sky, a
+ * tall one buys sky with reach. Neither is free, so neither is an advantage.
+ *
+ * This number survives only to stop something absurd, like a 32:9 window
+ * resolving to two thousand units of reach. No real device comes near it.
+ */
+const MAX_VIEW_W = 1700;
 
 /**
  * Below this many CSS pixels of height, playability wins over the width cap.
@@ -61,6 +85,14 @@ const CRAMPED_HEIGHT = 340;
  * the cost of the frame rate, which is the worse of the two.
  */
 const CRAMPED_VIEW_AREA = 620 * 1000;
+
+/**
+ * World units of sky kept above the ship, on every device.
+ *
+ * Five character heights. Enough to see a diver commit before it arrives, which
+ * is the least a game where the threat comes from above can offer.
+ */
+const MIN_HEADROOM = 200;
 
 /** How far ahead of the ship the camera leads, at full speed. */
 const LOOKAHEAD = 130;
@@ -121,24 +153,16 @@ export class Camera {
     const toCapArea = Math.sqrt((cssWidth * cssHeight) / budget);
 
     /*
-     * The width cap lifts on a screen too short to play on.
+     * Nothing forces a zoom in beyond the area budget any more.
      *
-     * Capping area was supposed to buy back the sky, and on a genuinely tiny
-     * viewport it never binds: the wallet in landscape leaves about 200 usable
-     * pixels of height, where the width cap alone forces a scale that leaves
-     * 358 world units of sky. The ship still flies out of the top and the fix
-     * did nothing.
-     *
-     * Below the threshold the area cap is the only limit. That does buy a wider
-     * view, and it is the right trade rather than a loophole: the same screen is
-     * seeing far LESS sky than a portrait phone, and in a game where attackers
-     * come from above and you climb to reach people, height is the axis that
-     * decides whether it is playable at all. Nobody gains by picking a 200 pixel
-     * window, and the total world on screen is still the same for everyone.
+     * The width cap used to, and on a short landscape screen it was the binding
+     * constraint: it bought back none of the sky the area rule had just paid
+     * for. See MAX_VIEW_W. What remains is a guard against an aspect ratio no
+     * real device has.
      */
-    const toCapWidth = cssHeight < CRAMPED_HEIGHT ? 0 : cssWidth / MAX_VIEW_W;
+    const toGuardWidth = cssWidth / MAX_VIEW_W;
 
-    this.scale = Math.max(toFitMinimum, toCapArea, toCapWidth);
+    this.scale = Math.max(toFitMinimum, toCapArea, toGuardWidth);
     this.viewW = cssWidth / this.scale;
     this.viewH = cssHeight / this.scale;
   }
@@ -290,8 +314,25 @@ export class Camera {
      * the ground on screen at any sane altitude and still leaves the ship
      * comfortably inside the frame rather than riding the top edge.
      */
+    /*
+     * The bias never eats the sky above the ship.
+     *
+     * Chasing the ground is right until it costs you the thing shooting at you.
+     * At a flat third of the view the ship sat 18% from the top of the frame,
+     * which on a landscape phone is about eighty world units: two characters.
+     * Attackers dive from above and people are rescued by climbing, so eighty
+     * units of warning is none. Reported as not being able to see what is
+     * coming, and as characters hiding upward off the top of the screen.
+     *
+     * Every device now keeps at least MIN_HEADROOM above the ship, whatever
+     * shape its screen is, and the ground is followed with whatever is left.
+     * On a view too short to hold both, the sky wins: you are flying, and the
+     * chart is still drawn at the bottom edge rather than lost, while an
+     * attacker you cannot see is simply damage you could not have avoided.
+     */
     const gap = Math.max(0, groundY - player.y);
-    const bias = Math.min(gap * 0.55, this.viewH * 0.32);
+    const headroom = Math.max(0, this.viewH / 2 - MIN_HEADROOM);
+    const bias = Math.min(gap * 0.55, this.viewH * 0.32, headroom);
     const eye = player.y + bias;
 
     // When the view is wider or taller than the world, centre on the world
