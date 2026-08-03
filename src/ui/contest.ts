@@ -22,9 +22,11 @@ import {
   KIND_LABEL,
   clanStandings,
   debtOf,
+  isExpired,
   obligationsOf,
   stagesLabel,
   standings,
+  timeLeftLabel,
   type Contest,
 } from '../data/contests';
 
@@ -52,7 +54,10 @@ export interface ContestOptions {
 
 export function renderContest(root: HTMLElement, options: ContestOptions): void {
   const { contest } = options;
+  const now = Date.now();
   const settled = contest.status === 'settled';
+  const voided = contest.status === 'void';
+  const over = settled || voided || isExpired(contest, now);
   const table = standings(contest);
   const mine = table.find((row) => row.entrant.id === options.meId);
 
@@ -67,8 +72,28 @@ export function renderContest(root: HTMLElement, options: ContestOptions): void 
       el('p', {
         class: 'quiet',
         text: settled
-          ? 'Everyone has flown. This is the result.'
-          : `${contest.entrants.length} of ${contest.seats} entered. Fly the stages and your scores land here.`,
+          ? 'Everyone who was going to fly has flown. This is the result.'
+          : voided
+            ? 'The clock ran out before anybody finished, so there is nothing to settle and nobody owes anything.'
+            : `${contest.entrants.length} of ${contest.seats} entered. Fly the stages and your scores land here.`,
+      }),
+
+      /*
+       * The deadline, stated wherever the contest is.
+       *
+       * Not decoration and not a nag. Somebody looking at this is deciding
+       * whether to start a run, and a five minute window and a five hour one
+       * are different decisions. Once it is over the line says so plainly
+       * rather than disappearing, because "why can I not fly this" needs an
+       * answer on the screen that refused.
+       */
+      el('p', {
+        class: over ? 'contestpage__clock contestpage__clock--done' : 'contestpage__clock',
+        text: settled
+          ? 'Closed'
+          : voided
+            ? 'The clock ran out'
+            : timeLeftLabel(contest, now),
       }),
 
       contest.stakeNim > 0

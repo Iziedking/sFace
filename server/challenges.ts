@@ -18,6 +18,8 @@
 
 import { randomUUID } from 'node:crypto';
 
+import { endOfUtcDay, expiryFor, isExpired } from '../src/data/contests';
+
 export const MIN_STAKE_NIM = 1;
 export const MAX_STAKE_NIM = 1000;
 /** Challenges are for today's mission. A stale one cannot be played fairly. */
@@ -39,6 +41,15 @@ export interface Challenge {
   opponentAddress: string | null;
   opponentScore: number | null;
   status: ChallengeStatus;
+  /**
+   * When it stops being answerable, as epoch milliseconds.
+   *
+   * A challenge names a seed, and the seed only exists for its own UTC day, so
+   * the day's end is a hard ceiling rather than a policy. Inside that, whoever
+   * opens it may set a shorter window. See expiryFor in src/data/contests.ts,
+   * which both kinds share so a countdown means the same thing on either card.
+   */
+  expiresAt: number;
   settlementTx: string | null;
   createdAt: number;
 }
@@ -55,6 +66,8 @@ export function create(input: {
   seed: string;
   stakeNim: number;
   score: number;
+  /** Minutes it stays answerable, or null for the rest of the UTC day. */
+  openMinutes?: number | null;
 }): Result<Challenge> {
   if (input.stakeNim < MIN_STAKE_NIM || input.stakeNim > MAX_STAKE_NIM) {
     return { ok: false, reason: `Stake must be between ${MIN_STAKE_NIM} and ${MAX_STAKE_NIM} NIM.`, code: 400 };
@@ -74,6 +87,7 @@ export function create(input: {
     opponentAddress: null,
     opponentScore: null,
     status: 'open',
+    expiresAt: expiryFor(Date.now(), input.openMinutes ?? null),
     settlementTx: null,
     createdAt: Date.now(),
   };
@@ -90,6 +104,17 @@ export function get(id: string): Result<Challenge> {
     return { ok: false, reason: 'That challenge has expired.', code: 410 };
   }
   return { ok: true, value: challenge };
+}
+
+/**
+ * Whether the window has closed.
+ *
+ * Only ever asked of an open challenge. A resolved one has both scores already
+ * and nothing about it depends on the clock any more, so expiring it after the
+ * fact would take away a result that was fairly reached.
+ */
+export function isOver(challenge: Challenge, now: number = Date.now()): boolean {
+  return challenge.status === 'open' && isExpired(challenge, now);
 }
 
 export function accept(
@@ -124,6 +149,13 @@ export function accept(
   }
   if (challenge.status !== 'open') {
     return { ok: false, reason: 'That challenge has already been taken.', code: 409 };
+  }
+
+  // The clock, checked after the identity and status refusals so the message is
+  // the most specific true one. A late answer is refused rather than accepted
+  // and quietly ignored, because the person answering has just flown a run.
+  if (isOver(challenge, Date.now())) {
+    return { ok: false, reason: 'The clock ran out on that challenge.', code: 410 };
   }
 
   challenge.opponentId = input.deviceId;
@@ -192,9 +224,30 @@ export function serialise(): unknown {
 
 export function restore(raw: unknown): void {
   if (!Array.isArray(raw)) return;
+
+  // Replace rather than merge, so restoring twice leaves the same result as
+  // restoring once. The board store had this wrong and a dropped row survived.
+  challenges.clear();
+
   for (const challenge of raw as Challenge[]) {
     if (challenge && typeof challenge.id === 'string') {
-      challenges.set(challenge.id, challenge);
+      const createdAt = typeof challenge.createdAt === 'number' ? challenge.createdAt : 0;
+
+      challenges.set(challenge.id, {
+        ...challenge,
+        createdAt,
+        /*
+         * The same backfill contests take, for the same reason.
+         *
+         * A row written before deadlines existed has no expiresAt, and every
+         * comparison against an undefined clock is false, so it would stay
+         * answerable forever on a mission that is long gone.
+         */
+        expiresAt:
+          typeof challenge.expiresAt === 'number'
+            ? challenge.expiresAt
+            : endOfUtcDay(createdAt),
+      });
     }
   }
 }

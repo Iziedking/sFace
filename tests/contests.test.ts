@@ -44,6 +44,9 @@ function contest(over: Partial<Contest> = {}): Contest {
     visibility: 'open',
     status: 'open',
     date: '2026-03-01',
+    // Far enough out that a fixture is never accidentally expired. The expiry
+    // tests set it themselves.
+    expiresAt: Date.now() + 6 * 3_600_000,
     seed: 'seed-one',
     hostId: 'host',
     hostName: '@host',

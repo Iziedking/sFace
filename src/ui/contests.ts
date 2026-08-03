@@ -25,8 +25,10 @@ import { button, el, mount } from './dom';
 import {
   KIND_LABEL,
   KIND_SAY,
+  isExpired,
   seatsLeft,
   stagesLabel,
+  timeLeftLabel,
   type Contest,
   type ContestKind,
 } from '../data/contests';
@@ -129,6 +131,8 @@ function emptyState(options: ContestsOptions): HTMLElement {
 }
 
 function card(contest: Contest, options: ContestsOptions): HTMLElement {
+  const now = Date.now();
+  const expired = isExpired(contest, now);
   const left = seatsLeft(contest);
   const mine = contest.hostId === options.me.id;
   const entered = contest.entrants.some((e) => e.id === options.me.id);
@@ -155,6 +159,18 @@ function card(contest: Contest, options: ContestsOptions): HTMLElement {
       el('span', {
         class: left > 0 ? 'contest__seats' : 'contest__seats contest__seats--full',
         text: left > 0 ? `${left} seat${left === 1 ? '' : 's'} left` : 'Full',
+      }),
+      /*
+       * How long is left, on the card rather than only inside.
+       *
+       * The list is where somebody decides which contest to enter, and a window
+       * with twenty minutes in it is a different proposition to one with six
+       * hours, especially when there is a stake on it. Making them open the page
+       * to find out is how people take a seat they cannot fly.
+       */
+      el('span', {
+        class: expired ? 'contest__clock contest__clock--done' : 'contest__clock',
+        text: expired ? 'Expired' : timeLeftLabel(contest, now),
       }),
     ),
 
@@ -200,9 +216,25 @@ function card(contest: Contest, options: ContestsOptions): HTMLElement {
           })
         : entered || mine
         ? button('Open', () => options.onOpen(contest), 'ghost')
-        : button(busy ? 'Taking a seat...' : 'Take a seat', () => options.onJoin(contest), 'ghost', {
-            disabled: busy || left <= 0,
-          }),
+        : /*
+           * Expired is said, not just disabled.
+           *
+           * The service drops these from the list, so this card is one that ran
+           * out while the page was open, which is exactly what the countdown
+           * above it is for. A greyed button with no reason next to a clock
+           * reading Expired makes somebody tap it to find out.
+           */
+          expired
+          ? el('p', {
+              class: 'contest__notice',
+              text: 'The clock ran out on this one. Pull the list to see what is still open.',
+            })
+          : button(
+              busy ? 'Taking a seat...' : 'Take a seat',
+              () => options.onJoin(contest),
+              'ghost',
+              { disabled: busy || left <= 0 },
+            ),
     ),
   );
 

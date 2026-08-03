@@ -208,6 +208,21 @@ const contestBody = z.object({
   stakeNim: z.number().int().min(contests.MIN_STAKE_NIM).max(contests.MAX_STAKE_NIM),
   seats: z.number().int().min(2).max(6),
   visibility: z.enum(['open', 'private']),
+  /*
+   * How long it stays open, in minutes. Absent means the rest of the UTC day.
+   *
+   * The band is checked here and clamped again in the store, which is not
+   * belt and braces for its own sake: this schema rejects a bad request, and
+   * the clamp is what caps a legitimate 24 hour request at the rollover when
+   * the contest was opened at four in the afternoon.
+   */
+  openMinutes: z
+    .number()
+    .int()
+    .min(contestRules.MIN_OPEN_MINUTES)
+    .max(contestRules.MAX_OPEN_MINUTES)
+    .nullable()
+    .optional(),
 });
 
 const joinContestBody = z.object({
@@ -241,6 +256,15 @@ const createBody = z.object({
   seed,
   stakeNim: z.number().min(challenges.MIN_STAKE_NIM).max(challenges.MAX_STAKE_NIM),
   score: z.number().int().min(0).max(board.SCORE_CEILING),
+  // The same window a contest takes, from the same shared band. Absent means
+  // the rest of the UTC day, which is as long as the seed lives anyway.
+  openMinutes: z
+    .number()
+    .int()
+    .min(contestRules.MIN_OPEN_MINUTES)
+    .max(contestRules.MAX_OPEN_MINUTES)
+    .nullable()
+    .optional(),
 });
 
 const acceptBody = z.object({
@@ -546,8 +570,10 @@ app.post('/board', limit(20, 10), async (req, res) => {
    * stake that does not know about it. In the same request they arrive together
    * or not at all.
    */
+  sweepContests(networkOf(req));
   const justSettled = contests.recordScore({
     network: networkOf(req),
+    now: Date.now(),
     pilotId: parsed.data.deviceId,
     date: parsed.data.date,
     seed: parsed.data.seed,
@@ -706,11 +732,31 @@ app.post('/board/sign', limit(20, 10), (req, res) => {
  * can do is describe a result incorrectly.
  */
 
+/**
+ * Apply any deadlines that have passed, and record what they cost.
+ *
+ * Called at the top of every contest read and before a score is folded in, so
+ * nobody is ever shown or allowed to act on a contest whose clock ran out while
+ * the page was open. The debts are written here for the same reason they are
+ * written after a score: the store reports the transition and the profile is
+ * where a settlement record has to outlive the contest itself.
+ */
+function sweepContests(network: string): void {
+  for (const contest of contests.expireDue(Date.now())) {
+    for (const owed of contestRules.obligationsOf(contest)) {
+      const who = contest.entrants.find((e) => e.id === owed.fromId);
+      profiles.recordDebt(owed.fromId, who?.name ?? 'Pilot', network);
+    }
+  }
+}
+
 app.get('/contests', limit(120, 40), (req, res) => {
+  sweepContests(networkOf(req));
   res.json(contests.list(networkOf(req)));
 });
 
 app.get('/contests/:id', limit(120, 40), (req, res) => {
+  sweepContests(networkOf(req));
   const found = contests.get(String(req.params.id ?? ''), networkOf(req));
   if (!found.ok) {
     res.status(found.code).json({ error: found.reason });
@@ -762,6 +808,7 @@ app.post('/contests', limit(12, 6), async (req, res) => {
     stakeNim: body.stakeNim,
     seats: body.seats,
     visibility: body.visibility,
+    openMinutes: body.openMinutes ?? null,
     date: mission.payload.date,
     seed: mission.payload.seed,
     now: Date.now(),
@@ -776,6 +823,7 @@ app.post('/contests', limit(12, 6), async (req, res) => {
 });
 
 app.post('/contests/:id/join', limit(20, 10), (req, res) => {
+  sweepContests(networkOf(req));
   const parsed = joinContestBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
@@ -797,6 +845,7 @@ app.post('/contests/:id/join', limit(20, 10), (req, res) => {
     avatarUrl: body.avatarUrl ?? null,
     address: body.address ?? null,
     clanTag: profile.clanTag,
+    now: Date.now(),
   });
 
   if (!result.ok) {
@@ -1357,6 +1406,7 @@ async function main(): Promise<void> {
     () => {
       board.prune(utcDate());
       challenges.prune();
+      contests.expireDue(Date.now());
       contests.prune(Date.now());
       signals.pruneUnlocks();
       // Traces are the bulkiest thing stored and a seed is only playable on

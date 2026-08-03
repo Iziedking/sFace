@@ -35,7 +35,11 @@ import {
   MAX_SEATS,
   MAX_STAGE,
   MIN_SEATS,
+  anyoneFinished,
+  endOfUtcDay,
+  expiryFor,
   hasFinished,
+  isExpired,
   joinRefusal,
   obligationsOf,
   standings,
@@ -119,6 +123,11 @@ export function create(input: {
   visibility: ContestVisibility;
   date: string;
   seed: string;
+  /**
+   * How long the host wants it open, in minutes, or null for the rest of the
+   * day. Clamped by expiryFor, which also caps it at the UTC rollover.
+   */
+  openMinutes?: number | null;
   now: number;
 }): Result<Stored> {
   const stages = tidyStages(input.stages);
@@ -211,6 +220,7 @@ export function create(input: {
     visibility: input.visibility === 'private' ? 'private' : 'open',
     status: 'open',
     date: input.date,
+    expiresAt: expiryFor(input.now, input.openMinutes ?? null),
     seed: input.seed,
     hostId: input.hostId,
     hostName: input.hostName,
@@ -254,11 +264,14 @@ export function get(id: string, network: string): Result<Stored> {
  * is the whole access control, and a payload that carried the others would hand
  * them to anyone who opened the network tab.
  */
-export function list(network: string): Contest[] {
+export function list(network: string, now: number = Date.now()): Contest[] {
   return [...contests.values()]
     .filter((c) => c.network === network)
     .filter((c) => c.visibility === 'open')
-    .filter((c) => c.status !== 'settled')
+    .filter((c) => c.status !== 'settled' && c.status !== 'void')
+    // Hidden the moment the clock passes, without waiting for the sweep. A
+    // listed contest is one you can still take a seat in.
+    .filter((c) => !isExpired(c, now))
     .sort((a, b) => b.createdAt - a.createdAt)
     .map(toPublic);
 }
@@ -271,6 +284,7 @@ export function join(input: {
   avatarUrl: string | null;
   address: string | null;
   clanTag: string | null;
+  now: number;
 }): Result<Stored> {
   const found = get(input.id, input.network);
   if (!found.ok) return found;
@@ -284,7 +298,11 @@ export function join(input: {
    * Checking again is not redundancy, it is where the rule actually lives: a
    * client can be edited and this cannot.
    */
-  const refusal = joinRefusal(contest, { id: input.pilotId, clanTag: input.clanTag });
+  const refusal = joinRefusal(
+    contest,
+    { id: input.pilotId, clanTag: input.clanTag },
+    input.now,
+  );
   if (refusal) return { ok: false, reason: refusal, code: 409 };
 
   // Same reason as opening one: if this pilot wins, somebody has to be able to
@@ -338,6 +356,7 @@ export function recordScore(input: {
   seed: string;
   stage: number;
   score: number;
+  now: number;
 }): Contest[] {
   let touched = false;
   /*
@@ -352,7 +371,16 @@ export function recordScore(input: {
 
   for (const contest of contests.values()) {
     if (contest.network !== input.network) continue;
-    if (contest.status === 'settled') continue;
+    if (contest.status === 'settled' || contest.status === 'void') continue;
+    /*
+     * A run that lands after the deadline does not count.
+     *
+     * The run itself still goes on the daily board; it just does not count
+     * toward terms whose window has closed. Without this a player could start a
+     * stage a minute before expiry and post it whenever they finished, which
+     * makes the deadline advisory for whoever is slowest.
+     */
+    if (isExpired(contest, input.now)) continue;
     // Same day and same level, or it is not the thing that was agreed.
     if (contest.date !== input.date || contest.seed !== input.seed) continue;
     if (!contest.stages.includes(input.stage)) continue;
@@ -384,6 +412,51 @@ function settleIfDone(contest: Stored): boolean {
 
   contest.status = 'settled';
   return true;
+}
+
+/**
+ * Close out everything whose clock has run out.
+ *
+ * ## Why the deadline is enforced here and not by a timer
+ *
+ * A contest has to be correct the moment somebody looks at it, and a timer that
+ * fires every few hours cannot promise that: between two ticks a card would
+ * still say open, still offer a seat, and still accept a run. So this is called
+ * on the read paths as well as by housekeeping, and the expiry is applied the
+ * first time anybody asks rather than whenever a schedule comes round.
+ *
+ * ## Settled or void
+ *
+ * If at least one entrant finished every stage, the contest settles: the field
+ * agreed to the terms, the deadline was part of them, and somebody who did not
+ * turn up loses the same way somebody who turned up and lost does.
+ *
+ * If nobody finished, it is void. There is no winner to pay and no fair way to
+ * invent one, so no debt is created and the card says the clock beat everyone.
+ *
+ * Returns the ones that became settled, so the caller can write the debts, the
+ * same handoff recordScore uses and for the same reason: this store knows
+ * nothing about profiles and should not start now.
+ */
+export function expireDue(now: number): Contest[] {
+  const settled: Contest[] = [];
+  let touched = false;
+
+  for (const contest of contests.values()) {
+    if (contest.status === 'settled' || contest.status === 'void') continue;
+    if (!isExpired(contest, now)) continue;
+
+    touched = true;
+    if (anyoneFinished(contest)) {
+      contest.status = 'settled';
+      settled.push(toPublic(contest));
+    } else {
+      contest.status = 'void';
+    }
+  }
+
+  if (touched) persist();
+  return settled;
 }
 
 /**
@@ -435,7 +508,12 @@ export function debtsFor(pilotId: string, network: string): Contest[] {
 /** Who won, or null while it is still being flown. */
 export function winnerOf(contest: Contest): ContestEntrant | null {
   if (contest.status !== 'settled') return null;
-  return standings(contest)[0]?.entrant ?? null;
+
+  // Only a completed run can win. A settled contest always has one, but this
+  // is the function every screen asks, and a null average at the top would mean
+  // an expiry settled something it should have voided.
+  const top = standings(contest)[0];
+  return top && top.average !== null ? top.entrant : null;
 }
 
 /**
@@ -486,10 +564,23 @@ export function restore(raw: unknown): void {
     if (!item || typeof item.id !== 'string') continue;
     if (!Array.isArray(item.entrants) || !Array.isArray(item.stages)) continue;
 
+    const createdAt = typeof item.createdAt === 'number' ? item.createdAt : 0;
+
     contests.set(item.id, {
       ...item,
       network: typeof item.network === 'string' ? item.network : 'main',
-      createdAt: typeof item.createdAt === 'number' ? item.createdAt : 0,
+      createdAt,
+      /*
+       * Rows written before deadlines existed get the one they would have had.
+       *
+       * Left undefined, every comparison against the clock is false, so an old
+       * contest would never expire: permanently listed, permanently joinable,
+       * on a level that stopped existing days ago. The end of the day it was
+       * opened is the rule it was already living under, since a contest has
+       * never been playable past its own mission.
+       */
+      expiresAt:
+        typeof item.expiresAt === 'number' ? item.expiresAt : endOfUtcDay(createdAt),
     });
   }
 }

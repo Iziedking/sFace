@@ -13,6 +13,7 @@
 
 import { button, el, mount, stat } from './dom';
 import { t } from '../data/copy';
+import { isExpired, timeLeftLabel } from '../data/contests';
 import type { Challenge } from '../net/api';
 import type { DailyMission } from '../game/mission';
 
@@ -66,6 +67,23 @@ export function renderChallenge(root: HTMLElement, options: ChallengeOptions): v
       stat(challenge.creatorName, challenge.creatorScore.toLocaleString()),
     ),
     el('p', { text: t('challengeSame') }),
+    /*
+     * The deadline, on an open challenge only.
+     *
+     * Once it has been answered both scores are in and the clock stops
+     * mattering, so showing it there would put a countdown next to a result
+     * that is already fixed.
+     */
+    challenge.status === 'open'
+      ? el('p', {
+          class: isExpired(challenge, Date.now())
+            ? 'contestpage__clock contestpage__clock--done'
+            : 'contestpage__clock',
+          text: isExpired(challenge, Date.now())
+            ? 'The clock ran out. This one can no longer be answered.'
+            : `${timeLeftLabel(challenge, Date.now())} to answer it`,
+        })
+      : null,
   );
 
   const body = resolveBody(options, mine);

@@ -129,6 +129,13 @@ export interface Challenge {
   opponentAddress: string | null;
   opponentScore: number | null;
   status: ChallengeStatus;
+  /**
+   * When it stops being answerable, as epoch milliseconds.
+   *
+   * The same field a contest carries, from the same rules, so a countdown
+   * means one thing across the app. See src/data/contests.ts.
+   */
+  expiresAt: number;
   /** Set once someone has paid. The receipt, such as it is. */
   settlementTx: string | null;
 }
@@ -491,6 +498,8 @@ export async function createContest(body: {
   stakeNim: number;
   seats: number;
   visibility: ContestVisibility;
+  /** Minutes it stays open, or null for the rest of the UTC day. */
+  openMinutes: number | null;
 }): Promise<ApiResult<Contest>> {
   return request<Contest>('/contests', { method: 'POST', body: JSON.stringify(body) });
 }

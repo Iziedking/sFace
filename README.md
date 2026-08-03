@@ -279,6 +279,17 @@ debt so the winner can check it. The app records the debt and cannot collect it,
 and the screen says so. Free contests are the default, because a contest with
 nothing on it cannot be defaulted on.
 
+Every contest and challenge has a deadline, and midnight UTC is the ceiling on it.
+That is not a house rule. The level is rebuilt from the market each day, everyone
+in a contest has to fly the same one, and a score posted after the rollover carries
+a different seed, so a contest that outlived its day could not be finished. Inside
+that, whoever opens one picks the window: half an hour at the shortest, the rest of
+the day at the longest, and a longer request is capped at the rollover rather than
+promising time that cannot be flown. When the clock runs out, a contest with at
+least one completed run settles on whoever flew, and anybody who took a seat and
+did not turn up loses. One that nobody finished is void, with no winner and no
+debt.
+
 The rest of the list is workarounds: no balance method, so the profile reads one
 over JSON-RPC; no official Proof-of-Stake explorer, so board rows link to a
 community one; a faucet page that renders blank, so the claim happens in our own

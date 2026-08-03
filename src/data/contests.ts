@@ -46,7 +46,16 @@ export type ContestStatus =
   /** Full, and being flown. */
   | 'running'
   /** Everyone who is going to fly has flown. A winner exists. */
-  | 'settled';
+  | 'settled'
+  /**
+   * The clock ran out before anybody finished, so there is nothing to settle.
+   *
+   * Distinct from settled on purpose. A settled contest has a winner and may
+   * have debts; this one has neither, and calling it settled would put a name
+   * at the top of a table nobody completed and bill the rest of the field for
+   * losing to it.
+   */
+  | 'void';
 
 export type ContestVisibility =
   /** Listed publicly, anybody may take a seat. */
@@ -96,6 +105,14 @@ export interface Contest {
   status: ContestStatus;
   /** The day and level this contest is pinned to. Everyone flies the same one. */
   date: string;
+  /**
+   * When it stops accepting entries and runs, as epoch milliseconds.
+   *
+   * Absolute rather than a duration, because a duration has to be read against
+   * the clock of whoever is reading it, and the two sides of a staked contest
+   * are not on the same clock. One number, one meaning, everywhere.
+   */
+  expiresAt: number;
   seed: string;
   hostId: string;
   hostName: string;
@@ -145,6 +162,80 @@ export const KIND_SAY: Record<ContestKind, string> = {
   clan: 'Clan against clan, scored on the average of whoever turns up.',
   gauntlet: 'One shared level, hideouts and pickups, and a clock nobody survives.',
 };
+
+/*
+ * When a contest ends
+ * ===================
+ *
+ * Nothing here can outlive its own day, and that is a fact about the game
+ * rather than a rule somebody chose. The mission rolls at midnight UTC, every
+ * entrant has to fly the same seeded level, and a score posted after the
+ * rollover carries the new day's seed so it cannot be counted toward the old
+ * one. A contest that ran past midnight would be a contest nobody could finish.
+ *
+ * So the day's end is the ceiling, and the host may set anything shorter. Half
+ * an hour is the floor because below that the other side cannot realistically
+ * see it, take a seat and fly, and a contest that expires before it can be
+ * answered is a way of winning by opening one late.
+ */
+
+/** Shortest window a host may set. */
+export const MIN_OPEN_MINUTES = 30;
+/** Longest, and only reachable just after the rollover. */
+export const MAX_OPEN_MINUTES = 24 * 60;
+
+/** Midnight tonight, UTC, in epoch milliseconds. */
+export function endOfUtcDay(now: number): number {
+  const d = new Date(now);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1);
+}
+
+/**
+ * The deadline for a contest opened now.
+ *
+ * `minutes` null means the host did not set one and takes the whole rest of
+ * the day. Anything else is clamped into the allowed band and then capped at
+ * the day's end, which is why a contest opened at ten to midnight gets ten
+ * minutes however long its host asked for: the level it is pinned to will not
+ * exist after that, and pretending otherwise would sell a window that cannot
+ * be flown.
+ */
+export function expiryFor(now: number, minutes: number | null): number {
+  const dayEnd = endOfUtcDay(now);
+  if (minutes === null) return dayEnd;
+
+  const wanted = Math.max(MIN_OPEN_MINUTES, Math.min(MAX_OPEN_MINUTES, Math.round(minutes)));
+  return Math.min(now + wanted * 60_000, dayEnd);
+}
+
+export function isExpired(contest: Pick<Contest, 'expiresAt'>, now: number): boolean {
+  return now >= contest.expiresAt;
+}
+
+/**
+ * How long is left, for a card.
+ *
+ * Minutes below an hour and whole hours above it. Seconds were tempting and
+ * are wrong on a window measured in hours: a ticking second counter reads as
+ * urgent for the twenty three hours it is not.
+ */
+export function timeLeftLabel(contest: Pick<Contest, 'expiresAt'>, now: number): string {
+  const left = contest.expiresAt - now;
+  if (left <= 0) return 'Expired';
+
+  const minutes = Math.floor(left / 60_000);
+  if (minutes < 1) return 'Under a minute left';
+  if (minutes < 60) return `${minutes}m left`;
+
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours}h ${rest}m left` : `${hours}h left`;
+}
+
+/** Whether anybody completed every stage. Nothing can be settled without one. */
+export function anyoneFinished(contest: Contest): boolean {
+  return contest.entrants.some((e) => hasFinished(contest, e));
+}
 
 /** Seats still free. Never negative, however the entrant list arrived. */
 export function seatsLeft(contest: Contest): number {
@@ -276,9 +367,17 @@ export function clanStandings(contest: Contest): ClanStanding[] {
 export function joinRefusal(
   contest: Contest,
   pilot: { id: string; clanTag: string | null },
+  now: number = Date.now(),
 ): string | null {
   if (contest.entrants.some((e) => e.id === pilot.id)) return 'You are already in this one.';
-  if (contest.status === 'settled') return 'This one is over.';
+  if (contest.status === 'settled' || contest.status === 'void') return 'This one is over.';
+  /*
+   * Checked before the seat count so the reason is the real one.
+   *
+   * An expired contest with a free seat would otherwise say nothing at all and
+   * let somebody enter a window that cannot be flown.
+   */
+  if (isExpired(contest, now)) return 'The clock ran out on this one.';
   if (seatsLeft(contest) <= 0) return 'It is full.';
 
   /*
@@ -353,8 +452,17 @@ export function obligationsOf(contest: Contest): Obligation[] {
 
   if (contest.kind !== 'clan') {
     const table = standings(contest);
-    const winner = table[0]?.entrant;
-    if (!winner) return [];
+    const top = table[0];
+    const winner = top?.entrant;
+    /*
+     * No completed run, no debt.
+     *
+     * standings puts unfinished entrants at the bottom, so a top row with a
+     * null average means nobody finished at all. That happens when a clock ran
+     * out on an untouched contest, and billing the field for losing to a person
+     * who also never flew would be the worst possible reading of the terms.
+     */
+    if (!winner || top?.average === null) return [];
 
     return table
       .slice(1)

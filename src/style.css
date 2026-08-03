@@ -717,9 +717,20 @@ p.quiet {
   background: var(--canvas);
 }
 
+/*
+ * Live reads as live, at a glance, against a cream page.
+ *
+ * The deep green carries cream text at a contrast ratio around 6:1, which is
+ * comfortably readable at 11px, and it is the only place that green is used as
+ * a fill so it cannot be confused with a plain topic chip beside it. The border
+ * is set explicitly rather than inherited, because the same green on a cream
+ * border was the thing that made this read as one pale smudge.
+ */
 .chip--live {
   background: var(--rescue);
-  color: var(--canvas);
+  border-color: var(--rescue);
+  color: #ffffff;
+  letter-spacing: 0.08em;
 }
 
 /* The roster: who is in the wreck today. */
@@ -5131,6 +5142,39 @@ body.is-fullscreen .foot,
   color: var(--ink-muted);
 }
 
+/* The clock ------------------------------------------------------------------
+   Every contest carries a deadline, and it is part of the terms rather than a
+   decoration, so it is set in the same mono the rest of the verifiable numbers
+   use. Quiet while there is time and struck through in the alarm colour once
+   there is not, because an expired card still has to be readable: somebody is
+   looking at it to find out why they cannot enter. */
+
+.contest__clock,
+.contestpage__clock {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--ink-muted);
+}
+
+.contest__clock {
+  /* Its own line under the seat count on a narrow card, beside it on a wide
+     one. flex-basis 100% is what forces the wrap without a media query. */
+  flex-basis: 100%;
+  margin-left: auto;
+  text-align: right;
+}
+
+.contest__clock--done,
+.contestpage__clock--done {
+  color: var(--danger);
+}
+
+.contestpage__clock {
+  margin: 6px 0 0;
+}
+
 .contest__stages {
   font-size: 17px;
   font-weight: 800;
@@ -5278,7 +5322,16 @@ body.is-fullscreen .foot,
   margin-top: 8px;
 }
 
-.chip {
+/*
+ * Named apart from .chip on purpose.
+ *
+ * These are buttons you press to choose a stake or a visibility. `.chip` is a
+ * label that states a fact, and it already existed. Reusing the name meant this
+ * block, being later in the file, overrode the label's background at the same
+ * specificity: LIVE ON X kept its cream text and lost its green, so it was cream
+ * on paper and invisible. A class that looks generic is not a free name.
+ */
+.pickchip {
   appearance: none;
   font-family: var(--mono);
   font-size: 12px;
@@ -5289,7 +5342,7 @@ body.is-fullscreen .foot,
   cursor: pointer;
 }
 
-.chip--on {
+.pickchip--on {
   background: var(--accent);
   box-shadow: var(--lift-sm);
 }

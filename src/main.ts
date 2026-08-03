@@ -156,7 +156,7 @@ import { renderContests, type ContestFilter } from './ui/contests';
 import type { AppNotification } from './ui/notifications';
 import { renderContestNew, type ContestDraft } from './ui/contest-new';
 import { renderContest } from './ui/contest';
-import { remainingFor, stageRange, stagesLabel, type Contest } from './data/contests';
+import { isExpired, remainingFor, stageRange, stagesLabel, type Contest } from './data/contests';
 import {
   createContest,
   fetchContest,
@@ -525,6 +525,8 @@ class App {
     stakeNim: 5,
     seats: 2,
     visibility: 'open',
+    // The rest of the day, which is as long as today's level exists.
+    openMinutes: null,
   };
   private challengeNotice: string | null = null;
   private settling = false;
@@ -1690,13 +1692,29 @@ class App {
     lockedReason: string | null;
   } {
     const me = contest.entrants.find((e) => e.id === this.pilot);
-    if (!me || contest.status === 'settled') {
+    if (!me || contest.status === 'settled' || contest.status === 'void') {
       return { onRun: null, nextStage: null, lockedReason: null };
     }
 
     const next = remainingFor(contest, me)[0] ?? null;
     if (next === null) {
       return { onRun: null, nextStage: null, lockedReason: null };
+    }
+
+    /*
+     * The clock, checked before anything else that could offer a run.
+     *
+     * The service refuses a score posted after the deadline, so a Run button on
+     * an expired contest sends somebody to fly three minutes of a stage that
+     * cannot count. The reason is said rather than the button quietly vanishing,
+     * because a missing button reads as a bug and this is a rule.
+     */
+    if (isExpired(contest, Date.now())) {
+      return {
+        onRun: null,
+        nextStage: next,
+        lockedReason: 'The clock ran out on this contest, so a run would not count toward it.',
+      };
     }
 
     // Today's mission only. A contest is pinned to one day's level and the
@@ -1889,6 +1907,7 @@ class App {
       stakeNim: this.draft.stakeNim,
       seats: this.draft.seats,
       visibility: this.draft.visibility,
+      openMinutes: this.draft.openMinutes,
     });
 
     this.contestBusy = false;

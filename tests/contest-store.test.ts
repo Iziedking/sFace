@@ -53,11 +53,12 @@ function enter(id: string, pilotId: string, clanTag: string | null = null, netwo
     avatarUrl: null,
     address: ADDR,
     clanTag,
+    now: Date.now(),
   });
 }
 
 function fly(pilotId: string, stage: number, score: number, network = 'main') {
-  contests.recordScore({ network, pilotId, date: DATE, seed: SEED, stage, score });
+  contests.recordScore({ network, pilotId, date: DATE, seed: SEED, stage, score, now: Date.now() });
 }
 
 beforeEach(() => {
@@ -185,9 +186,11 @@ describe('scores landing', () => {
     const c = open({ stages: [1], seats: 4 });
     contests.recordScore({
       network: 'main', pilotId: HOST, date: '2026-07-31', seed: SEED, stage: 1, score: 500,
+      now: Date.now(),
     });
     contests.recordScore({
       network: 'main', pilotId: HOST, date: DATE, seed: 'other-seed', stage: 1, score: 500,
+      now: Date.now(),
     });
 
     const after = contests.get(c.id, 'main');
@@ -390,7 +393,7 @@ describe('settling a staked contest', () => {
     const c = open({ stages: [1], seats: 4, stakeNim: 5 });
     const result = contests.join({
       id: c.id, network: 'main', pilotId: RIVAL, name: '@rival',
-      avatarUrl: null, address: null, clanTag: null,
+      avatarUrl: null, address: null, clanTag: null, now: Date.now(),
     });
     expect(result.ok).toBe(false);
   });
@@ -498,17 +501,20 @@ describe('the settlement record', () => {
 
     const first = contests.recordScore({
       network: 'main', pilotId: HOST, date: DATE, seed: SEED, stage: 1, score: 900,
+      now: Date.now(),
     });
     expect(first).toHaveLength(0);
 
     const second = contests.recordScore({
       network: 'main', pilotId: RIVAL, date: DATE, seed: SEED, stage: 1, score: 100,
+      now: Date.now(),
     });
     expect(second.map((x) => x.id)).toEqual([c.id]);
 
     // Anything after the transition reports nothing, however many scores land.
     const third = contests.recordScore({
       network: 'main', pilotId: RIVAL, date: DATE, seed: SEED, stage: 1, score: 999,
+      now: Date.now(),
     });
     expect(third).toHaveLength(0);
   });

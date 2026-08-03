@@ -1,12 +1,12 @@
 /**
  * Opening a contest: the terms, before anybody has staked anything.
  *
- * ## One screen, four decisions
+ * ## One screen, five decisions
  *
- * Kind, stages, stake, seats. Everything else is derived or fixed, and the
- * screen deliberately refuses to grow past those four: a form with eight
- * choices on it is a form people abandon, and this one sits between a player
- * and the thing they came to do.
+ * Kind, stages, stake, seats, and how long it stays open. Everything else is
+ * derived or fixed, and the screen refuses to grow past those: a form with
+ * eight choices on it is a form people abandon, and this one sits between a
+ * player and the thing they came to do.
  *
  * ## Why the terms are settled here and never again
  *
@@ -25,9 +25,12 @@ import { button, el, mount } from './dom';
 import {
   KIND_LABEL,
   KIND_SAY,
+  MAX_OPEN_MINUTES,
   MAX_SEATS,
   MAX_STAGE,
+  MIN_OPEN_MINUTES,
   MIN_SEATS,
+  endOfUtcDay,
   stageRange,
   stagesLabel,
   type ContestKind,
@@ -41,6 +44,14 @@ export interface ContestDraft {
   stakeNim: number;
   seats: number;
   visibility: ContestVisibility;
+  /**
+   * How long it stays answerable, in minutes, or null for the rest of the day.
+   *
+   * Null is not "unset". It is the ordinary choice and the honest ceiling: a
+   * contest is pinned to a level that stops existing at midnight UTC, so the
+   * rest of the day is the longest window that can be flown.
+   */
+  openMinutes: number | null;
 }
 
 export interface ContestNewOptions {
@@ -75,6 +86,20 @@ const KINDS: ContestKind[] = ['duel', 'clan', 'gauntlet'];
  * money look like the default way to play.
  */
 const STAKES = [0, 1, 5, 10, 25];
+
+/**
+ * The windows worth one tap.
+ *
+ * Half an hour for a contest between two people who are both holding their
+ * phones, a couple of hours for one going out to a group, and the rest of the
+ * day for everything else. Anything between them is the custom field.
+ */
+const WINDOWS: Array<{ minutes: number | null; label: string }> = [
+  { minutes: 30, label: '30 min' },
+  { minutes: 120, label: '2 hours' },
+  { minutes: 360, label: '6 hours' },
+  { minutes: null, label: 'Rest of day' },
+];
 
 /** The same bounds the service enforces, so nothing typed here is refused. */
 const MIN_STAKE = 0;
@@ -165,6 +190,19 @@ export function renderContestNew(root: HTMLElement, options: ContestNewOptions):
             ),
           ),
 
+      el('p', { class: 'group', text: 'HOW LONG IT STAYS OPEN' }),
+      el(
+        'div',
+        { class: 'chips' },
+        ...WINDOWS.map((window) =>
+          chip(window.label, draft.openMinutes === window.minutes, () =>
+            options.onChange({ ...draft, openMinutes: window.minutes }),
+          ),
+        ),
+        windowField(options),
+      ),
+      el('p', { class: 'quiet', text: windowSay(draft.openMinutes, Date.now()) }),
+
       el('p', { class: 'group', text: 'WHO CAN SEE IT' }),
       el(
         'div',
@@ -251,6 +289,70 @@ function stakeField(options: ContestNewOptions): HTMLElement {
 }
 
 /**
+ * Any window the four presets do not carry.
+ *
+ * In minutes, and clamped to the same band the service enforces, so nothing
+ * typed here can be refused on the far side.
+ */
+function windowField(options: ContestNewOptions): HTMLElement {
+  const { openMinutes } = options.draft;
+  const preset = WINDOWS.some((w) => w.minutes === openMinutes);
+
+  const field = el('input', {
+    class: preset ? 'stakefield' : 'stakefield stakefield--on',
+    type: 'number',
+    inputmode: 'numeric',
+    min: String(MIN_OPEN_MINUTES),
+    max: String(MAX_OPEN_MINUTES),
+    step: '5',
+    placeholder: 'Minutes',
+    value: preset || openMinutes === null ? '' : String(openMinutes),
+    'aria-label': `Custom window in minutes, ${MIN_OPEN_MINUTES} to ${MAX_OPEN_MINUTES}`,
+  }) as HTMLInputElement;
+
+  field.addEventListener('input', () => {
+    const typed = Number.parseInt(field.value, 10);
+    if (!Number.isFinite(typed)) return;
+    options.onChange({
+      ...options.draft,
+      openMinutes: Math.max(MIN_OPEN_MINUTES, Math.min(MAX_OPEN_MINUTES, typed)),
+    });
+  });
+
+  return field;
+}
+
+/**
+ * What the chosen window actually means today.
+ *
+ * The interesting case is the one the host cannot see coming: it is nine at
+ * night UTC, they pick six hours, and they get three. Said here rather than
+ * discovered on the card, because the window is part of the terms and somebody
+ * is about to send this to a friend.
+ */
+function windowSay(openMinutes: number | null, now: number): string {
+  const dayEnd = endOfUtcDay(now);
+  const leftToday = Math.floor((dayEnd - now) / 60_000);
+
+  if (openMinutes === null) {
+    return `It closes at midnight UTC, about ${readMinutes(leftToday)} from now, when today's level is replaced.`;
+  }
+
+  if (openMinutes >= leftToday) {
+    return `Today's level is replaced at midnight UTC, so this one closes in about ${readMinutes(leftToday)} rather than ${readMinutes(openMinutes)}.`;
+  }
+
+  return `It closes ${readMinutes(openMinutes)} after you open it. Nobody can take a seat or post a run after that.`;
+}
+
+/** Minutes as a person would say them. */
+function readMinutes(minutes: number): string {
+  if (minutes < 60) return `${Math.max(0, minutes)} minutes`;
+  const hours = Math.round(minutes / 60);
+  return hours === 1 ? 'an hour' : `${hours} hours`;
+}
+
+/**
  * Why a kind cannot be picked, or null when it can.
  *
  * One function rather than a condition in the row and another on the button,
@@ -266,14 +368,22 @@ function blockedReason(kind: ContestKind, options: ContestNewOptions): string | 
   return null;
 }
 
-/** The four choices, said the way a person would say them. */
+/**
+ * The choices, said the way a person would say them.
+ *
+ * The window belongs in here rather than only in the picker above. It is a
+ * term like the stake is: somebody who takes a seat is agreeing to fly before
+ * it closes, and forfeits if they do not. A sentence that names the stake and
+ * omits the deadline describes a different agreement to the one being made.
+ */
 function summarise(options: ContestNewOptions, stages: number[]): string {
   const { draft } = options;
   const what = stagesLabel(stages).toLowerCase();
   const stake = draft.stakeNim === 0 ? 'nothing but pride' : `${draft.stakeNim} NIM`;
+  const clock = closesAt(draft.openMinutes, Date.now());
 
   if (draft.kind === 'clan') {
-    return `${options.clanTag ?? 'Your clan'} against whoever answers, over ${what}, for ${stake}. Each clan is scored on the average of its members who finish, so turning up in numbers does not win it.`;
+    return `${options.clanTag ?? 'Your clan'} against whoever answers, over ${what}, for ${stake}. ${clock} Each clan is scored on the average of its members who finish, so turning up in numbers does not win it.`;
   }
 
   const seats = `${draft.seats} pilots`;
@@ -281,10 +391,22 @@ function summarise(options: ContestNewOptions, stages: number[]): string {
     draft.visibility === 'open' ? 'Listed for anybody' : 'Link only, so nobody stumbles into it';
 
   if (draft.kind === 'gauntlet') {
-    return `${where}. Up to ${seats} fly one shared survival level for ${stake}. Hideouts and pickups, a clock nobody outlives, and the furthest run takes it.`;
+    return `${where}. Up to ${seats} fly one shared survival level for ${stake}. ${clock} Hideouts and pickups, a clock nobody outlives, and the furthest run takes it.`;
   }
 
-  return `${where}. Up to ${seats} fly ${what} for ${stake}. Everyone gets the identical level and the best average wins.`;
+  return `${where}. Up to ${seats} fly ${what} for ${stake}. ${clock} Everyone gets the identical level and the best average wins.`;
+}
+
+/**
+ * The deadline as a clause in the agreement.
+ *
+ * Shorter than the line under the picker on purpose. That one explains the
+ * rule; this one is a term in a sentence somebody is about to send to a friend.
+ */
+function closesAt(openMinutes: number | null, now: number): string {
+  const leftToday = Math.floor((endOfUtcDay(now) - now) / 60_000);
+  const window = openMinutes === null ? leftToday : Math.min(openMinutes, leftToday);
+  return `It closes in ${readMinutes(window)}, and anybody who has not finished by then forfeits.`;
 }
 
 function pick(
@@ -318,7 +440,7 @@ function pick(
 
 function chip(label: string, active: boolean, onClick: () => void): HTMLElement {
   const node = el('button', {
-    class: active ? 'chip chip--on' : 'chip',
+    class: active ? 'pickchip pickchip--on' : 'pickchip',
     type: 'button',
     text: label,
     'aria-pressed': active ? 'true' : 'false',
