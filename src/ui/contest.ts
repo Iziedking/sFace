@@ -397,6 +397,20 @@ function clanTable(contest: Contest): HTMLElement {
  * somebody who is neither. Each needs a different sentence, and none of them
  * should be told the app will collect anything.
  */
+/**
+ * Who somebody is, rather than the first eight characters of their device id.
+ *
+ * An obligation carries only the payer's id, because the rules module works in
+ * ids and the names live on the entrants. The settlement panel was printing the
+ * id fragment, so a bill read "4f2ac913 paid @rival" and the person owed it saw
+ * a hex string where a name should be. Every id in an obligation belongs to an
+ * entrant of the same contest, so this always resolves in practice; the
+ * fragment stays as the fallback rather than an empty space.
+ */
+function nameOf(contest: Contest, id: string): string {
+  return contest.entrants.find((e) => e.id === id)?.name ?? id.slice(0, 8);
+}
+
 function settlement(options: ContestOptions): HTMLElement {
   const { contest } = options;
   const all = obligationsOf(contest);
@@ -458,7 +472,7 @@ function settlement(options: ContestOptions): HTMLElement {
             el(
               'div',
               { class: 'settle__row' },
-              el('span', { class: 'settle__rowwho', text: o.fromId.slice(0, 8) }),
+              el('span', { class: 'settle__rowwho', text: nameOf(contest, o.fromId) }),
               el('span', { class: 'settle__rowamount', text: `${o.nim} NIM` }),
               o.txHash
                 ? el('span', { class: 'settle__rowpaid', text: 'paid' })
@@ -468,8 +482,28 @@ function settlement(options: ContestOptions): HTMLElement {
         )
       : null,
 
-    // Every reported payment, with a way to check it. A hash nobody can look up
-    // is a claim; a hash beside a link is a receipt.
+    /*
+     * Every reported payment, with the hash itself on the row.
+     *
+     * ## Why the hash and not just a link
+     *
+     * This showed "check on chain" against the recipient's account page, which
+     * over-promises: an account page shows every transaction that wallet has
+     * ever received, and finding this payment in it is the reader's problem.
+     * The receipt is the hash.
+     *
+     * The obvious improvement is to link the transaction directly, and it is
+     * not done here because the explorer's transaction path could not be
+     * confirmed. Its router names the route `transaction-by-hash` with a `hash`
+     * parameter, which is readable in its bundle, but the URL that name maps to
+     * is not, and the site answers 200 to every path so it cannot be probed
+     * either. The account route in core/explorer.ts was read out of the same
+     * bundle rather than guessed, and a guessed sibling would quietly undo the
+     * reason that one can be trusted.
+     *
+     * So the hash is printed, which anybody can paste into any explorer, and
+     * the link is labelled as what it actually opens.
+     */
     all.some((o) => o.txHash)
       ? el(
           'div',
@@ -482,7 +516,13 @@ function settlement(options: ContestOptions): HTMLElement {
               return el(
                 'div',
                 { class: 'settle__row' },
-                el('span', { class: 'settle__rowwho', text: `${o.fromId.slice(0, 8)} paid ${o.toName}` }),
+                el('span', {
+                  class: 'settle__rowwho',
+                  text: `${nameOf(contest, o.fromId)} paid ${
+                    o.toId === options.meId ? 'you' : o.toName
+                  } ${o.nim} NIM`,
+                }),
+                el('span', { class: 'settle__rowhash', text: o.txHash ?? '' }),
                 url
                   ? el(
                       'a',
@@ -492,7 +532,7 @@ function settlement(options: ContestOptions): HTMLElement {
                         target: '_blank',
                         rel: 'noopener noreferrer',
                       },
-                      'check on chain',
+                      `open ${o.toName}'s wallet`,
                     )
                   : null,
               );
@@ -510,7 +550,7 @@ function settlement(options: ContestOptions): HTMLElement {
     all.some((o) => o.txHash)
       ? el('p', {
           class: 'settle__fine',
-          text: 'Payments are reported by whoever made them and are not verified here. The link opens the wallet on chain so you can check it yourself.',
+          text: 'Payments are reported by whoever made them and are not verified here. The hash on each row is the receipt: paste it into any explorer, or open the wallet it was sent to and look for it.',
         })
       : null,
   );

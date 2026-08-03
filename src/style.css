@@ -5196,6 +5196,20 @@ body.is-fullscreen .foot,
    statement about you and not about the table. In the rescue green so it
    reads as a good state: the work is done, the waiting is the contest. */
 
+/* The receipt itself ---------------------------------------------------------
+   Mono and breakable, like every other verifiable identifier in this app. It
+   wraps rather than truncating: half a hash is not a receipt, and a reader who
+   wants to check one needs all of it to copy. */
+
+.settle__rowhash {
+  flex: 1 1 100%;
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+
 .contestpage__waiting {
   font-family: var(--mono);
   font-size: 11px;
