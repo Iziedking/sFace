@@ -173,3 +173,81 @@ describe('covering fire stays settleable', () => {
     expect(traceA).toEqual(traceB);
   });
 });
+
+describe('seeing them do it', () => {
+  it('marks escort rounds as theirs, not yours', () => {
+    /*
+     * Covering fire was in the game long before anybody could tell. An escort
+     * round carried the same friendly flag as a player round and was drawn in
+     * the same colour, so five people shooting for you looked like your own
+     * gun firing at an odd cadence. A mechanic nobody can see does not exist.
+     */
+    const { state, face } = withEscort();
+    const enemy = targetBeside(state, face);
+
+    for (let i = 0; i < 120 && state.bullets.length === 0; i++) {
+      pin(enemy, face);
+      step(state, 1 / 60, IDLE);
+    }
+
+    const round = state.bullets.find((b) => b.friendly);
+    expect(round).toBeDefined();
+    expect(round!.fromEscort).toBe(true);
+  });
+
+  it('does not mark the player\'s own rounds', () => {
+    const state = new RunState(practiceMission('2026-07-29'), 'sidearm', 1);
+    const firing = { moveX: 0, moveY: 0, aimX: 900, aimY: 300, firing: true };
+
+    for (let i = 0; i < 30 && state.bullets.length === 0; i++) step(state, 1 / 60, firing);
+
+    const round = state.bullets.find((b) => b.friendly);
+    expect(round).toBeDefined();
+    expect(round!.fromEscort).toBeUndefined();
+  });
+
+  it('every follower shoots, not just the first', () => {
+    // "Every face I save should fight with me" is the whole design, so a quirk
+    // that stops somebody moving must not also stop them shooting.
+    const state = new RunState(practiceMission('2026-07-29'), 'sidearm', 1);
+
+    const chain = state.faces.slice(0, 4);
+    chain.forEach((face, slot) => {
+      face.caged = false;
+      face.state = 'following';
+      face.slot = slot;
+      face.fireCooldown = 0;
+    });
+
+    /*
+     * One attacker each, rather than one shared.
+     *
+     * The existing helper always reaches for enemies[0], which is right when
+     * there is a single escort and wrong here: four followers all shooting the
+     * same target proves one of them fired, not that each of them did.
+     */
+    const marks = chain.map((_, n) => {
+      const enemy = state.enemies[n]!;
+      enemy.alive = true;
+      enemy.active = true;
+      return enemy;
+    });
+
+    const fired = new Set<number>();
+    for (let i = 0; i < 200; i++) {
+      chain.forEach((face, n) => pin(marks[n]!, face));
+      const before = state.bullets.length;
+      step(state, 1 / 60, IDLE);
+      if (state.bullets.length > before) {
+        for (const face of chain) {
+          const near = state.bullets.some(
+            (b) => b.fromEscort && Math.hypot(b.x - face.x, b.y - face.y) < 60,
+          );
+          if (near) fired.add(face.id);
+        }
+      }
+    }
+
+    expect(fired.size).toBe(chain.length);
+  });
+});

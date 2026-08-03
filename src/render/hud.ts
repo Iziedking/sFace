@@ -19,6 +19,7 @@
 import { theme, MONO } from './theme';
 import { hintFor } from './hints';
 import { gateCardLayout } from '../core/gatecard';
+import { STICK_FULL_TILT } from '../core/input';
 import type { Input, StickView } from '../core/input';
 import type { RunState } from '../game/state';
 import { PLAYER_MAX_HEALTH } from '../game/state';
@@ -802,6 +803,23 @@ export class Hud {
         x + cardW / 2,
         y + cardH - 9,
       );
+    } else {
+      /*
+       * How to answer, in the space the read offer is not using.
+       *
+       * The rows are numbered and tappable and nothing said so. On a keyboard
+       * the numbers are a fair guess; on a phone there is no keyboard and the
+       * numbers read as decoration, so a player who knew the answer still had
+       * to discover that the row itself was the button.
+       */
+      ctx.textAlign = 'center';
+      ctx.fillStyle = theme.inkFaint;
+      ctx.font = `600 9px ${MONO}`;
+      ctx.fillText(
+        usingPads() ? 'TAP THE ONE YOU MEAN' : 'PRESS ITS NUMBER, OR TAP IT',
+        x + cardW / 2,
+        y + cardH - 8,
+      );
     }
 
     gate.options.forEach((id, index) => {
@@ -826,13 +844,32 @@ export class Hud {
       ctx.fillText(ally.ticker, x + 44, rowY + 17);
 
       /*
-       * A mark for the ones whose intel you never took.
+       * What you learned, given back to you.
        *
-       * Not the answer, just an admission that you cannot know. It turns a blind
-       * guess into a visible consequence of having flown past something.
+       * ## Why this is not giving away the answer
+       *
+       * The card used to show four tickers and nothing else, on the reasoning
+       * that printing the figures would answer the question. That reasoning
+       * holds for a project you flew past and it is wrong for one you went to.
+       * The stage is gated on having looked, not on having memorised: you were
+       * told the move once, in a toast, minutes ago, in the middle of a fight,
+       * and then asked to rank four of them from memory. That is a different
+       * game to the one the stage is designed as, and it plays as guessing.
+       *
+       * Reported exactly that way: cleared it without knowing what I did.
+       *
+       * So a project you reached shows its move, and one you skipped still
+       * shows nothing. The question stays a real question whenever you missed
+       * somebody, which is the consequence the design wants, and going to all
+       * four now actually pays for itself.
        */
-      if (!ally.known) {
-        ctx.textAlign = 'right';
+      ctx.textAlign = 'right';
+      if (ally.known) {
+        const move = `${ally.changePct >= 0 ? '+' : ''}${ally.changePct.toFixed(1)}%`;
+        ctx.fillStyle = ally.changePct >= 0 ? theme.rescue : theme.danger;
+        ctx.font = `700 12px ${MONO}`;
+        ctx.fillText(move, x + cardW - 16, rowY + 17);
+      } else {
         ctx.fillStyle = theme.inkFaint;
         ctx.font = `600 10px ${MONO}`;
         ctx.fillText('never asked', x + cardW - 16, rowY + 17);
@@ -1398,13 +1435,15 @@ function drawPuck(
   ctx.globalAlpha = 0.22;
   ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.arc(stick.origin.x, stick.origin.y, 52, 0, Math.PI * 2);
+  // The rim is full thrust, so it is the same number the input uses. A ring
+  // drawn at some other size is a dial with the wrong face on it.
+  ctx.arc(stick.origin.x, stick.origin.y, STICK_FULL_TILT, 0, Math.PI * 2);
   ctx.stroke();
 
   ctx.globalAlpha = 0.4;
   ctx.fillStyle = colour;
   ctx.beginPath();
-  ctx.arc(stick.current.x, stick.current.y, 22, 0, Math.PI * 2);
+  ctx.arc(stick.current.x, stick.current.y, 18, 0, Math.PI * 2);
   ctx.fill();
 
   if (arrow) {

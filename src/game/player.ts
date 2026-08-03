@@ -49,11 +49,37 @@ const CRASH_DAMAGE_PER_SPEED = 0.14;
  */
 const INVULNERABLE_SECONDS = 0.85;
 
-/** Every carried face this heavy costs you this share of your thrust. */
-const HEAVY_THRUST_PENALTY = 0.22;
+/*
+ * What carrying the heavy one costs.
+ *
+ * Softer than it was, and with a much higher floor. At 0.22 with a floor of
+ * 0.4, a level whose roster happened to make several people heavy pinned the
+ * ship at 40% thrust, which is 40% of its top speed, for as long as they were
+ * aboard. The roster now allows only one heavy person, so this is a single
+ * noticeable cost rather than a stacking one, and the floor is set where the
+ * ship still flies.
+ */
+const HEAVY_THRUST_PENALTY = 0.15;
+const HEAVY_THRUST_FLOOR = 0.7;
 
-/** Positions kept for the follow chain. 90 steps is 1.5 seconds of trail. */
-const TRAIL_LENGTH = 90;
+/*
+ * The follow chain is spaced by distance travelled, not by frames.
+ *
+ * It used to record one point per frame, so a slot was "fourteen frames ago".
+ * That is a distance only while you are moving at a constant speed. Slow down,
+ * and the points behind you bunch up; stop, and every point in the buffer is
+ * the spot you are standing on, so the whole rescued chain converges onto the
+ * ship and sits on top of it. Which is exactly what it did: a wall of faces
+ * around the player, on the stage where you spend the most time walking.
+ *
+ * Recording a point only after the ship has moved a set distance makes a slot
+ * mean the same thing at every speed. Standing still records nothing, so the
+ * chain holds the line it was already in.
+ */
+/** World units between recorded points. About two thirds of a person. */
+export const TRAIL_STEP = 18;
+/** Points kept. At TRAIL_STEP apart this is a long convoy's worth of path. */
+const TRAIL_LENGTH = 72;
 
 export interface PlayerCommand {
   /** Thrust axes, each in [-1, 1]. */
@@ -113,7 +139,7 @@ export function updatePlayer(state: RunState, dt: number, command: PlayerCommand
   const heavyCount = state.faces.filter(
     (f) => f.state === 'following' && f.quirk === 'heavy',
   ).length;
-  const thrustScale = Math.max(0.4, 1 - heavyCount * HEAVY_THRUST_PENALTY);
+  const thrustScale = Math.max(HEAVY_THRUST_FLOOR, 1 - heavyCount * HEAVY_THRUST_PENALTY);
 
   player.vx += command.moveX * THRUST * thrustScale * dt;
   player.vy += command.moveY * THRUST * thrustScale * dt + GRAVITY * dt;
@@ -576,6 +602,14 @@ function pelletAngle(weapon: Weapon, index: number): number {
  * ground on every dive. A trail produces a line that flies where you flew.
  */
 function recordTrail(state: RunState): void {
+  const head = state.trail[0];
+  if (head) {
+    const moved = Math.hypot(state.player.x - head.x, state.player.y - head.y);
+    // Not far enough to be a new place. Recording it would shuffle the whole
+    // chain forward by nothing and pull everyone onto the ship.
+    if (moved < TRAIL_STEP) return;
+  }
+
   state.trail.unshift({ x: state.player.x, y: state.player.y });
   if (state.trail.length > TRAIL_LENGTH) state.trail.length = TRAIL_LENGTH;
 }

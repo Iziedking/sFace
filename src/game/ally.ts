@@ -522,8 +522,16 @@ export function followAllies(state: RunState, dt: number): void {
   for (const ally of state.allies) {
     if (!ally.known) continue;
 
-    const back = Math.min(trail.length - 1, 12 + ally.slot * 9);
-    const target = trail[trail.length - 1 - back] ?? state.player;
+    /*
+     * Counted back from the newest point, like the rescue chain.
+     *
+     * This used to index from the far end of the buffer, which meant an ally
+     * sat at whatever the oldest recorded point happened to be rather than a
+     * fixed distance behind. Now that the trail is spaced by distance, the two
+     * chains are measured the same way and an ally is simply further back.
+     */
+    const back = Math.min(trail.length - 1, 6 + ally.slot * 3);
+    const target = trail[back] ?? state.player;
 
     ally.x += (target.x - ally.x) * spring;
     ally.y += (target.y - ally.y) * spring;

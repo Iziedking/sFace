@@ -26,9 +26,17 @@ export const FACE_RADIUS = 15;
 /** How close you must get to free one. Generous, because thumbs are imprecise. */
 const RESCUE_REACH = 46;
 
-/** Trail index for the first follower, then this far back for each one after. */
-const FIRST_SLOT_DELAY = 14;
-const SLOT_GAP = 12;
+/*
+ * Where each follower sits in the chain, counted in trail points.
+ *
+ * The trail records a point every TRAIL_STEP world units, so these are
+ * distances rather than delays: the first person flies about two ship lengths
+ * back and each one after that is another two behind them. Far enough apart to
+ * read as a line of people being led out, close enough that the tail is not
+ * still in the last room.
+ */
+const FIRST_SLOT_BACK = 2;
+const SLOT_GAP = 2;
 
 /** How hard a follower is pulled toward its spot in the chain. */
 const FOLLOW_SPRING = 9;
@@ -122,11 +130,23 @@ function tryFree(state: RunState, face: Face): void {
  * moments and get the same covering fire, so a challenge stays settleable.
  */
 
-/** Damage per escort shot. A quarter of what a sidearm round does. */
-const ESCORT_DAMAGE = 5;
+/*
+ * What a rescued person is worth in a fight.
+ *
+ * Still clearly worse than the player: about a third of a sidearm round, a
+ * slower cadence, and a shorter reach. What changed is that it is now enough to
+ * notice. At a quarter damage and a round a second and a half, a full chain
+ * barely moved a health bar, so the covering fire the design is built around
+ * was invisible in play and read as decoration.
+ *
+ * They thin a crowd and finish something wounded. They still do not clear a
+ * level, because a chain that out-shoots the player would make the best line
+ * "collect everyone, then stop flying".
+ */
+const ESCORT_DAMAGE = 7;
 /** How far they will engage. Shorter than the player's reach, on purpose. */
-const ESCORT_RANGE = 340;
-const ESCORT_BULLET_SPEED = 520;
+const ESCORT_RANGE = 380;
+const ESCORT_BULLET_SPEED = 560;
 
 function escortFire(state: RunState, face: Face, dt: number): void {
   face.fireCooldown -= dt;
@@ -159,12 +179,14 @@ function escortFire(state: RunState, face: Face, dt: number): void {
     life: 1.1,
     damage: ESCORT_DAMAGE,
     friendly: true,
+    // Drawn in the rescue colour, so you can see your people working.
+    fromEscort: true,
     pierce: 0,
   });
 
   // Ragged on purpose. A chain firing in lockstep sounds and looks like one
   // weapon, which is not what four frightened people with pistols would be.
-  face.fireCooldown = state.runRng.range(0.85, 1.45);
+  face.fireCooldown = state.runRng.range(0.7, 1.15);
 }
 
 function follow(state: RunState, face: Face, dt: number): void {
@@ -232,7 +254,7 @@ function holdingPosition(state: RunState, face: Face): boolean {
 }
 
 function trailTarget(state: RunState, face: Face): { x: number; y: number } {
-  const index = FIRST_SLOT_DELAY + face.slot * SLOT_GAP;
+  const index = FIRST_SLOT_BACK + face.slot * SLOT_GAP;
   const point = state.trail[Math.min(index, state.trail.length - 1)];
   return point ?? { x: state.player.x, y: state.player.y };
 }

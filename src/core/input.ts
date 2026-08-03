@@ -24,8 +24,62 @@ export interface StickView {
   current: Vec2;
 }
 
-/** Past this distance the stick is at full tilt. */
-const STICK_RADIUS = 64;
+/*
+ * How far the thumb has to travel for full thrust, and how it gets there.
+ *
+ * ## Why this exists
+ *
+ * The stick used to hand thrust straight to the ship in proportion to how far
+ * the thumb was from where it landed: 30 pixels out of a 64 pixel ring is 47%
+ * thrust. That sounds harmless and it is not, because drag decides the top
+ * speed here rather than the throttle. Terminal velocity is thrust over drag,
+ * so 47% thrust is 47% of the speed the ship is capable of, permanently, for as
+ * long as the thumb sits there.
+ *
+ * A thumb on a phone does not travel 64 pixels. It rocks maybe half that from
+ * where it landed, holds, and steers by rolling. So the honest description of
+ * the old control is: normal play ran the ship at about half power and the
+ * player had no way of knowing. Reported, correctly, as dragged and slow.
+ *
+ * ## The shape
+ *
+ * Full tilt now sits at a thumb's actual reach, and the curve below it is eased
+ * so a small push already gives most of the power. Fine control still exists in
+ * the first few pixels, which is what the deadzone and the curve's toe are for;
+ * it is simply no longer the default state of the game.
+ */
+/**
+ * Past this distance the stick is at full tilt, and the knob is on the rim.
+ *
+ * One number for the control and the drawing of it. They were two, 42 against a
+ * 64 pixel clamp and a 52 pixel ring, which meant the knob could sit outside
+ * the circle it belongs to and full power arrived somewhere before the edge
+ * with nothing to show for it.
+ */
+export const STICK_FULL_TILT = 38;
+/*
+ * Below one, so a push short of the rim gives more than its share.
+ *
+ * Chosen against one number rather than by taste: holding altitude needs 0.37
+ * of full thrust, since gravity is 640 and thrust is 1750. That has to land
+ * somewhere a thumb can hold steadily, and at this curve it sits around 13
+ * pixels out, with plenty of travel either side of it. Push the curve any
+ * harder and hovering becomes a twitch between climbing and dropping.
+ */
+const STICK_CURVE = 0.55;
+
+/**
+ * Thumb distance to thrust, in [0, 1].
+ *
+ * Exported because it is the whole feel of the game on a phone and belongs
+ * under test rather than buried in a pointer handler.
+ */
+export function stickMagnitude(distance: number): number {
+  if (distance < STICK_DEADZONE) return 0;
+
+  const usable = (distance - STICK_DEADZONE) / (STICK_FULL_TILT - STICK_DEADZONE);
+  return Math.pow(Math.min(1, usable), STICK_CURVE);
+}
 /** Inside this, treat it as no input, so a resting thumb does not drift. */
 const STICK_DEADZONE = 8;
 
@@ -457,7 +511,7 @@ export class Input {
         this.setHeading(dx / distance, dy / distance);
       }
 
-      const scale = distance > STICK_RADIUS ? STICK_RADIUS / distance : 1;
+      const scale = distance > STICK_FULL_TILT ? STICK_FULL_TILT / distance : 1;
       this.aimStick = {
         origin: this.aimOrigin,
         current: { x: this.aimOrigin.x + dx * scale, y: this.aimOrigin.y + dy * scale },
@@ -488,16 +542,16 @@ export class Input {
       const dy = point.y - this.stickOrigin.y;
       const distance = Math.hypot(dx, dy);
 
-      if (distance < STICK_DEADZONE) {
+      const power = stickMagnitude(distance);
+      if (power === 0) {
         this.move.x = 0;
         this.move.y = 0;
       } else {
-        const clamped = Math.min(distance, STICK_RADIUS);
-        this.move.x = (dx / distance) * (clamped / STICK_RADIUS);
-        this.move.y = (dy / distance) * (clamped / STICK_RADIUS);
+        this.move.x = (dx / distance) * power;
+        this.move.y = (dy / distance) * power;
       }
 
-      const scale = distance > STICK_RADIUS ? STICK_RADIUS / distance : 1;
+      const scale = distance > STICK_FULL_TILT ? STICK_FULL_TILT / distance : 1;
       this.stick = {
         origin: this.stickOrigin,
         current: {
@@ -519,7 +573,7 @@ export class Input {
         this.setHeading(dx / distance, dy / distance);
       }
 
-      const scale = distance > STICK_RADIUS ? STICK_RADIUS / distance : 1;
+      const scale = distance > STICK_FULL_TILT ? STICK_FULL_TILT / distance : 1;
       this.aimStick = {
         origin: this.aimOrigin,
         current: {

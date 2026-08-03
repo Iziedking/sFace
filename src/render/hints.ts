@@ -49,10 +49,21 @@ const HINTS: Record<number, readonly string[]> = {
     'A WRONG ANSWER WAKES THE STREET. READING COSTS NOTHING',
     'THE EXIT WILL NOT OPEN UNTIL EVERY PANEL IS READ',
   ],
+  /*
+   * Stage seven explains a verb no other stage uses, so its hints spell out the
+   * loop in order rather than listing rules.
+   *
+   * It was three true statements that assumed you had already worked out what
+   * the plates with tickers on them were for. Reported as clearing the stage
+   * without knowing what the BTC and ETH part had been about, which is the
+   * clearest possible signal that the mechanic was never explained: the player
+   * answered four gates correctly and still could not say what they had done.
+   */
   7: [
+    'THE PLATES WITH TICKERS ARE REAL PROJECTS. FLY TO ONE AND IT TELLS YOU ITS 24H MOVE',
+    'EACH GATE ASKS WHICH OF FOUR HELD UP BEST TODAY, OR WHICH FELL WITH THE WRECK',
+    'A PROJECT YOU VISITED SHOWS ITS MOVE ON THE GATE CARD. ONE YOU SKIPPED SHOWS NOTHING',
     'NO WEAPON OPENS A GATE. THE ANSWER IS THE KEY',
-    'REACH A PROJECT AND IT TELLS YOU WHERE IT SITS AND HOW IT IS HOLDING UP',
-    'A GATE ONLY ASKS ABOUT PROJECTS YOU COULD HAVE GONE AND LOOKED AT',
   ],
 };
 

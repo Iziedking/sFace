@@ -21,6 +21,7 @@ import {
   nextStage,
   progressOf,
   stageAt,
+  stageAfter,
   stageUnlocked,
 } from '../src/data/campaign';
 import { practiceMission } from '../src/game/mission';
@@ -139,6 +140,19 @@ describe('unlocking', () => {
     expect(stageUnlocked(2, 1)).toBe(true);
     expect(stageUnlocked(3, 1)).toBe(false);
     expect(stageUnlocked(7, 6)).toBe(true);
+  });
+
+  it('offers the next stage however many times you have cleared this one', () => {
+    /*
+     * The regression. This used to be gated on the stage being the furthest
+     * one reached, so a pilot with all seven cleared who started again at one
+     * finished the run, cleared it, and was offered nothing but Run it again.
+     * A campaign you cannot walk forward through twice is not a campaign.
+     */
+    expect(stageAfter(1)?.n).toBe(2);
+    expect(stageAfter(6)?.n).toBe(7);
+    // The end of the arc is the only place there is nothing after.
+    expect(stageAfter(7)).toBeNull();
   });
 
   it('keeps everything open once the campaign is done', () => {
@@ -536,5 +550,56 @@ describe('what a stage says you missed', () => {
       const missed = missedDemands(stage, { ...perfect, survived: false });
       expect(missed.map((d) => d.text)).toContain('Reach extraction');
     }
+  });
+});
+
+describe('the market builds the level', () => {
+  /** Attackers laid out for this stage on a day of this difficulty. */
+  function attackers(stageN: number, difficulty: number): number {
+    let total = 0;
+    for (let d = 1; d <= 5; d++) {
+      const m = practiceMission(`2026-08-0${d}`);
+      (m as { difficulty: number }).difficulty = difficulty;
+      total += new RunState(m, 'sidearm', stageN).enemies.length;
+    }
+    return Math.round(total / 5);
+  }
+
+  it('fields more attackers on a fearful day', () => {
+    /*
+     * The premise of the whole game, and it quietly stopped being true.
+     *
+     * Attacker slots sat a fixed distance apart and the day only decided
+     * whether each one filled. That saturates: from stage three up every slot
+     * filled on every day of the year, so the calmest market and the worst one
+     * produced the identical level. Fear now closes the spacing, which is the
+     * only lever that still has travel in it once the odds are pinned at one.
+     */
+    for (const n of [1, 2, 3, 4]) {
+      expect(attackers(n, 5)).toBeGreaterThan(attackers(n, 1));
+    }
+  });
+
+  it('keeps a stage near its own baseline on an ordinary day', () => {
+    /*
+     * Crowding is measured from the stage's own difficulty floor rather than
+     * from zero. Every late stage clamps the day upward before it gets here, so
+     * measuring from zero would have made all of them permanently harder than
+     * they were tuned to be, on every day, which is a different game rather
+     * than a responsive one.
+     */
+    const stage4 = STAGES[3]!;
+    expect(attackers(4, 1)).toBe(attackers(4, stage4.minDifficulty));
+  });
+
+  it('makes the finale the most defended stage there is', () => {
+    // It is pinned at maximum fear by its floor, so a bad day cannot add to it
+    // and the weight has to be built in. Reported as clearing it without ever
+    // feeling pressed.
+    const last = STAGES[STAGES.length - 1]!;
+    const sixth = STAGES[STAGES.length - 2]!;
+
+    expect(last.crowd).toBeGreaterThan(sixth.crowd);
+    expect(attackers(last.n, 5)).toBeGreaterThan(attackers(sixth.n, 5) * 1.25);
   });
 });

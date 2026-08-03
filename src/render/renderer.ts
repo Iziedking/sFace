@@ -1667,7 +1667,19 @@ private drawExtraction(state: RunState, camera: Camera): void {
       ctx.lineTo(bullet.x, bullet.y);
       ctx.stroke();
 
-      ctx.strokeStyle = bullet.friendly ? theme.accent : theme.danger;
+      /*
+       * Three colours, not two: yours, theirs, and your people's.
+       *
+       * An escort round used to be drawn in the player's own accent, which
+       * made a chain of five people shooting for you look like your gun
+       * firing at a strange cadence. The rescue green says out loud that
+       * freeing somebody bought you that shot.
+       */
+      ctx.strokeStyle = bullet.friendly
+        ? bullet.fromEscort
+          ? theme.rescue
+          : theme.accent
+        : theme.danger;
       ctx.lineWidth = BULLET_RADIUS * 0.8;
       ctx.beginPath();
       ctx.moveTo(tailX, tailY);

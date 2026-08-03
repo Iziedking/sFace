@@ -261,7 +261,40 @@ export function parseRoster(raw: unknown): RosterEntry[] {
     entries.push(filler);
   }
 
-  return entries;
+  return capHeavy(entries);
+}
+
+/**
+ * At most one person in the level is heavy.
+ *
+ * ## Why the roster cannot be trusted with this
+ *
+ * The quirk comes from a model asked to pick one that suits the person, and
+ * nothing stopped it answering "heavy" for half the cast. Heavy is not a
+ * flavour note: every heavy person being carried takes a slice of the ship's
+ * thrust, and thrust divided by drag is the ship's top speed. Four of them and
+ * the ship runs at its floor for the rest of the run.
+ *
+ * The nastiest part is that it gets worse the better you play. Rescue nobody
+ * and the ship is fine; rescue everyone, which is the entire point of the game,
+ * and it wades. Reported as the ship dragging with the whole chain in tow, and
+ * that is exactly what it was.
+ *
+ * One is the right number. The Exchange King being a real cost to carry is a
+ * decision worth making once in a level. Everybody being a cost is a tax.
+ *
+ * Demoted rather than dropped: the person stays in the level, they just stop
+ * being an anchor. Deterministic, since the first in roster order keeps it and
+ * both sides of a contest parse the same list.
+ */
+function capHeavy(entries: RosterEntry[]): RosterEntry[] {
+  let seen = false;
+  return entries.map((entry) => {
+    if (entry.quirk !== 'heavy') return entry;
+    if (seen) return { ...entry, quirk: 'talker' as const };
+    seen = true;
+    return entry;
+  });
 }
 
 function parseStory(raw: unknown): MissionStory | null {

@@ -187,6 +187,15 @@ export interface Bullet {
   damage: number;
   friendly: boolean;
   /**
+   * Fired by somebody you rescued rather than by you.
+   *
+   * Only used for drawing. Covering fire was already in the game and nobody
+   * could tell: an escort round looked exactly like a player round, so a chain
+   * of people shooting for you read as your own gun with a strange cadence.
+   * A mechanic the player cannot see is a mechanic that does not exist.
+   */
+  fromEscort?: boolean;
+  /**
    * Enemies this round may pass through before it stops. Absent means none,
    * which is every enemy round and most of the player's, so it stays optional
    * rather than forcing a zero into every spawn site that will never use it.
@@ -538,6 +547,8 @@ export class RunState {
       () => this.nextId++,
       this.extractionX,
       stage.density,
+      stage.crowd,
+      stage.minDifficulty,
       stage.runners,
     );
     this.faces = layOutFaces(
@@ -837,6 +848,9 @@ export class RunState {
  * hours of the real day are the dangerous stretches of the level, and the
  * difficulty from the Fear and Greed index scales the whole thing.
  */
+/** Units between attacker slots on a quiet day, at ordinary crowding. */
+const BASE_ENEMY_SPACING = 210;
+
 function layOutEnemies(
   rng: Rng,
   terrain: Terrain,
@@ -845,13 +859,42 @@ function layOutEnemies(
   extractionX: number,
   /** The stage's own multiplier on top of the day's difficulty. */
   density: number,
+  /** How tightly this stage packs its attacker slots. See Stage.crowd. */
+  crowd: number,
+  /** The stage's own difficulty floor, which is where its crowding is measured from. */
+  floor: number,
   /** Share of attackers that come at you along the ground. Zero early on. */
   runners: number,
 ): Enemy[] {
   const enemies: Enemy[] = [];
   // Difficulty 1 is a quiet day, 5 is extreme fear and a crowded sky.
   const densityScale = (0.45 + difficulty * 0.22) * density;
-  const step = 210;
+
+  /*
+   * Fear puts more attackers in the level, not just a better chance of one.
+   *
+   * The slots used to be a fixed 210 units apart, and the day only decided
+   * whether each one filled. That works while the chance is below one and does
+   * nothing at all above it, which from stage three up was every day of the
+   * year: the calmest market and the worst one both produced 32 attackers,
+   * because every slot filled either way. A game whose whole premise is that
+   * the market builds the level cannot have a level the market cannot change.
+   *
+   * Packing the slots closer is what gives fear somewhere to go. It is measured
+   * from the stage's own floor rather than from zero, so a stage keeps the
+   * count it was tuned around on an ordinary day and only gets crowded when the
+   * market is worse than the stage already assumes. Without that anchor, every
+   * late stage would have been permanently harder than it was designed to be,
+   * since they all clamp the day upward before it gets here.
+   *
+   * The last stage sits at the top of the scale by definition, so fear has
+   * nowhere left to take it. Its extra weight comes from `crowd` instead, which
+   * is the honest arrangement: the finale is always the worst day there is.
+   */
+  const step = Math.max(
+    90,
+    Math.round(BASE_ENEMY_SPACING / (crowd * (1 + Math.max(0, difficulty - floor) * 0.1))),
+  );
 
   for (let x = 640; x < extractionX - 200; x += step) {
     const local = terrain.volatilityAt(x);

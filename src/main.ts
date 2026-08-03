@@ -101,6 +101,7 @@ import { contractsFor, contractBonus, metContracts, type Contract } from './data
 import {
   STAGES,
   progressOf as stageProgressOf,
+  stageAfter,
   stageAt,
   stageCleared,
   stageUnlocked,
@@ -151,6 +152,12 @@ function claimMessage(run: RunState): string {
 import { renderSettings } from './ui/settings';
 import { renderProfile } from './ui/profile';
 import { trackViewport } from './core/viewport';
+import {
+  isAddressless,
+  landingFor,
+  pathFor,
+  type Screen as RouteScreen,
+} from './core/routes';
 import { onNetworkChange } from './core/network';
 import { renderContests, type ContestFilter } from './ui/contests';
 import type { AppNotification } from './ui/notifications';
@@ -169,28 +176,13 @@ import { CAR_REACH, carStopped } from './game/car';
 import { answerNode } from './game/node';
 import { answerGate } from './game/ally';
 
-type Screen =
-  | 'loading'
-  | 'splash'
-  | 'intro'
-  | 'gate'
-  | 'controls'
-  | 'about'
-  | 'settings'
-  | 'profile'
-  | 'contests'
-  | 'contest-new'
-  | 'contest'
-  | 'loadout'
-  | 'clan'
-  | 'campaign'
-  | 'dispatch'
-  | 'signals'
-  | 'brief'
-  | 'run'
-  | 'results'
-  | 'board'
-  | 'challenge';
+/*
+ * The list itself lives in core/routes.ts, beside the addresses.
+ *
+ * Two copies of it is how a screen gets renamed on one side and quietly stops
+ * being routable on the other.
+ */
+type Screen = RouteScreen;
 
 /**
  * Floor on how long the loading screen is shown.
@@ -509,6 +501,14 @@ class App {
   private contestNotice: string | null = null;
   /** The contest being looked at, and whether a payment is in flight. */
   private openContestPage: Contest | null = null;
+  /**
+   * True while the browser is driving, not us.
+   *
+   * A back button that opened a screen which then pushed its own history entry
+   * would make going back push you forward again, and the button would appear
+   * to do nothing at all.
+   */
+  private restoring = false;
   private payingContest = false;
   private payNotice: string | null = null;
   /**
@@ -551,6 +551,15 @@ class App {
     });
 
     window.addEventListener('resize', this.onResize);
+
+    /*
+     * The back button.
+     *
+     * Registered here rather than lazily, because the first thing somebody can
+     * do after a deep link opens is press back, and a listener that arrives
+     * later would miss it.
+     */
+    window.addEventListener('popstate', this.onPopState);
 
     /*
      * Switching chain refetches rather than reloading the page.
@@ -843,12 +852,16 @@ class App {
    * followed it plays the opening first, and somebody who clicked a link to the
    * docs sits through the whole pitch before arriving.
    */
-  private routedTarget(): 'about' | 'controls' | null {
-    const path = window.location.pathname.replace(/\/+$/, '').toLowerCase();
-
-    if (path === '/docs' || path === '/about') return 'about';
-    if (path === '/how-to-play' || path === '/play' || path === '/controls') return 'controls';
-    return null;
+  private routedTarget(): Screen | null {
+    const landing = landingFor(window.location.pathname);
+    /*
+     * The brief is the front door, so an address naming it is not a route.
+     *
+     * Treating it as one would skip the opening titles for everybody, since
+     * every cold load on the bare domain resolves to the brief.
+     */
+    if (!landing || landing.screen === 'brief') return null;
+    return landing.screen;
   }
 
   private routeFromPath(): boolean {
@@ -868,21 +881,38 @@ class App {
      * plays, and then reloads gets their run back rather than the docs again.
      * See clearRoutedPath.
      */
-    if (target === 'about') void this.cross(() => this.showAbout());
-    else this.showControls();
+    this.restoring = true;
+    try {
+      this.goTo(landingFor(window.location.pathname));
+    } finally {
+      this.restoring = false;
+    }
     return true;
   }
 
   /**
-   * Drop a routed path once the player has moved on from it.
+   * Drop a reading page once the player has started flying.
    *
-   * Called when a run starts. Until then the URL is left alone so it can be
-   * copied and shared, which is the entire point of having the route.
+   * ## Why only these two
+   *
+   * It used to clear any path at all when a run began, back when the only two
+   * paths were the docs and the controls. Now that every screen has an address
+   * that would throw away where the player came from: start a run from the
+   * campaign, finish it, press back, and you would land on the front page
+   * rather than on the campaign you were working through.
+   *
+   * The original reason still holds for the two reading pages. Somebody opens
+   * the docs, plays, and reloads hours later; the docs are not what they want
+   * back, and unlike a game screen they are not part of a route anybody is
+   * navigating.
    */
   private clearRoutedPath(): void {
-    if (window.location.pathname === '/') return;
+    const landing = landingFor(window.location.pathname);
+    if (!landing) return;
+    if (landing.screen !== 'about' && landing.screen !== 'controls') return;
+
     try {
-      window.history.replaceState(null, '', '/');
+      window.history.replaceState(null, '', '/' + window.location.search);
     } catch {
       // A browser that will not rewrite the bar loses nothing that matters.
     }
@@ -1251,8 +1281,189 @@ class App {
   }
 
   private set screen(next: Screen) {
+    const was = this.screenValue;
     this.screenValue = next;
     this.paintChrome();
+    this.syncAddress(was, next);
+  }
+
+  /**
+   * Put the screen in the address bar, so back goes back.
+   *
+   * ## Where this sits
+   *
+   * Every screen change in the app runs through this setter, which is the only
+   * reason a router can be added without touching thirty call sites. Anything
+   * that opens a screen some other way is invisible to the history, so there is
+   * deliberately no other way.
+   *
+   * ## Push against replace
+   *
+   * A new screen pushes, which is what gives back somewhere to go. Repainting
+   * the screen you are already on replaces, or every refresh of a live list
+   * would stack another identical entry and back would appear to do nothing
+   * several times before it worked.
+   *
+   * A screen with no address of its own leaves the bar alone rather than
+   * clearing it. Starting a run should not wipe the contest you came from out
+   * of the history; you want to come back to it when the run ends.
+   */
+  private syncAddress(was: Screen, next: Screen): void {
+    // Set while the browser is the one driving. Pushing here would fight the
+    // navigation that caused it and leave an entry back to where you just left.
+    if (this.restoring) return;
+
+    /*
+     * A run gets a spare history entry rather than an address.
+     *
+     * ## The bug this exists for
+     *
+     * Back during a run is supposed to pause. That is handled in onPopState,
+     * and it only works if popstate fires at all. If the run began on the app's
+     * very first history entry there is nothing behind it, so back does not pop
+     * within the document: it leaves the page, the document unloads, and no
+     * handler anywhere gets a say. Three minutes of a run, gone to a gesture
+     * people make without thinking.
+     *
+     * Pushing a duplicate of the current address on the way in guarantees
+     * something to pop. The address itself does not change, so the run still
+     * has no page of its own and the screen behind it is still where back
+     * eventually leads.
+     */
+    if (next === 'run' && was !== 'run') {
+      try {
+        window.history.pushState(null, '', window.location.pathname + window.location.search);
+      } catch {
+        // Nothing to be done. Back will leave, as it did before any of this.
+      }
+      return;
+    }
+
+    if (isAddressless(next)) return;
+
+    const path = pathFor(next, this.routeParam(next));
+    if (!path) return;
+
+    try {
+      const here = window.location.pathname + window.location.search;
+      const url = path + window.location.search;
+      if (here === url) return;
+
+      if (was === next) window.history.replaceState(null, '', url);
+      else window.history.pushState(null, '', url);
+    } catch {
+      // A WebView that refuses history rewriting still plays the game. It just
+      // does not get a back button, which is where this started.
+    }
+  }
+
+  /** The id in the address for screens that name one thing. */
+  private routeParam(screen: Screen): string | null {
+    if (screen === 'contest') return this.openContestPage?.id ?? null;
+    if (screen === 'challenge') return this.challenge?.id ?? null;
+    return null;
+  }
+
+  /**
+   * The browser went back or forward. Follow it.
+   *
+   * ## Why a run is handled first
+   *
+   * Back during a run used to leave the game. Inside a wallet's WebView back is
+   * a system gesture people use without meaning much by it, and losing three
+   * minutes of a run to one is the worst thing this router could do. So a run
+   * treats it as a pause: the entry that was popped is pushed straight back, no
+   * navigation happens, and the player is looking at the pause screen rather
+   * than at whatever came before the run.
+   *
+   * ## Why an unknown address goes home rather than nowhere
+   *
+   * Popping past the first screen the app ever showed lands on an address it
+   * has no screen for. Doing nothing leaves the player on a page the URL no
+   * longer describes, which is the state that makes back feel broken.
+   */
+  private onPopState = (): void => {
+    if (this.screenValue === 'run') {
+      try {
+        window.history.pushState(null, '', window.location.pathname + window.location.search);
+      } catch {
+        // Nothing to restore. The pause below is still the right answer.
+      }
+      this.setPaused(true);
+      return;
+    }
+
+    const landing = landingFor(window.location.pathname);
+    this.restoring = true;
+    try {
+      this.goTo(landing);
+    } finally {
+      this.restoring = false;
+    }
+  };
+
+  /**
+   * Open the screen an address names.
+   *
+   * Shared by the back button and by a cold load on a deep link, because they
+   * are the same question: this URL, what is on it. Anything the app cannot
+   * open from an address alone falls through to the front, which is every
+   * screen that needs a run or a fetch behind it.
+   */
+  private goTo(landing: ReturnType<typeof landingFor>): void {
+    if (!landing) {
+      this.showBrief();
+      return;
+    }
+
+    switch (landing.screen) {
+      case 'campaign':
+        this.showCampaign();
+        return;
+      case 'board':
+        void this.showBoard('daily');
+        return;
+      case 'contests':
+        void this.showContests();
+        return;
+      case 'contest-new':
+        this.showContestNew();
+        return;
+      case 'contest':
+        if (landing.param) void this.openContestById(landing.param);
+        else void this.showContests();
+        return;
+      case 'challenge':
+        if (landing.param) void this.openChallenge(landing.param);
+        else this.showBrief();
+        return;
+      case 'profile':
+        void this.showProfile();
+        return;
+      case 'clan':
+        this.openClan();
+        return;
+      case 'dispatch':
+        void this.cross(() => this.showDispatch());
+        return;
+      case 'signals':
+        this.openSignals();
+        return;
+      case 'loadout':
+        this.showLoadout();
+        return;
+      case 'settings':
+        this.showSettings();
+        return;
+      case 'controls':
+        this.showControls();
+        return;
+      case 'about':
+        void this.showAbout();
+        return;
+      default:
+        this.showBrief();
+    }
   }
 
   /**
@@ -1640,10 +1851,31 @@ class App {
    * on the network to show a table it could already draw is a blank screen for
    * no reason.
    */
+  /**
+   * A contest named by the address rather than picked off the list.
+   *
+   * Needed because a contest page can be arrived at cold: someone shares a
+   * link, or presses back onto one after a run. The list is not loaded in
+   * either case, so the page has to fetch the thing it is about. A failure
+   * lands on the list, which is the honest answer to "that contest is not
+   * there any more".
+   */
+  private async openContestById(id: string): Promise<void> {
+    const result = await fetchContest(id);
+    if (!result.ok) {
+      this.contestNotice = result.error;
+      void this.showContests();
+      return;
+    }
+    this.showContest(result.value);
+  }
+
   private showContest(contest: Contest): void {
     this.ui.className = '';
-    this.screen = 'contest';
+    // Before the screen, not after: setting the screen is what writes the
+    // address, and the address is the contest's id.
     this.openContestPage = contest;
+    this.screen = 'contest';
     this.payNotice = null;
     this.paintContest();
 
@@ -2945,12 +3177,19 @@ class App {
       progress: stageProgressOf(run, PLAYER_MAX_HEALTH),
       contracts: this.contracts,
       contractsMet: this.contractsMet,
-      // Only when this run actually opened something new. Offering "next" for a
-      // stage they had already cleared would be a promotion to nowhere.
-      nextStage:
-        this.stageCleared && run.stage.n === this.cleared() && run.stage.n < STAGES.length
-          ? stageAt(run.stage.n + 1)
-          : null,
+      /*
+       * Clear a stage, get the next one. However many times you have cleared it.
+       *
+       * This used to also require the stage to be the furthest one reached,
+       * on the reasoning that "next" for something already cleared is a
+       * promotion to nowhere. That reads the button wrong. It is not a reward
+       * for unlocking something, it is how you move through the campaign, and
+       * gating it meant somebody who had finished all seven and started again
+       * at stage one hit a wall at the end of every run: cleared, nothing to
+       * press but Run it again, and no way forward without going back out to
+       * the campaign screen.
+       */
+      nextStage: this.stageCleared ? stageAfter(run.stage.n) : null,
       onNextStage: () => {
         this.stage = Math.min(STAGES.length, run.stage.n + 1);
         writeStage(this.stage);
@@ -3219,7 +3458,6 @@ class App {
   /** Opened from a deeplink. Show the terms before the run, not after. */
   private async openChallenge(id: string): Promise<void> {
     this.ui.className = '';
-    this.screen = 'challenge';
 
     const result = await fetchChallenge(id);
     if (!result.ok) {
@@ -3229,6 +3467,9 @@ class App {
     }
 
     this.challenge = result.value;
+    // After the fetch, so the address can name the challenge it landed on. Set
+    // before the fetch, a failure would leave a URL pointing at nothing.
+    this.screen = 'challenge';
     rememberChallenge(result.value);
     this.showChallengeScreen();
   }

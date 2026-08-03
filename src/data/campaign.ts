@@ -124,8 +124,30 @@ export interface Stage {
 
   /** Seconds on the clock. */
   seconds: number;
-  /** Multiplier on the day's enemy density. */
+  /**
+   * Multiplier on the chance that any given attacker slot is filled.
+   *
+   * Note the ceiling: this raises a probability, and a probability stops at
+   * one. From about 1.25 up, every slot in the level fills on every day, so
+   * pushing this higher changes nothing at all. Use `crowd` to make a stage
+   * harder past that point.
+   */
   density: number;
+  /**
+   * How tightly the attacker slots are packed, on top of the day's fear.
+   *
+   * ## Why this is separate from density
+   *
+   * Density decides whether a slot fills. Crowd decides how many slots there
+   * are. Once density saturates, the only way to put more attackers in a level
+   * is to make more places for them, and without this the last five stages
+   * fielded the same count on the calmest day of the year as on the worst one.
+   * A market-driven game where the market cannot change the level is just a
+   * level.
+   *
+   * One is the ordinary spacing. Above one packs them in.
+   */
+  crowd: number;
   /** Fear-and-Greed difficulty is clamped up to at least this. */
   minDifficulty: number;
   /** How many caches the level lays out. */
@@ -282,6 +304,7 @@ export const STAGES: readonly Stage[] = [
     objective: 'Reach extraction and take the relic.',
     seconds: 110,
     density: 0.7,
+    crowd: 1,
     minDifficulty: 1,
     caches: 5,
     refills: 3,
@@ -311,6 +334,7 @@ export const STAGES: readonly Stage[] = [
     objective: 'Pull four caches out and get two people to the pad.',
     seconds: 110,
     density: 0.9,
+    crowd: 1,
     minDifficulty: 2,
     caches: 7,
     refills: 3,
@@ -343,6 +367,7 @@ export const STAGES: readonly Stage[] = [
     objective: 'Clear twelve attackers and finish above half hull.',
     seconds: 105,
     density: 1.25,
+    crowd: 1,
     minDifficulty: 3,
     caches: 8,
     refills: 4,
@@ -372,6 +397,7 @@ export const STAGES: readonly Stage[] = [
     objective: 'Take the relic, six caches, and reach the pad.',
     seconds: 100,
     density: 1.4,
+    crowd: 1.05,
     minDifficulty: 3,
     caches: 9,
     refills: 4,
@@ -401,6 +427,7 @@ export const STAGES: readonly Stage[] = [
     objective: 'Get four people out alive.',
     seconds: 100,
     density: 1.55,
+    crowd: 1.1,
     minDifficulty: 4,
     caches: 9,
     refills: 5,
@@ -452,6 +479,7 @@ export const STAGES: readonly Stage[] = [
      */
     seconds: 150,
     density: 1.8,
+    crowd: 1.15,
     minDifficulty: 4,
     caches: 10,
     refills: 5,
@@ -551,10 +579,23 @@ export const STAGES: readonly Stage[] = [
      * defended. Just under stage six's 1.8, over a clock twice as long, in a
      * world where attackers stand at the gaps you have to come through.
      *
-     * Not a fixed number either way: it scales with the fear index and the
-     * chart's own volatility, so a violent day fields noticeably more.
+     * Note that density alone stopped doing anything here a long time ago. It
+     * scales a probability, and at 1.6 with the day pinned at 5 every slot in
+     * the level already fills, so the only lever left is how many slots there
+     * are. That is `crowd`, and it is why this stage reads as defended now and
+     * did not before: the number was set on a control that had already run out
+     * of travel.
      */
     density: 1.6,
+    /*
+     * Half again as many places to stand as an ordinary stage.
+     *
+     * Reported as clearing it without ever feeling pressed. The finale is
+     * pinned at maximum fear by minDifficulty, so a bad day cannot make it
+     * worse and the weight has to be built in. Measured at about seventy five
+     * attackers around the rings, against fifty in the stage before it.
+     */
+    crowd: 1.55,
     minDifficulty: 5,
     caches: 11,
     refills: 6,
@@ -564,10 +605,21 @@ export const STAGES: readonly Stage[] = [
     nodes: 0,
     allies: 5,
     rings: true,
+    // Three, like every other stage. A fourth round in the fan was tempting on
+    // top of the extra attackers and is the wrong lever: the hull is bounded by
+    // the hit window, not by the size of one volley, so it would land as an
+    // unavoidable tax rather than as pressure you can fly out of.
     volley: [3, 3],
     span: 1,
     bounty: 2.5,
-    runners: 0.34,
+    /*
+     * More of them on foot, because the rings are a ground fight.
+     *
+     * A drifter in a world made of walls spends most of its life behind one.
+     * Runners come through the gaps, which are the same gaps the player has to
+     * use, so they are what actually contests the route.
+     */
+    runners: 0.42,
     look: { sky: '#e9cdba', ground: '#b8917a', hatch: 11, weather: 'ember', density: 1 },
     tease: {
       scene: 'The whole day, end to end, with the ones that outlasted it waiting in it.',
@@ -595,6 +647,19 @@ export function stageUnlocked(n: number, cleared: number): boolean {
 
 export function nextStage(cleared: number): Stage {
   return stageAt(Math.min(STAGES.length, cleared + 1));
+}
+
+/**
+ * The stage that follows the one just cleared, or null at the end of the arc.
+ *
+ * Deliberately not a function of how far the pilot has got. Clearing stage one
+ * offers stage two whether it is the first time or the fortieth, because the
+ * button is how you move through the campaign rather than a reward for
+ * unlocking something new. Tying it to progress meant a pilot who had finished
+ * all seven and started again at one hit a dead end after every run.
+ */
+export function stageAfter(n: number): Stage | null {
+  return n >= 1 && n < STAGES.length ? stageAt(n + 1) : null;
 }
 
 /** Did this finished run clear the stage? */
