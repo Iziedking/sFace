@@ -461,3 +461,49 @@ describe('challenges expire the same way', () => {
 function obligations(contest: Parameters<typeof contests.winnerOf>[0]) {
   return contestObligations(contest).map((o) => ({ from: o.fromId, to: o.toId, nim: o.nim }));
 }
+
+describe('when the clock runs out and nobody joined', () => {
+  /*
+   * The question a host actually asks after opening one and waiting.
+   *
+   * There is no money in either answer, which is the important part, but the
+   * two states are different and the app has to tell them apart: a host who
+   * flew has a result on the daily board, and a host who did not has nothing
+   * at all.
+   */
+  it('settles with no debt when the host flew it alone', () => {
+    const contest = open({ seats: 4, stakeNim: 10 });
+    contests.recordScore({
+      network: 'main', pilotId: HOST, date: DATE, seed: SEED, stage: 1, score: 900, now: NOON,
+    });
+
+    // Open right up to the clock, so somebody could still have answered it.
+    const midway = contests.get(contest.id, 'main');
+    expect(midway.ok && midway.value.status).toBe('open');
+
+    contests.expireDue(contest.expiresAt + 1);
+
+    const after = contests.get(contest.id, 'main');
+    expect(after.ok && after.value.status).toBe('settled');
+    // Nobody to bill: the only entrant is the winner, and a winner never owes.
+    expect(after.ok ? contestObligations(contests.toPublic(after.value)) : null).toEqual([]);
+  });
+
+  it('voids when the host never flew either', () => {
+    const contest = open({ seats: 4, stakeNim: 10 });
+
+    contests.expireDue(contest.expiresAt + 1);
+
+    const after = contests.get(contest.id, 'main');
+    expect(after.ok && after.value.status).toBe('void');
+    expect(after.ok ? contests.winnerOf(contests.toPublic(after.value)) : 'x').toBeNull();
+    expect(after.ok ? contestObligations(contests.toPublic(after.value)) : null).toEqual([]);
+  });
+
+  it('takes it off the open list either way', () => {
+    // Whatever it settled as, it is not something anybody can still enter.
+    const flown = open({ seats: 4, stakeNim: 10 });
+    contests.expireDue(flown.expiresAt + 1);
+    expect(contests.list('main', flown.expiresAt + 2)).toHaveLength(0);
+  });
+});

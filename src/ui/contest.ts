@@ -252,8 +252,28 @@ function result(options: ContestOptions): HTMLElement | null {
   const { contest } = options;
 
   if (contest.kind === 'clan') {
-    const top = clanStandings(contest)[0];
+    const clans = clanStandings(contest);
+    const top = clans[0];
     if (!top || top.average === null) return null;
+
+    // Same hole as below: one clan against nobody is not a clan contest, and
+    // the banner would otherwise award it to them.
+    if (clans.length < 2) {
+      return el(
+        'div',
+        { class: 'result' },
+        el('p', { class: 'result__head', text: 'NO CLAN ANSWERED' }),
+        el('p', { class: 'result__who', text: top.tag }),
+        el('p', {
+          class: 'result__say',
+          text: `${top.average.toLocaleString()} average across ${top.finished} of ${top.entered} who flew, with nobody on the other side.`,
+        }),
+        el('p', {
+          class: 'result__stake',
+          text: 'Nothing is owed. Every run still counts on the daily board.',
+        }),
+      );
+    }
 
     const mine = contest.entrants.find((e) => e.id === options.meId);
     const won = mine?.clanTag === top.tag;
@@ -273,6 +293,38 @@ function result(options: ContestOptions): HTMLElement | null {
   const table = standings(contest);
   const top = table[0];
   if (!top || top.average === null) return null;
+
+  /*
+   * One entrant is not a result.
+   *
+   * A contest whose seats never filled reaches the clock with the host as the
+   * only person in it, and the ordinary banner then congratulated them for
+   * beating nobody and printed "10 NIM from each of the 0 who did not", which
+   * is a sentence about an empty set.
+   *
+   * Said plainly instead. Nothing was owed, nothing was lost, and the run is
+   * still on the daily board, which is the part worth knowing and the part the
+   * winner banner buried.
+   */
+  if (contest.entrants.length < 2) {
+    return el(
+      'div',
+      { class: 'result' },
+      el('p', { class: 'result__head', text: 'NOBODY ELSE ENTERED' }),
+      el('p', { class: 'result__who', text: 'No contest' }),
+      el('p', {
+        class: 'result__say',
+        text: `You flew it for ${top.average.toLocaleString()} average. There was nobody to score it against.`,
+      }),
+      el('p', {
+        class: 'result__stake',
+        text:
+          contest.stakeNim > 0
+            ? 'Nothing is owed and nothing was taken. Your run still counts on the daily board.'
+            : 'Your run still counts on the daily board.',
+      }),
+    );
+  }
 
   const won = top.entrant.id === options.meId;
   const runnerUp = table[1];
