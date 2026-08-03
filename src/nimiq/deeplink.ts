@@ -8,11 +8,30 @@
  * link inside Nimiq Pay lands the friend directly in the challenge.
  */
 
-const APP_ORIGIN = import.meta.env.VITE_APP_ORIGIN ?? window.location.origin;
+/**
+ * Where this app lives, worked out when asked rather than when imported.
+ *
+ * It used to be a module constant, which meant importing this file at all
+ * evaluated window.location. That is fine in a browser and throws everywhere
+ * else, so anything on the Node side that pulled in a screen pulled in a
+ * ReferenceError with it.
+ *
+ * It hid for a while because the fallback only runs when VITE_APP_ORIGIN is
+ * unset, and a local .env sets it. So it passed on this machine and failed in
+ * CI, which is the worst shape a break can have: the environment without the
+ * secret is the one that tells the truth.
+ */
+function appOrigin(): string {
+  const configured = import.meta.env.VITE_APP_ORIGIN;
+  if (configured) return configured;
+  // No window means no page to be relative to, and a link built from a guess
+  // would be worse than an obviously empty one.
+  return typeof window === 'undefined' ? '' : window.location.origin;
+}
 
 /** Build the nimiqpay:// link that opens this app at a specific challenge. */
 export function challengeDeeplink(challengeId: string): string {
-  const target = `${APP_ORIGIN}/?c=${encodeURIComponent(challengeId)}`;
+  const target = `${appOrigin()}/?c=${encodeURIComponent(challengeId)}`;
   return `nimiqpay://miniapp?url=${encodeURIComponent(target)}`;
 }
 
@@ -29,7 +48,7 @@ export function challengeDeeplink(challengeId: string): string {
  * lost their place.
  */
 export function openInNimiqPay(query?: string): string {
-  const target = query ? `${APP_ORIGIN}/?${query}` : APP_ORIGIN;
+  const target = query ? `${appOrigin()}/?${query}` : appOrigin();
   return `nimiqpay://miniapp?url=${encodeURIComponent(target)}`;
 }
 
@@ -42,7 +61,7 @@ export function readChallengeId(): string | null {
 
 /** The same trick for a clan invite. Opens the app with the tag filled in. */
 export function clanDeeplink(tag: string): string {
-  const target = `${APP_ORIGIN}/?clan=${encodeURIComponent(tag)}`;
+  const target = `${appOrigin()}/?clan=${encodeURIComponent(tag)}`;
   return `nimiqpay://miniapp?url=${encodeURIComponent(target)}`;
 }
 
@@ -86,7 +105,7 @@ export function shareToX(text: string, challengeId: string): string {
  * to have done it. The pitch happens where we control it.
  */
 export function shareableLink(query: string): string {
-  return `${APP_ORIGIN}/?${query}`;
+  return `${appOrigin()}/?${query}`;
 }
 
 /** A clan invite, as something a stranger can actually tap. */
