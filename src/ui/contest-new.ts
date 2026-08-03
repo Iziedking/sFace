@@ -105,9 +105,79 @@ const WINDOWS: Array<{ minutes: number | null; label: string }> = [
 const MIN_STAKE = 0;
 const MAX_STAKE = 1000;
 
+/**
+ * Built once, then updated in place.
+ *
+ * ## Why this screen is not a pure render like the others
+ *
+ * Every other screen in the app repaints by rebuilding its DOM, which is fine
+ * for a screen you look at. This is a form: somebody sits on it with a keyboard
+ * open, changing one control at a time, and rebuilding the page under them on
+ * every keystroke breaks it in three ways at once.
+ *
+ * The entry animation replays. `.screen > *` runs a staggered rise, so every
+ * character typed set the whole page animating again. Reported as the page
+ * flashing, repeatedly, and preserving the scroll position did nothing for it
+ * because the flash was never about scroll.
+ *
+ * The field being typed into is destroyed and replaced. Restoring its text and
+ * caret afterwards covers a desktop browser and does not cover a phone, where
+ * replacing the focused element's ancestors closes the soft keyboard. Reported
+ * as only the first character landing, which is what a keyboard closing after
+ * one key looks like.
+ *
+ * And it is wasteful: a hundred nodes rebuilt to move one highlight.
+ *
+ * So the tree is built once and the controls that depend on the draft are
+ * updated by hand. It is more code than a re-render, and it is the difference
+ * between a form that works and one that does not.
+ */
+/**
+ * A control that is built once and told what to show afterwards.
+ *
+ * Every screen elsewhere rebuilds its DOM to change a highlight, which is fine
+ * for something you only read. On a form it destroys whatever is under the
+ * thumb, so these keep their nodes and take instructions instead.
+ */
+interface Control<T> {
+  node: HTMLElement;
+  set: (value: T) => void;
+}
+
+/** The same, for a control whose state needs two things to describe it. */
+interface Control2<A, B> {
+  node: HTMLElement;
+  set: (a: A, b: B) => void;
+}
+
+interface Live {
+  screen: HTMLElement;
+  update: (options: ContestNewOptions) => void;
+}
+
+const live = new WeakMap<HTMLElement, Live>();
+
 export function renderContestNew(root: HTMLElement, options: ContestNewOptions): void {
-  const { draft } = options;
-  const stages = stageRange(draft.from, draft.to);
+  const existing = live.get(root);
+  // Still the screen we built, and still on the page. Anything else means the
+  // player went somewhere and came back, and gets a fresh build.
+  if (existing && existing.screen.parentElement === root) {
+    existing.update(options);
+    return;
+  }
+
+  live.set(root, build(root, options));
+}
+
+function build(root: HTMLElement, first: ContestNewOptions): Live {
+  /*
+   * The live options, so every handler reads the current draft.
+   *
+   * Handlers are bound once when the tree is built and outlive any particular
+   * update, so closing over the options from build time would spread the first
+   * draft over every later change.
+   */
+  let options = first;
 
   /*
    * The ceiling is what they have actually cleared, never the whole campaign.
@@ -117,140 +187,169 @@ export function renderContestNew(root: HTMLElement, options: ContestNewOptions):
    * their money for the privilege. One is always available so a new player can
    * still open something.
    */
-  const ceiling = Math.max(1, Math.min(MAX_STAGE, options.stagesCleared || 1));
+  const ceiling = Math.max(1, Math.min(MAX_STAGE, first.stagesCleared || 1));
 
-  mount(
-    root,
-    el(
-      'div',
-      { class: 'screen contestnew' },
+  const kinds = KINDS.map((kind) =>
+    pick(KIND_LABEL[kind], KIND_SAY[kind], () => options.onChange({ ...options.draft, kind })),
+  );
 
-      el('p', { class: 'eyebrow', text: 'New contest' }),
-      el('h1', { text: 'Set the terms' }),
+  const from = stepper('From', 1, ceiling, (n) =>
+    options.onChange({ ...options.draft, from: n, to: Math.max(n, options.draft.to) }),
+  );
+  const to = stepper('To', 1, ceiling, (n) =>
+    options.onChange({ ...options.draft, to: n, from: Math.min(n, options.draft.from) }),
+  );
+  const seats = stepper('Seats', MIN_SEATS, MAX_SEATS, (n) =>
+    options.onChange({ ...options.draft, seats: n }),
+  );
 
-      el('p', { class: 'group', text: 'WHAT KIND' }),
-      el(
-        'div',
-        { class: 'picks' },
-        ...KINDS.map((kind) =>
-          pick(
-            KIND_LABEL[kind],
-            KIND_SAY[kind],
-            draft.kind === kind,
-            // A clan contest with no clan behind it has nothing to enter, so
-            // the row says why rather than vanishing.
-            blockedReason(kind, options),
-            () => options.onChange({ ...draft, kind }),
-          ),
-        ),
-      ),
-
-      el('p', { class: 'group', text: 'HOW MANY STAGES' }),
-      el(
-        'div',
-        { class: 'stagepick' },
-        stepper('From', draft.from, 1, ceiling, (n) =>
-          options.onChange({ ...draft, from: n, to: Math.max(n, draft.to) }),
-        ),
-        stepper('To', draft.to, 1, ceiling, (n) =>
-          options.onChange({ ...draft, to: n, from: Math.min(n, draft.from) }),
-        ),
-      ),
-      ceiling < MAX_STAGE
-        ? el('p', {
-            class: 'quiet',
-            text: `You can stake up to stage ${ceiling}, which is as far as you have cleared. Clear more and the rest open up.`,
-          })
-        : null,
-
-      el('p', { class: 'group', text: 'THE STAKE' }),
-      el(
-        'div',
-        { class: 'chips' },
-        ...STAKES.map((nim) =>
-          chip(nim === 0 ? 'Free' : `${nim} NIM`, draft.stakeNim === nim, () =>
-            options.onChange({ ...draft, stakeNim: nim }),
-          ),
-        ),
-        // The presets cover the common cases and cannot cover everybody. Two
-        // people who agreed on 7 NIM should not have to round to 5 or 10.
-        stakeField(options),
-      ),
-
-      // Seats are meaningless on a clan contest, where the roster decides who
-      // turns up, so the control is simply absent rather than disabled.
-      draft.kind === 'clan'
-        ? null
-        : el(
-            'div',
-            { class: 'contestnew__seats' },
-            el('p', { class: 'group', text: 'HOW MANY CAN ENTER' }),
-            stepper('Seats', draft.seats, MIN_SEATS, MAX_SEATS, (n) =>
-              options.onChange({ ...draft, seats: n }),
-            ),
-          ),
-
-      el('p', { class: 'group', text: 'HOW LONG IT STAYS OPEN' }),
-      el(
-        'div',
-        { class: 'chips' },
-        ...WINDOWS.map((window) =>
-          chip(window.label, draft.openMinutes === window.minutes, () =>
-            options.onChange({ ...draft, openMinutes: window.minutes }),
-          ),
-        ),
-        windowField(options),
-      ),
-      el('p', { class: 'quiet', text: windowSay(draft.openMinutes, Date.now()) }),
-
-      el('p', { class: 'group', text: 'WHO CAN SEE IT' }),
-      el(
-        'div',
-        { class: 'chips' },
-        chip('Anyone', draft.visibility === 'open', () =>
-          options.onChange({ ...draft, visibility: 'open' }),
-        ),
-        chip('Link only', draft.visibility === 'private', () =>
-          options.onChange({ ...draft, visibility: 'private' }),
-        ),
-      ),
-      el('p', {
-        class: 'quiet',
-        text:
-          draft.visibility === 'open'
-            ? 'It appears in Contests for anybody to take a seat in.'
-            : 'It stays off the Contests list. Only someone with the link can enter, so the link is the invitation.',
-      }),
-
-      /*
-       * The terms as one sentence.
-       *
-       * A contest is an agreement, and four separate controls do not read as
-       * one. This is the last chance to notice that "stages 1 to 7" was not
-       * what was meant, and it costs a line.
-       */
-      el(
-        'div',
-        { class: 'contestnew__preview' },
-        el('p', { class: 'contestnew__previewhead', text: 'THE AGREEMENT' }),
-        el('p', {
-          class: 'contestnew__previewsay',
-          text: summarise(options, stages),
-        }),
-      ),
-
-      options.notice ? el('div', { class: 'notice notice--error', text: options.notice }) : null,
-
-      el(
-        'div',
-        { class: 'actions' },
-        button(options.busy ? 'Opening...' : 'Open it', options.onOpen, 'primary', {
-          disabled: options.busy || blockedReason(draft.kind, options) !== null,
-        }),
-        button('Back', options.onBack, 'ghost'),
-      ),
+  const stakeChips = STAKES.map((nim) =>
+    chip(nim === 0 ? 'Free' : `${nim} NIM`, () =>
+      options.onChange({ ...options.draft, stakeNim: nim }),
     ),
   );
+  // The presets cover the common cases and cannot cover everybody. Two people
+  // who agreed on 7 NIM should not have to round to 5 or 10.
+  const stake = numberField({
+    className: 'stakefield',
+    min: MIN_STAKE,
+    max: MAX_STAKE,
+    placeholder: 'Custom',
+    label: `Custom stake in NIM, ${MIN_STAKE} to ${MAX_STAKE}`,
+    commit: (stakeNim) => options.onChange({ ...options.draft, stakeNim }),
+  });
+
+  const windowChips = WINDOWS.map((window) =>
+    chip(window.label, () => options.onChange({ ...options.draft, openMinutes: window.minutes })),
+  );
+  const minutes = numberField({
+    className: 'stakefield',
+    min: MIN_OPEN_MINUTES,
+    max: MAX_OPEN_MINUTES,
+    placeholder: 'Minutes',
+    label: `Custom window in minutes, ${MIN_OPEN_MINUTES} to ${MAX_OPEN_MINUTES}`,
+    commit: (openMinutes) => options.onChange({ ...options.draft, openMinutes }),
+  });
+
+  const anyone = chip('Anyone', () => options.onChange({ ...options.draft, visibility: 'open' }));
+  const linkOnly = chip('Link only', () =>
+    options.onChange({ ...options.draft, visibility: 'private' }),
+  );
+
+  const windowNote = el('p', { class: 'quiet' });
+  const seeNote = el('p', { class: 'quiet' });
+  const preview = el('p', { class: 'contestnew__previewsay' });
+
+  // Seats are meaningless on a clan contest, where the roster decides who turns
+  // up. Hidden rather than removed, so changing kind moves nothing else.
+  const seatsBlock = el(
+    'div',
+    { class: 'contestnew__seats' },
+    el('p', { class: 'group', text: 'HOW MANY CAN ENTER' }),
+    seats.node,
+  );
+
+  const notice = el('div', { class: 'notice notice--error' });
+  const open = button('Open it', () => options.onOpen(), 'primary');
+
+  const screen = el(
+    'div',
+    { class: 'screen contestnew' },
+
+    el('p', { class: 'eyebrow', text: 'New contest' }),
+    el('h1', { text: 'Set the terms' }),
+
+    el('p', { class: 'group', text: 'WHAT KIND' }),
+    el('div', { class: 'picks' }, ...kinds.map((k) => k.node)),
+
+    el('p', { class: 'group', text: 'HOW MANY STAGES' }),
+    el('div', { class: 'stagepick' }, from.node, to.node),
+    ceiling < MAX_STAGE
+      ? el('p', {
+          class: 'quiet',
+          text: `You can stake up to stage ${ceiling}, which is as far as you have cleared. Clear more and the rest open up.`,
+        })
+      : null,
+
+    el('p', { class: 'group', text: 'THE STAKE' }),
+    el('div', { class: 'chips' }, ...stakeChips.map((c) => c.node), stake.node),
+
+    seatsBlock,
+
+    el('p', { class: 'group', text: 'HOW LONG IT STAYS OPEN' }),
+    el('div', { class: 'chips' }, ...windowChips.map((c) => c.node), minutes.node),
+    windowNote,
+
+    el('p', { class: 'group', text: 'WHO CAN SEE IT' }),
+    el('div', { class: 'chips' }, anyone.node, linkOnly.node),
+    seeNote,
+
+    /*
+     * The terms as one sentence.
+     *
+     * A contest is an agreement, and four separate controls do not read as one.
+     * This is the last chance to notice that "stages 1 to 7" was not what was
+     * meant, and it costs a line.
+     */
+    el(
+      'div',
+      { class: 'contestnew__preview' },
+      el('p', { class: 'contestnew__previewhead', text: 'THE AGREEMENT' }),
+      preview,
+    ),
+
+    notice,
+
+    el('div', { class: 'actions' }, open, button('Back', () => options.onBack(), 'ghost')),
+  );
+
+  function update(next: ContestNewOptions): void {
+    options = next;
+    const { draft } = next;
+    const stages = stageRange(draft.from, draft.to);
+
+    kinds.forEach((row, i) => {
+      const kind = KINDS[i]!;
+      // A clan contest with no clan behind it has nothing to enter, so the row
+      // says why rather than vanishing.
+      row.set(draft.kind === kind, blockedReason(kind, next));
+    });
+
+    from.set(draft.from);
+    to.set(draft.to);
+    seats.set(draft.seats);
+    seatsBlock.hidden = draft.kind === 'clan';
+
+    stakeChips.forEach((c, i) => c.set(draft.stakeNim === STAKES[i]));
+    stake.set(STAKES.includes(draft.stakeNim) ? null : draft.stakeNim);
+
+    windowChips.forEach((c, i) => c.set(draft.openMinutes === WINDOWS[i]!.minutes));
+    minutes.set(
+      draft.openMinutes === null || WINDOWS.some((w) => w.minutes === draft.openMinutes)
+        ? null
+        : draft.openMinutes,
+    );
+
+    anyone.set(draft.visibility === 'open');
+    linkOnly.set(draft.visibility === 'private');
+
+    windowNote.textContent = windowSay(draft.openMinutes, Date.now());
+    seeNote.textContent =
+      draft.visibility === 'open'
+        ? 'It appears in Contests for anybody to take a seat in.'
+        : 'It stays off the Contests list. Only someone with the link can enter, so the link is the invitation.';
+    preview.textContent = summarise(next, stages);
+
+    notice.textContent = next.notice ?? '';
+    notice.hidden = !next.notice;
+
+    open.textContent = next.busy ? 'Opening...' : 'Open it';
+    open.disabled = next.busy || blockedReason(draft.kind, next) !== null;
+  }
+
+  update(first);
+  mount(root, screen);
+  return { screen, update };
 }
 
 /**
@@ -282,31 +381,25 @@ export function renderContestNew(root: HTMLElement, options: ContestNewOptions):
  * anyway. See mount in ui/dom.ts.
  */
 function numberField(input: {
-  keep: string;
   className: string;
-  on: boolean;
   min: number;
   max: number;
   placeholder: string;
   label: string;
-  value: string;
   commit: (n: number) => void;
-}): HTMLElement {
+}): Control<number | null> {
   const field = el('input', {
-    class: input.on ? `${input.className} ${input.className}--on` : input.className,
+    class: input.className,
     /*
      * Text rather than number, deliberately.
      *
-     * A number input refuses to report a caret position, so a repaint cannot
-     * put somebody back where they were, and it comes with spinners and an
-     * exponent notation nobody wants in a stake. The numeric keypad on a phone
-     * comes from inputmode, which is the part that was ever worth having.
+     * A number input refuses to report a caret position, comes with spinners,
+     * and accepts an exponent notation nobody wants in a stake. The numeric
+     * keypad on a phone comes from inputmode, which is the part worth having.
      */
     type: 'text',
     inputmode: 'numeric',
-    'data-keep': input.keep,
     placeholder: input.placeholder,
-    value: input.value,
     'aria-label': input.label,
   }) as HTMLInputElement;
 
@@ -332,47 +425,27 @@ function numberField(input: {
     input.commit(settled);
   });
 
-  return field;
-}
+  return {
+    node: field,
+    set(value) {
+      /*
+       * Never while it has focus.
+       *
+       * This is the rule the whole screen turns on. A field being typed into
+       * belongs to the person typing: rewriting its text under the caret is
+       * what made 45 impossible to enter, because 4 is below the floor and the
+       * screen kept correcting it back.
+       */
+      if (document.activeElement === field) {
+        field.classList.toggle(`${input.className}--on`, value !== null);
+        return;
+      }
 
-/** Any amount the presets do not carry. */
-function stakeField(options: ContestNewOptions): HTMLElement {
-  const preset = STAKES.includes(options.draft.stakeNim);
-
-  return numberField({
-    keep: 'stake',
-    className: 'stakefield',
-    on: !preset,
-    min: MIN_STAKE,
-    max: MAX_STAKE,
-    placeholder: 'Custom',
-    label: `Custom stake in NIM, ${MIN_STAKE} to ${MAX_STAKE}`,
-    value: preset ? '' : String(options.draft.stakeNim),
-    commit: (stakeNim) => options.onChange({ ...options.draft, stakeNim }),
-  });
-}
-
-/**
- * Any window the four presets do not carry.
- *
- * In minutes, and clamped to the same band the service enforces, so nothing
- * typed here can be refused on the far side.
- */
-function windowField(options: ContestNewOptions): HTMLElement {
-  const { openMinutes } = options.draft;
-  const preset = WINDOWS.some((w) => w.minutes === openMinutes);
-
-  return numberField({
-    keep: 'window',
-    className: 'stakefield',
-    on: !preset,
-    min: MIN_OPEN_MINUTES,
-    max: MAX_OPEN_MINUTES,
-    placeholder: 'Minutes',
-    label: `Custom window in minutes, ${MIN_OPEN_MINUTES} to ${MAX_OPEN_MINUTES}`,
-    value: preset || openMinutes === null ? '' : String(openMinutes),
-    commit: (openMinutes) => options.onChange({ ...options.draft, openMinutes }),
-  });
+      const shown = value === null ? '' : String(value);
+      if (field.value !== shown) field.value = shown;
+      field.classList.toggle(`${input.className}--on`, value !== null);
+    },
+  };
 }
 
 /**
@@ -462,44 +535,47 @@ function closesAt(openMinutes: number | null, now: number): string {
   return `It closes in ${readMinutes(window)}, and anybody who has not finished by then forfeits.`;
 }
 
-function pick(
-  label: string,
-  say: string,
-  active: boolean,
-  blocked: string | null,
-  onClick: () => void,
-): HTMLElement {
+function pick(label: string, say: string, onClick: () => void): Control2<boolean, string | null> {
+  const name = el('p', { class: 'pickrow__name', text: label });
+  const reason = el('p', { class: 'pickrow__say', text: say });
+  const mark = el('span', { class: 'pickrow__mark' });
+
   const node = el(
     'button',
-    {
-      class: active ? 'pickrow pickrow--on' : 'pickrow',
-      type: 'button',
-      role: 'radio',
-      'aria-checked': active ? 'true' : 'false',
-      ...(blocked ? { disabled: 'true' } : {}),
-    },
-    el(
-      'div',
-      { class: 'pickrow__body' },
-      el('p', { class: 'pickrow__name', text: label }),
-      el('p', { class: 'pickrow__say', text: blocked ?? say }),
-    ),
-    el('span', { class: 'pickrow__mark', text: active ? 'ON' : '' }),
-  );
+    { class: 'pickrow', type: 'button', role: 'radio' },
+    el('div', { class: 'pickrow__body' }, name, reason),
+    mark,
+  ) as HTMLButtonElement;
 
-  if (!blocked) node.addEventListener('click', onClick);
-  return node;
+  // Bound once. A blocked row refuses in the handler rather than by having no
+  // handler, because whether it is blocked changes as the draft does.
+  node.addEventListener('click', () => {
+    if (!node.disabled) onClick();
+  });
+
+  return {
+    node,
+    set(active, blocked) {
+      node.classList.toggle('pickrow--on', active);
+      node.setAttribute('aria-checked', active ? 'true' : 'false');
+      node.disabled = blocked !== null;
+      reason.textContent = blocked ?? say;
+      mark.textContent = active ? 'ON' : '';
+    },
+  };
 }
 
-function chip(label: string, active: boolean, onClick: () => void): HTMLElement {
-  const node = el('button', {
-    class: active ? 'pickchip pickchip--on' : 'pickchip',
-    type: 'button',
-    text: label,
-    'aria-pressed': active ? 'true' : 'false',
-  });
+function chip(label: string, onClick: () => void): Control<boolean> {
+  const node = el('button', { class: 'pickchip', type: 'button', text: label });
   node.addEventListener('click', onClick);
-  return node;
+
+  return {
+    node,
+    set(active) {
+      node.classList.toggle('pickchip--on', active);
+      node.setAttribute('aria-pressed', active ? 'true' : 'false');
+    },
+  };
 }
 
 /**
@@ -511,39 +587,45 @@ function chip(label: string, active: boolean, onClick: () => void): HTMLElement 
  */
 function stepper(
   label: string,
-  value: number,
   min: number,
   max: number,
   onChange: (next: number) => void,
-): HTMLElement {
+): Control<number> {
+  let current = min;
+
   const down = el('button', {
     class: 'stepper__step',
     type: 'button',
     text: '−',
     'aria-label': `${label}: one fewer`,
-    ...(value <= min ? { disabled: 'true' } : {}),
-  });
+  }) as HTMLButtonElement;
   const up = el('button', {
     class: 'stepper__step',
     type: 'button',
     text: '+',
     'aria-label': `${label}: one more`,
-    ...(value >= max ? { disabled: 'true' } : {}),
-  });
+  }) as HTMLButtonElement;
+  const value = el('span', { class: 'stepper__value' });
 
-  down.addEventListener('click', () => onChange(Math.max(min, value - 1)));
-  up.addEventListener('click', () => onChange(Math.min(max, value + 1)));
+  // Reads `current` at press time rather than closing over a value from build
+  // time, which would step from the same number forever.
+  down.addEventListener('click', () => onChange(Math.max(min, current - 1)));
+  up.addEventListener('click', () => onChange(Math.min(max, current + 1)));
 
-  return el(
+  const node = el(
     'div',
     { class: 'stepper' },
     el('span', { class: 'stepper__label', text: label }),
-    el(
-      'div',
-      { class: 'stepper__row' },
-      down,
-      el('span', { class: 'stepper__value', text: String(value) }),
-      up,
-    ),
+    el('div', { class: 'stepper__row' }, down, value, up),
   );
+
+  return {
+    node,
+    set(next) {
+      current = next;
+      value.textContent = String(next);
+      down.disabled = next <= min;
+      up.disabled = next >= max;
+    },
+  };
 }

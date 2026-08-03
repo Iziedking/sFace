@@ -142,12 +142,28 @@ import { signClaim } from './nimiq/wallet';
 /**
  * The exact string a score is signed over.
  *
- * One definition, used by the automatic path and the button, because two
- * copies that drift produce a signature the service verifies against a
- * different message and rejects as tampering.
+ * One definition, because a second copy that drifts produces a signature the
+ * service verifies against a different message and rejects as tampering. That
+ * was written when there were two callers and there were quietly three: signing
+ * an old run from the profile built the string by hand, inline, and agreed with
+ * this one only by luck. It takes the same fields now.
  */
+function claimFor(claim: {
+  date: string;
+  seed: string;
+  stage: number;
+  score: number;
+}): string {
+  return `sface:${claim.date}:${claim.seed}:s${claim.stage}:${claim.score}`;
+}
+
 function claimMessage(run: RunState): string {
-  return `sface:${run.mission.date}:${run.mission.seed}:s${run.stage.n}:${run.score}`;
+  return claimFor({
+    date: run.mission.date,
+    seed: run.mission.seed,
+    stage: run.stage.n,
+    score: run.score,
+  });
 }
 import { renderSettings } from './ui/settings';
 import { renderProfile } from './ui/profile';
@@ -2235,9 +2251,7 @@ class App {
         return;
       }
 
-      const claim = await signClaim(
-        `sface:${run.date}:${run.seed}:s${run.stage}:${run.score}`,
-      );
+      const claim = await signClaim(claimFor(run));
       if (!claim) {
         this.oldRunNotice = 'The wallet did not sign. Your score is still on the board.';
         return;

@@ -989,6 +989,21 @@ function boardRow(
       (entry.lifetimeFace ?? 0) > 0
         ? el('div', { class: 'board__tier', text: `${tier.tier} · ${tier.name}` })
         : null,
+
+      /*
+       * The wallet, on the row, beside the name.
+       *
+       * It was only ever inside the folded panel below, which meant a board of
+       * pilots showed no wallets at all until you opened one row at a time.
+       * Asked for directly, and it is the right call: this is a Nimiq mini app
+       * and the wallet is a large part of who a pilot is here.
+       *
+       * Masked to the ends rather than printed in full. The whole address is
+       * four lines of base32 on a phone and would drown the name it belongs to;
+       * the full thing, the key and the signature are all still one tap away.
+       */
+      entry.address ? el('div', { class: 'board__wallet', text: maskAddress(entry.address) }) : null,
+
       receipts(entry),
     ),
 
@@ -1067,6 +1082,20 @@ function nameNode(name: string, isMe: boolean): HTMLElement {
     title: `Open @${handle[1]} on X`,
     text: shown,
   });
+}
+
+/**
+ * An address short enough to sit under a name.
+ *
+ * First block and last block, which is how every wallet in this space writes a
+ * shortened address, and enough to recognise your own at a glance or to tell
+ * two pilots apart. Anything that fails to look like an address is passed
+ * through untouched rather than sliced into nonsense.
+ */
+export function maskAddress(address: string): string {
+  const parts = address.trim().toUpperCase().split(/[\s-]+/).filter(Boolean);
+  if (parts.length < 3) return address.trim().toUpperCase();
+  return `${parts[0]} ${parts[1]} … ${parts[parts.length - 1]}`;
 }
 
 /**

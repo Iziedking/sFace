@@ -349,6 +349,18 @@ app.get('/mission/today', limit(120, 40), async (req, res) => {
  * order, so the parameterised route would otherwise capture "all-time" as a
  * date, fail the YYYY-MM-DD parse, and return 400 for a route that exists.
  */
+/**
+ * What to quote when somebody asks how many people used this.
+ *
+ * Public and unauthenticated because there is nothing private in it: three
+ * counts, no names, no addresses. Wallets are counted only where a signature
+ * proved one, so the number is smaller than the flattering version and cannot
+ * be padded by anybody who feels like posting an address. See walletCount.
+ */
+app.get('/stats', limit(60, 20), (req, res) => {
+  res.json(profiles.usage(networkOf(req)));
+});
+
 app.get('/board/all-time', limit(120, 40), (req, res) => {
   res.json(profiles.allTime(50, networkOf(req)));
 });

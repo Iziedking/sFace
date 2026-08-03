@@ -4960,6 +4960,23 @@ body.is-fullscreen .foot,
 
 /* Reads as a mark on the row until it is opened, not as a button competing
    with the score for attention. */
+/* The wallet under the name ---------------------------------------------------
+   Mono, like every other verifiable identifier here, and quiet enough that the
+   name still leads. On your own row it sits on the accent, so it takes the ink
+   colour there for the same reason the proof mark does. */
+
+.board__wallet {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--ink-muted);
+  margin-top: 2px;
+}
+
+.board__row--you .board__wallet {
+  color: var(--ink);
+}
+
 .board__proofmark {
   display: inline-block;
   font-family: var(--mono);

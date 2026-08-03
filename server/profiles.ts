@@ -443,6 +443,61 @@ export function bindAddress(id: string, address: string): void {
   persist();
 }
 
+/** One spelling for one wallet, so two formats never count as two people. */
+function key(address: string): string {
+  return address.replace(/[\s-]+/g, '').toUpperCase();
+}
+
+/**
+ * How many distinct wallets this app has actually seen.
+ *
+ * ## Why only proved wallets are counted
+ *
+ * A wallet counts here once it has signed something, because a signature is the
+ * only claim about an address that cannot simply be asserted. The app also
+ * learns an address the moment somebody connects, and counting those would give
+ * a larger, friendlier number that anyone could inflate by posting whatever
+ * address they liked. A figure you can pad is not a measurement, and this one
+ * exists to be quoted.
+ *
+ * Counted per chain, because testnet wallets are not users. Deduplicated by
+ * address rather than by pilot: one person with two wallets is two wallets, and
+ * one wallet used from two devices is one.
+ */
+export function walletCount(network = DEFAULT_NETWORK): number {
+  const seen = new Set<string>();
+
+  for (const account of accounts.values()) {
+    if (!account.address) continue;
+    // Only pilots who have flown on this chain. An account that has never
+    // scored here has not interacted with this chain's app.
+    const progress = account.chains[network];
+    if (!progress || progress.runs <= 0) continue;
+    seen.add(key(account.address));
+  }
+
+  return seen.size;
+}
+
+/** Everything worth quoting about usage on one chain. */
+export function usage(network = DEFAULT_NETWORK): {
+  wallets: number;
+  pilots: number;
+  runs: number;
+} {
+  let pilots = 0;
+  let runs = 0;
+
+  for (const account of accounts.values()) {
+    const progress = account.chains[network];
+    if (!progress || progress.runs <= 0) continue;
+    pilots += 1;
+    runs += progress.runs;
+  }
+
+  return { wallets: walletCount(network), pilots, runs };
+}
+
 /**
  * Set or clear a pilot's clan. Used by the clan endpoints.
  *
