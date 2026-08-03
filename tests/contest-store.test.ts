@@ -230,7 +230,9 @@ describe('settling', () => {
   });
 
   it('names the best average once everyone has flown', () => {
-    const c = open({ stages: [1, 2], seats: 4 });
+    // Two seats, both taken, so the contest is full and finishing it settles
+    // it. This test is about which average wins, not about when a contest ends.
+    const c = open({ stages: [1, 2], seats: 2 });
     enter(c.id, RIVAL);
 
     /*
@@ -251,12 +253,46 @@ describe('settling', () => {
     expect(contests.winnerOf(after.ok ? after.value : c)?.id).toBe(RIVAL);
   });
 
-  it('ends on the entrants it has, not the seats it wanted', () => {
-    // An abandoned seat would otherwise hold the result, and the stake, open
-    // forever.
+  it('waits for the seats it is still holding', () => {
+    /*
+     * This asserted the opposite until somebody played it.
+     *
+     * The old rule ended a contest as soon as every entrant had finished,
+     * whoever else might still join, so opening a head to head for four and
+     * flying it before anyone answered settled it immediately: a win against
+     * nobody, and gone from the list, because settled contests are not listed.
+     * From the host's side their contest had simply vanished.
+     *
+     * The worry behind the old rule was a seat nobody ever takes holding the
+     * result open forever. The clock covers that now, and covers it better.
+     */
     const c = open({ stages: [1], seats: 6 });
     fly(HOST, 1, 500);
 
+    const after = contests.get(c.id, 'main');
+    expect(after.ok && after.value.status).toBe('open');
+
+    // And it is still listed, which is the part the host actually noticed.
+    expect(contests.list('main').map((x) => x.id)).toContain(c.id);
+  });
+
+  it('settles when the last free seat is filled and flown', () => {
+    const c = open({ stages: [1], seats: 2 });
+    fly(HOST, 1, 500);
+    enter(c.id, RIVAL);
+    fly(RIVAL, 1, 400);
+
+    const after = contests.get(c.id, 'main');
+    expect(after.ok && after.value.status).toBe('settled');
+    expect(contests.winnerOf(after.ok ? after.value : c)?.id).toBe(HOST);
+  });
+
+  it('still ends on the clock when a seat is never taken', () => {
+    // The case the old rule existed for, handled by the thing built for it.
+    const c = open({ stages: [1], seats: 6 });
+    fly(HOST, 1, 500);
+
+    expect(contests.expireDue(c.expiresAt + 1).map((x) => x.id)).toEqual([c.id]);
     const after = contests.get(c.id, 'main');
     expect(after.ok && after.value.status).toBe('settled');
   });

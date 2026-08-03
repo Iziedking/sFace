@@ -24,6 +24,7 @@ import {
   debtOf,
   isExpired,
   obligationsOf,
+  seatsLeft,
   stagesLabel,
   standings,
   timeLeftLabel,
@@ -105,6 +106,27 @@ export function renderContest(root: HTMLElement, options: ContestOptions): void 
           )
         : el('span', { class: 'contest__free', text: 'FREE' }),
 
+      /*
+       * How the stake works, next to the stake.
+       *
+       * Nothing is collected when you enter, and until this line existed the
+       * page never said so. It showed a number and NIM each, offered no way to
+       * put any money anywhere, and left somebody hunting for the deposit
+       * button. Reported as there being no way to stake NIM, which is a fair
+       * reading of a page that names a price and takes no payment.
+       *
+       * The reason is in README and docs/feedback.md: the Mini App provider
+       * signs ten methods and none of them creates a contract, so there is no
+       * escrow to put anything into. What the app can honestly do is name the
+       * debt at the end and make paying it one tap, which is what it does.
+       */
+      contest.stakeNim > 0 && !settled && !voided
+        ? el('p', {
+            class: 'quiet',
+            text: `Nothing is taken now. When it settles, whoever loses sends ${contest.stakeNim} NIM straight to the winner from their own wallet, in one tap, and the payment is published here.`,
+          })
+        : null,
+
       settled ? result(options) : null,
 
       // Your own row first, because "where am I" is the question somebody
@@ -121,6 +143,21 @@ export function renderContest(root: HTMLElement, options: ContestOptions): void 
                   ? `${mine.average.toLocaleString()} average${mine.place ? `, ${ordinal(mine.place)}` : ''}`
                   : `${mine.flown} of ${mine.of} stages flown`,
             }),
+            /*
+             * Say that you are done and waiting, because it looks like nothing.
+             *
+             * A pilot who has flown everything sees a finished row and a page
+             * that will not change again until somebody else turns up. Without
+             * this the only reading available is that it is over, or broken.
+             */
+            mine.average !== null && !settled && !voided && seatsLeft(contest) > 0
+              ? el('p', {
+                  class: 'contestpage__waiting',
+                  text: `All ${mine.of} flown. Waiting on ${seatsLeft(contest)} more ${
+                    seatsLeft(contest) === 1 ? 'pilot' : 'pilots'
+                  }, or the clock, whichever comes first.`,
+                })
+              : null,
           )
         : null,
 

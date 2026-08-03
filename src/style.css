@@ -4985,6 +4985,22 @@ body.is-fullscreen .foot,
   color: var(--rescue);
 }
 
+/* Your own row is orange -----------------------------------------------------
+   The muted grey and the rescue green are both chosen against the cream page,
+   and your row is the one drawn on the accent. So the one control that reveals
+   the wallet was grey on orange, on the single row you are most likely to look
+   at. Reported as the leaderboard not showing a wallet at all, and it was there
+   the whole time in a colour nobody could read. */
+
+.board__row--you .board__proofmark {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+}
+
+.board__row--you .board__proofmark--signed::before {
+  color: var(--ink);
+}
+
 @media (hover: hover) {
   .board__proofmark:hover {
     color: var(--ink);
@@ -5172,6 +5188,19 @@ body.is-fullscreen .foot,
 }
 
 .contestpage__clock {
+  margin: 6px 0 0;
+}
+
+/* Flown everything, nobody else here yet ---------------------------------
+   Sits under your own row rather than in the standings, because it is a
+   statement about you and not about the table. In the rescue green so it
+   reads as a good state: the work is done, the waiting is the contest. */
+
+.contestpage__waiting {
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--rescue);
   margin: 6px 0 0;
 }
 

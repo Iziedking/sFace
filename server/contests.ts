@@ -41,6 +41,7 @@ import {
   hasFinished,
   isExpired,
   joinRefusal,
+  seatsLeft,
   obligationsOf,
   standings,
   type Contest,
@@ -392,7 +393,7 @@ export function recordScore(input: {
     entrant.scores[input.stage] = Math.max(0, Math.round(input.score));
     touched = true;
 
-    if (settleIfDone(contest)) settled.push(toPublic(contest));
+    if (settleIfDone(contest, input.now)) settled.push(toPublic(contest));
   }
 
   if (touched) persist();
@@ -402,13 +403,32 @@ export function recordScore(input: {
 /**
  * A contest is over when everybody who can still fly has flown.
  *
- * Deliberately not "when the seats are full and everyone finished": a contest
- * that never filled still ends once its entrants are done, or an abandoned
- * seat would hold a result open forever and the stake with it.
+ * ## The seat that is still empty
+ *
+ * This used to settle the moment every entrant had finished, whether or not
+ * anybody else could still join. The reasoning was that an abandoned seat would
+ * otherwise hold a result open forever, and at the time that was true because
+ * nothing else ever closed a contest.
+ *
+ * What it actually did was end a contest the moment its host finished. Open a
+ * head to head for four, fly both stages before anyone answers, and the thing
+ * settles with one entrant: you win against nobody, it drops off the list
+ * because settled contests are not listed, and from the outside your contest
+ * has vanished. Reported exactly that way, and it is the worst possible
+ * outcome for the person who did everything right.
+ *
+ * A free seat now means the contest waits. The clock is what closes it, which
+ * is what the clock is for: expireDue settles on whoever flew or voids it if
+ * nobody did, so nothing is held open forever any more and the original worry
+ * is covered by something better suited to it.
  */
-function settleIfDone(contest: Stored): boolean {
+function settleIfDone(contest: Stored, now: number): boolean {
   if (contest.entrants.length === 0) return false;
   if (!contest.entrants.every((e) => hasFinished(contest, e))) return false;
+
+  // Somebody can still take that seat and fly it. Ending now would settle a
+  // contest against a field that was never given the chance to turn up.
+  if (seatsLeft(contest) > 0 && !isExpired(contest, now)) return false;
 
   contest.status = 'settled';
   return true;

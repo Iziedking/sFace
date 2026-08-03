@@ -1098,7 +1098,16 @@ function receipts(entry: BoardEntry): HTMLElement | null {
       // The tick belongs to the signature, never to a bare wallet. Sharing one
       // mark between them is the exact conflation this panel exists to avoid.
       class: proof ? 'board__proofmark board__proofmark--signed' : 'board__proofmark',
-      text: proof ? 'signed' : 'wallet',
+      /*
+       * Names what is inside, not just what happened.
+       *
+       * It said "signed", which is a fact about the row and gives no reason to
+       * press it. Somebody looking for the wallet behind a pilot had no way to
+       * know that this was where it lived, and reported the board as not
+       * showing wallets at all. A proof always carries the address it was
+       * derived from, so both words are always true together.
+       */
+      text: proof ? 'signed · wallet' : 'wallet',
     }),
     el(
       'div',
