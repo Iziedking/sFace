@@ -365,6 +365,17 @@ export class Camera {
     ctx.translate(-this.left, -this.top);
   }
 
+  /**
+   * World units to canvas CSS pixels. The inverse of screenToWorld.
+   *
+   * Needed wherever something in the world has to be given a hit target, since
+   * a pointer arrives in canvas pixels and cannot be compared to a world
+   * position without one of the two being converted.
+   */
+  worldToScreen(wx: number, wy: number): { x: number; y: number } {
+    return { x: (wx - this.left) * this.scale, y: (wy - this.top) * this.scale };
+  }
+
   /** Canvas CSS pixels to world units. Used to turn a thumb into an aim point. */
   screenToWorld(sx: number, sy: number): { x: number; y: number } {
     return { x: sx / this.scale + this.left, y: sy / this.scale + this.top };

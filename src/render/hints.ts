@@ -35,6 +35,17 @@ import type { RunState } from '../game/state';
  * something to act on; "be careful out there" is noise on top of a fight.
  */
 const HINTS: Record<number, readonly string[]> = {
+  /*
+   * The early stages taught nothing, and there was one thing to teach.
+   *
+   * Pale figures fly alongside you from the first run: other people's recorded
+   * runs on the same seed, and occasionally somebody playing right now. Asked
+   * directly who they were and why they were blurred, which is a fair question
+   * about something the game never mentions and puts on screen constantly.
+   */
+  1: [
+    'THE FADED PILOTS ARE OTHER RUNS ON TODAY\'S SEED. THEY CANNOT HELP OR HURT YOU',
+  ],
   4: [
     'SIGHT CONES WAKE THE LEVEL. CROSS ONE AND EVERYONE STARTS WALKING AT YOU',
     'AN ATTACKER THAT HAS NOT SEEN YOU CAN BE WALKED AROUND',

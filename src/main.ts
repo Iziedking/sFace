@@ -135,6 +135,8 @@ import {
   rememberedChallenge,
 } from './nimiq/deeplink';
 import { capture, matches, restore, type RunSnapshot } from './game/snapshot';
+import { breachButtonAt } from './core/breachbutton';
+import { cellInReach } from './game/cell';
 import { buy } from './game/consume';
 import { slotIntent } from './game/intent';
 import { CONSUMABLES } from './data/consumables';
@@ -3914,6 +3916,15 @@ class App {
        * and a hit target that outlives the thing it belongs to is worse than
        * none: a tap in clear air would answer a gate the player cannot see.
        */
+      /*
+       * The HUD's own bar height, handed to the renderer.
+       *
+       * The renderer draws a control anchored to a cell in the world and has to
+       * keep it clear of the strip across the top. The HUD is the only thing
+       * that knows how tall that strip is on this screen.
+       */
+      this.renderer.hudTop = this.hud.playTop;
+
       const openGate = this.hud.gateCardVisible ? run.gates.find((g) => g.id === run.openGateId) : undefined;
       this.input.gateCard = openGate
         ? {
@@ -3925,6 +3936,25 @@ class App {
             top: this.hud.playTop,
           }
         : null;
+
+      /*
+       * Where the cell button is, if a cell is in reach.
+       *
+       * Recomputed from the run each frame for the same reason the gate card is:
+       * a cell the player has flown away from must not leave a live tap target
+       * behind in empty air.
+       */
+      const cell = cellInReach(run);
+      const chargeCost = CONSUMABLES[0]?.cost ?? 0;
+      this.input.breachButton =
+        cell && run.purse.held >= chargeCost
+          ? breachButtonAt({
+              cell: this.camera.worldToScreen(cell.x, cell.y),
+              width: this.renderer.width,
+              height: this.renderer.height,
+              top: this.hud.playTop,
+            })
+          : null;
 
       this.hud.draw(
         this.renderer.context,

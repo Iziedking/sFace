@@ -27,6 +27,7 @@ import type { Enemy, Face, RunState } from '../game/state';
 import type { Squad } from '../game/squad';
 import { POINT_SPACING, WORLD_HEIGHT, CEILING } from '../game/terrain';
 import { BULLET_RADIUS } from '../game/bullet';
+import { breachButtonAt } from '../core/breachbutton';
 import { BREACH_REACH, CELL_RADIUS, cellInReach, isCaged } from '../game/cell';
 import { CONSUMABLES } from '../data/consumables';
 import { CAR_RADIUS, CAR_REACH } from '../game/car';
@@ -114,6 +115,16 @@ export class Renderer {
    * does not change size, only the buffer behind it, so the game gets softer
    * rather than smaller. Soft and playable beats sharp and stuck.
    */
+  /**
+   * Top of the play area, below the HUD strip, in CSS pixels.
+   *
+   * Set from outside each frame because the HUD is the thing that knows how
+   * tall its own bar is. Only used to keep a world-anchored control from being
+   * drawn underneath it, where it would be invisible and stealing presses from
+   * the pause button.
+   */
+  hudTop = 0;
+
   private quality = 1;
 
   /** Rolling average of recent draws, in milliseconds. */
@@ -757,7 +768,7 @@ private drawExtraction(state: RunState, camera: Camera): void {
 
       if (isCaged(face)) {
         this.drawCell(face.x, face.y);
-        this.drawCellPrompt(state, face);
+        this.drawCellPrompt(state, face, camera);
       } else if (face.state === 'trapped') {
         // A ring that breathes, so somebody waiting to be pulled out is
         // findable at a glance without an arrow cluttering the HUD.
@@ -1109,7 +1120,7 @@ private drawExtraction(state: RunState, camera: Camera): void {
    * carpeted in labels. It shows the price when you cannot afford it and the
    * key when you can, because those are two different problems.
    */
-  private drawCellPrompt(state: RunState, face: Face): void {
+  private drawCellPrompt(state: RunState, face: Face, camera: Camera): void {
     const player = state.player;
     const near = Math.hypot(player.x - face.x, player.y - face.y) <= BREACH_REACH * 2.4;
     if (!near) return;
@@ -1129,11 +1140,27 @@ private drawExtraction(state: RunState, camera: Camera): void {
      * ends in TO BLOW THE DOOR, so matching it makes the pair read as one
      * thought at two prices.
      */
+    /*
+     * In reach and affordable, the button below says everything.
+     *
+     * The label used to read TAP CHARGE TO BLOW THE DOOR, which names a control
+     * without saying where it is: four small circles along the bottom edge that
+     * most players never look at. Reported as not knowing where to tap.
+     *
+     * There is a button on the cell now, so repeating the instruction beside it
+     * would be two things asking for the same press. What is left here is the
+     * two cases a button cannot answer: too far away, or cannot afford it.
+     */
     const label = !afford
       ? `NEED ${charge.cost} ${state.purse.ticker} TO BLOW THE DOOR`
       : inReach
-        ? breachPrompt(charge.label)
+        ? null
         : 'GET CLOSER';
+
+    if (label === null) {
+      this.drawBreachButton(state, face, charge.cost, camera);
+      return;
+    }
 
     const ctx = this.ctx;
     ctx.save();
@@ -1150,6 +1177,68 @@ private drawExtraction(state: RunState, camera: Camera): void {
 
     ctx.fillStyle = afford && inReach ? theme.ink : theme.canvas;
     ctx.fillText(label, face.x, y + 4);
+    ctx.restore();
+  }
+
+  /**
+   * The button that opens a cell, on the cell.
+   *
+   * Placed by core/breachbutton.ts, which the input layer reads too, so where
+   * it is drawn and where a tap counts are the same circle. Two copies of that
+   * arithmetic agreeing by coincidence is how a target ends up a few pixels off
+   * the thing it belongs to.
+   *
+   * Drawn in screen pixels rather than world units: it is a control, so it
+   * should be the same size on every screen and at every zoom, exactly like the
+   * pause button and the consumable row.
+   */
+  private drawBreachButton(
+    state: RunState,
+    face: Face,
+    cost: number,
+    camera: Camera,
+  ): void {
+    const ctx = this.ctx;
+
+    const at = camera.worldToScreen(face.x, face.y);
+    const button = breachButtonAt({
+      cell: at,
+      width: this.width,
+      height: this.height,
+      top: this.hudTop,
+    });
+
+    // Out of the world transform, into screen space, and back afterwards so
+    // everything drawn after this is unaffected.
+    ctx.save();
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+
+    // A slow pulse, so it reads as waiting for a press rather than as scenery.
+    const beat = 0.85 + Math.sin(state.time * 4) * 0.15;
+
+    ctx.beginPath();
+    ctx.arc(button.x, button.y, button.r * beat, 0, Math.PI * 2);
+    ctx.fillStyle = theme.accent;
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = theme.ink;
+    ctx.stroke();
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = theme.ink;
+    ctx.font = `800 12px ${MONO}`;
+    ctx.fillText('BLOW', button.x, button.y - 1);
+    /*
+     * The number alone, without the ticker.
+     *
+     * It read "90 PRACTICE" and ran off both sides of the circle: the day's
+     * ticker is whatever the market handed us and can be any length. The purse
+     * at the top left already names the currency, and there is only one thing
+     * this number could be counted in.
+     */
+    ctx.font = `700 10px ${MONO}`;
+    ctx.fillText(String(cost), button.x, button.y + 12);
+
     ctx.restore();
   }
 
@@ -1716,7 +1805,19 @@ private drawExtraction(state: RunState, camera: Camera): void {
         avatar: this.avatars.get(mate.avatarUrl),
         alpha: pose.down ? 0.22 : 0.55,
         firing: pose.firing,
-        label: mate.name,
+        /*
+         * The label says what they are, not only who.
+         *
+         * A pale figure with a handle over it reads as another player in the
+         * level with you, which is the one thing a squadmate is not: it cannot
+         * shoot you, be shot, or take a face you were going for. Asked directly
+         * who these people were and why they were faded out, which means the
+         * translucency was saying 'not solid' and nothing was saying why.
+         *
+         * A recording is marked as one. A live player is marked live, because
+         * that distinction is the whole reason both exist.
+         */
+        label: mate.source === 'live' ? `${mate.name} · live` : `${mate.name} · replay`,
       });
 
       if (pose.carrying > 0) this.drawCarryPips(pose.x, pose.y, pose.carrying, 0.55);
@@ -1794,15 +1895,3 @@ function clampTilt(value: number): number {
 
 export { DISPLAY };
 
-/**
- * Name the control the player actually has in front of them.
- *
- * A phone has no number row, so "PRESS 1" was an instruction with nowhere to
- * carry it out. The charge is the first of the four buys, which on a touch
- * device is a labelled button on screen rather than a key, so the prompt says
- * what is written on it. Being told to press something that does not exist
- * reads as the game being broken, not as the player missing something.
- */
-function breachPrompt(label: string): string {
-  return touchCapable() ? `TAP ${label} TO BLOW THE DOOR` : 'PRESS 1 TO BLOW THE DOOR';
-}

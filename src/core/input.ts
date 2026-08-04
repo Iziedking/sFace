@@ -92,6 +92,8 @@ const MOUSE_AIM_TTL_MS = 1200;
 const EMPTY_BUYS: number[] = [];
 
 import { hit, padLayout, padVector, slotStrip, useRegion, type PadLayout } from './pads';
+import { breachHit, type BreachButton } from './breachbutton';
+import { CHARGE_SLOT } from '../game/intent';
 import { gateCardLayout, rowAt } from './gatecard';
 import { snapsToDirections, usingPads } from './scheme';
 
@@ -310,6 +312,14 @@ export class Input {
   gateCard: { optionCount: number; hasReadLine: boolean; top: number } | null = null;
 
   /**
+   * Where the button that opens a cell is, when one is in reach.
+   *
+   * Set from the run each frame, like the gate card, so a cell the player has
+   * moved away from cannot leave a live target behind on an empty screen.
+   */
+  breachButton: BreachButton | null = null;
+
+  /**
    * Whether the use button is on screen right now.
    *
    * Set by the app each frame from the run state, and read by BOTH the hit test
@@ -321,6 +331,24 @@ export class Input {
 
   private onDown = (event: PointerEvent): void => {
     const point = this.local(event);
+
+    /*
+     * The button on a cell, before anything else and before the mouse branch.
+     *
+     * Checked ahead of aim and fire for the same reason the gate card is: it is
+     * drawn over the level, so a press that lands on it was meant for it. It
+     * routes through the same path the CHARGE key uses, which keeps what a
+     * charge does defined in one place.
+     *
+     * Above the mouse branch specifically. That branch returns immediately, so
+     * anything below it is touch only, and this button is drawn on every device.
+     * A control that is visible and ignores clicks is worse than one that was
+     * never offered.
+     */
+    if (this.breachButton && breachHit(this.breachButton, point.x, point.y)) {
+      this.press(CHARGE_SLOT);
+      return;
+    }
 
     // A mouse never becomes a movement stick. On desktop the keyboard flies
     // and the mouse shoots, so a click on the left half is a shot at something

@@ -38,13 +38,30 @@ function firstHintTime(state: RunState): number | null {
 describe('which stages get them', () => {
   it('says nothing on the stages that explain themselves', () => {
     /*
-     * One to three are the same game with a tighter clock. There is no rule
+     * Two and three are the same game with a tighter clock. There is no rule
      * there that the first thirty seconds do not teach better than a line of
      * text sitting over the level.
+     *
+     * Stage one is no longer in this list, and it took a player to show why.
+     * Faded pilots fly alongside you from the very first run and the game never
+     * said what they were; asked outright who they were and why they were
+     * blurred. Flying does not teach that, because there is nothing to work out
+     * by watching: they are other people's recordings, which is a fact about
+     * the app rather than about the level.
      */
-    for (const n of [1, 2, 3]) {
+    for (const n of [2, 3]) {
       expect(firstHintTime(atStage(n, 0))).toBeNull();
     }
+  });
+
+  it('explains the faded pilots on the first stage, once', () => {
+    // One line, on the one stage where everybody is new. Any more and the early
+    // game is back to being narrated.
+    expect(firstHintTime(atStage(1, 0))).not.toBeNull();
+    // Inside the window it is actually up: first at 18 seconds, for six and a
+    // half. Thirty seconds in it has already faded, which is the schedule
+    // working rather than the hint missing.
+    expect(hintFor(atStage(1, 21))?.text ?? '').toMatch(/faded/i);
   });
 
   it('has something for every stage from four up', () => {
