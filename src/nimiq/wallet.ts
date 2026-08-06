@@ -273,21 +273,60 @@ export const ANCHOR_ADDRESS: string = import.meta.env.VITE_ANCHOR_ADDRESS ?? '';
 const ANCHOR_VALUE = 1;
 
 /**
+ * What the wallet said after sending an anchor.
+ *
+ * `receipt` is whatever it handed back, untouched. `shape` is a short
+ * description of it, which exists because nothing else could tell us: the SDK
+ * forwards the call and returns the wallet's own reply, so the real shape is
+ * decided by Nimiq Pay and its type definition is only a claim about it.
+ */
+export interface AnchorReply {
+  receipt: string;
+  shape: string;
+}
+
+/**
+ * Describe what came back, in a few characters, for a message a person can send.
+ *
+ * Never includes the value itself. A receipt is not secret, but a diagnostic
+ * that pastes an arbitrary reply into a screen is one bad wallet response away
+ * from putting something unexpected in front of a player.
+ */
+function describe(value: unknown): string {
+  if (typeof value === 'string') {
+    const hex = /^(0x)?[0-9a-fA-F]+$/.test(value);
+    return `string(${value.length}${hex ? ', hex' : ''})`;
+  }
+  if (value && typeof value === 'object') {
+    return `object(${Object.keys(value as object).slice(0, 6).join(',')})`;
+  }
+  return typeof value;
+}
+
+/**
  * Put a run on the chain.
  *
- * ## Why this returns the whole transaction
+ * ## Why this returns whatever came back rather than a verdict
  *
- * The obvious thing to hand back is the hash, and the obvious thing is wrong:
- * a hash is a string, so a service that accepted one would be publishing a
- * claim dressed as a receipt. The provider returns the serialized transaction,
- * which the service can take apart and check field by field before computing
- * the hash itself. See server/anchor.ts.
+ * The first version expected a hex string and returned null for anything else,
+ * on the strength of the SDK's type saying the method resolves with the
+ * serialized transaction. The SDK does not decide that. It forwards the call to
+ * the wallet and hands back the wallet's own reply, so the type is a claim about
+ * Nimiq Pay rather than a guarantee from the library.
  *
- * Returns null on every failure, including the player declining in the wallet.
- * Refusing to anchor must cost nothing: the run is already on the board, and
- * anchoring only ever adds a permanent record to a row that already exists.
+ * It was wrong, and the way it was wrong cost real money. The transaction went
+ * out every time; only the reply was unrecognised. The app then said the wallet
+ * had not sent it, which was false, and invited a retry, which sent another one.
+ * Several NIM of fees for a message that was already untrue on the first
+ * attempt.
+ *
+ * So nothing is judged here. If the wallet answered at all, the transaction is
+ * treated as sent, the reply travels on as it arrived, and the decision about
+ * what it is belongs to the one place that can check: the service.
+ *
+ * Null now means only what it says: the wallet returned an error, or nothing.
  */
-export async function anchorRun(data: string): Promise<string | null> {
+export async function anchorRun(data: string): Promise<AnchorReply | null> {
   if (!ANCHOR_ADDRESS) return null;
 
   const nimiq = await getProvider();
@@ -300,13 +339,42 @@ export async function anchorRun(data: string): Promise<string | null> {
       data,
     });
 
-    // The provider resolves with an error envelope rather than throwing, so a
-    // resolved promise is not on its own a success. See isProviderError.
+    // An error envelope is the one answer that means nothing was sent. The
+    // provider resolves with these rather than throwing. See isProviderError.
     if (isProviderError(result)) return null;
-    return typeof result === 'string' && result.length > 0 ? result : null;
+    if (result === null || result === undefined) return null;
+
+    /*
+     * Anything else is kept, including an object.
+     *
+     * A wallet that answers with { hash } or { txHash } has still sent the
+     * transaction, and throwing that away is how the first version turned a
+     * successful send into an error message.
+     */
+    const receipt =
+      typeof result === 'string'
+        ? result
+        : firstStringIn(result as Record<string, unknown>) ?? '';
+
+    if (!receipt) return null;
+    return { receipt, shape: describe(result) };
   } catch {
     return null;
   }
+}
+
+/** The first string field of an object reply, which is where a hash would be. */
+function firstStringIn(value: Record<string, unknown>): string | null {
+  for (const key of ['serialized', 'transaction', 'tx', 'hash', 'txHash', 'result']) {
+    const found = value[key];
+    if (typeof found === 'string' && found.length > 0) return found;
+  }
+
+  for (const found of Object.values(value)) {
+    if (typeof found === 'string' && found.length > 0) return found;
+  }
+
+  return null;
 }
 
 /** True when the wallet has caught up enough to be asked about money. */

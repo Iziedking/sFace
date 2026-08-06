@@ -18,7 +18,14 @@
 import { describe, expect, it } from 'vitest';
 import { Address, KeyPair, TransactionBuilder } from '@nimiq/core';
 
-import { anchorData, fitsOnChain, isAnchorAddress, verifyAnchor } from '../server/anchor';
+import {
+  anchorData,
+  fitsOnChain,
+  isAnchorAddress,
+  looksLikeHash,
+  reportedAnchor,
+  verifyAnchor,
+} from '../server/anchor';
 
 const ANCHOR = 'NQ07 0000 0000 0000 0000 0000 0000 0000 0000';
 
@@ -193,5 +200,55 @@ describe('the configured anchor address', () => {
     expect(isAnchorAddress('')).toBe(false);
     expect(isAnchorAddress(undefined)).toBe(false);
     expect(isAnchorAddress('NQ07 nope')).toBe(false);
+  });
+});
+
+describe('when the wallet returns only an identifier', () => {
+  /*
+   * The failure that cost real money.
+   *
+   * The first version expected a serialized transaction because the SDK's type
+   * says so. The SDK does not decide that: it forwards the call and hands back
+   * whatever Nimiq Pay replies with. Anything unrecognised was treated as a
+   * failed send, so the app said the wallet had not sent it, invited a retry,
+   * and every retry paid another fee for a transaction already on its way.
+   */
+  it('recognises a bare transaction hash', () => {
+    const hash = 'a'.repeat(64);
+    expect(looksLikeHash(hash)).toBe(true);
+    expect(looksLikeHash(`0x${hash}`)).toBe(true);
+  });
+
+  it('does not mistake a serialized transaction for one', () => {
+    // A serialized transaction is far longer, and must take the strong path.
+    const { serialized } = anchorTx();
+    expect(looksLikeHash(serialized)).toBe(false);
+  });
+
+  it('records it, rather than refusing and keeping the fee', () => {
+    const result = reportedAnchor('B'.repeat(64), null);
+
+    expect(result.ok).toBe(true);
+    // Lower-cased and unprefixed, so one transaction has one spelling.
+    expect(result.ok && result.value.hash).toBe('b'.repeat(64));
+  });
+
+  it('marks it as the weaker claim it is', () => {
+    /*
+     * The service has not seen the transaction's contents, so it cannot say it
+     * carries this run or went to the anchor. Labelling it the same as a checked
+     * one would be the dishonesty this whole path exists to avoid.
+     */
+    const reported = reportedAnchor('c'.repeat(64), null);
+    expect(reported.ok && reported.value.strength).toBe('reported');
+
+    const { serialized } = anchorTx();
+    const verified = check(serialized);
+    expect(verified.ok && verified.value.strength).toBe('verified');
+  });
+
+  it('still refuses something that is not an identifier at all', () => {
+    expect(reportedAnchor('nope', null).ok).toBe(false);
+    expect(reportedAnchor('', null).ok).toBe(false);
   });
 });

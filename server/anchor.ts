@@ -56,7 +56,22 @@ export interface AnchorClaim {
   score: number;
 }
 
+/**
+ * How strong the record is.
+ *
+ * `verified` means the service took the transaction apart and checked its
+ * signature, sender, recipient, data and chain. `reported` means the wallet
+ * handed back only an identifier, so the transaction exists but this service
+ * has not seen its contents.
+ *
+ * Kept apart because they are different claims and the screen says which one it
+ * is making. Collapsing them would be the same dishonesty as calling a reported
+ * settlement hash a receipt.
+ */
+export type AnchorStrength = 'verified' | 'reported';
+
 export interface Anchored {
+  strength: AnchorStrength;
   /** Transaction hash, computed from the bytes rather than taken on trust. */
   hash: string;
   /** The wallet that signed it, derived from the transaction. */
@@ -163,10 +178,53 @@ export function verifyAnchor(input: {
   return {
     ok: true,
     value: {
+      strength: 'verified',
       hash: tx.hash(),
       sender: tx.sender.toUserFriendlyAddress(),
       networkId: tx.networkId,
     },
+  };
+}
+
+/** A bare transaction hash: 32 bytes of hex, however the wallet spells it. */
+const HASH = /^(0x)?[0-9a-fA-F]{64}$/;
+
+export function looksLikeHash(receipt: string): boolean {
+  return HASH.test(receipt.trim());
+}
+
+/**
+ * Record an anchor the wallet only gave us an identifier for.
+ *
+ * ## Why this exists at all
+ *
+ * The strong path needs the serialized transaction, because that is the only
+ * thing the service can check. Whether a wallet returns one is the wallet's
+ * decision: the SDK forwards the call and hands back whatever comes out, so the
+ * shape is Nimiq Pay's to choose and its type definition is a claim about it
+ * rather than a promise.
+ *
+ * When it returns a hash instead, the transaction still exists. Refusing it
+ * would mean taking a player's fee and then telling them nothing happened,
+ * which is exactly the failure this whole path was rebuilt to stop.
+ *
+ * ## What it is worth
+ *
+ * Less, and it is labelled as less. The service has not seen the contents, so
+ * it cannot say the transaction carries this run or went to the anchor. What it
+ * can say is that a wallet reported one, and the anchor address is public: the
+ * explorer settles it, and a hash that leads nowhere is a lie with a permanent
+ * receipt attached to a named account.
+ */
+export function reportedAnchor(receipt: string, sender: string | null): AnchorResult {
+  const hash = receipt.trim().replace(/^0x/, '').toLowerCase();
+  if (!HASH.test(hash)) {
+    return { ok: false, reason: 'The wallet did not return anything we can record.' };
+  }
+
+  return {
+    ok: true,
+    value: { strength: 'reported', hash, sender: sender ?? '', networkId: 0 },
   };
 }
 

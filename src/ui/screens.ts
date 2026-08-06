@@ -915,8 +915,8 @@ export function renderBoard(root: HTMLElement, options: BoardOptions): void {
         class: 'quiet',
         text:
           options.tab === 'daily'
-            ? 'Your best run of the day. Everyone flies the same seeded mission.'
-            : 'Lifetime Face, every run counted. Rank is a record, never a power.',
+            ? 'Your best run of the day. Everyone flies the same seeded mission. A row named Pilot is a real player who has not connected an X account.'
+            : 'Lifetime Face, every run counted. Rank is a record, never a power. A row named Pilot is a real player who has not connected an X account.',
       }),
 
       options.offline

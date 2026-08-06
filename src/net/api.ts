@@ -490,8 +490,16 @@ export async function anchorPostedScore(body: {
   seed: string;
   stage: number;
   score: number;
-  serialized: string;
-}): Promise<ApiResult<{ ok: boolean; recorded: boolean; hash?: string }>> {
+  /** Whatever the wallet handed back. The service decides what it is. */
+  receipt: string;
+  /** What the client thought it received, for diagnosis only. */
+  shape?: string;
+}): Promise<ApiResult<{
+  ok: boolean;
+  recorded: boolean;
+  hash?: string;
+  strength?: 'verified' | 'reported';
+}>> {
   return request('/board/anchor', { method: 'POST', body: JSON.stringify(body) });
 }
 

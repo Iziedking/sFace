@@ -562,6 +562,14 @@ class App {
   private anchorNotice: string | null = null;
   /** The transaction hash once this run is on the chain. */
   private anchorHash: string | null = null;
+  /**
+   * True once a transaction has left the wallet for this run, recorded or not.
+   *
+   * Separate from the hash because the two can disagree: the send can succeed
+   * while this service fails to write it down. When they do, the button must
+   * go, or the player pays again for something they already have.
+   */
+  private anchorSent = false;
   private settling = false;
 
   constructor() {
@@ -2899,6 +2907,7 @@ class App {
     this.clearedBefore = this.cleared();
     this.anchorHash = null;
     this.anchorNotice = null;
+    this.anchorSent = false;
     this.endingShown = false;
     this.cardUrl = null;
     this.cardShareFile = null;
@@ -3282,6 +3291,8 @@ class App {
        */
       canAnchor:
         this.anchorHash === null &&
+        // Never twice. See anchorSent.
+        !this.anchorSent &&
         !this.practice &&
         ANCHOR_ADDRESS !== '' &&
         (this.session?.available ?? false) &&
@@ -3361,27 +3372,48 @@ class App {
       }
 
       const data = claimMessage(run);
-      const serialized = await anchorRun(data);
-      if (!serialized) {
+      const reply = await anchorRun(data);
+      if (!reply) {
         this.anchorNotice = 'The wallet did not send it. Your score is still on the board.';
         return;
       }
 
+      /*
+       * From here the transaction has gone out, and nothing said afterwards may
+       * suggest otherwise.
+       *
+       * The first version judged the wallet's reply in the client and returned
+       * null for anything it did not recognise, so a successful send was
+       * reported as "the wallet did not send it". That is not a wording problem.
+       * It is false, it invites a retry, and every retry spends another fee on a
+       * transaction that was already on its way. It cost real NIM before anybody
+       * could see what was happening.
+       */
       const told = await anchorPostedScore({
         deviceId: this.pilot,
         date: run.mission.date,
         seed: run.mission.seed,
         stage: run.stage.n,
         score: run.score,
-        serialized,
+        receipt: reply.receipt,
+        shape: reply.shape,
       });
 
       if (!told.ok) {
-        this.anchorNotice = told.error;
+        /*
+         * Say what actually happened: sent, not recorded.
+         *
+         * And do not invite another attempt. The run is on the chain either
+         * way; what failed is this service writing it down, and pressing the
+         * button again buys a second transaction rather than a second chance.
+         */
+        this.anchorSent = true;
+        this.anchorNotice = `Sent from your wallet, but sFace could not record it: ${told.error} The transaction is on the chain. Do not send it again.`;
         return;
       }
 
       this.anchorHash = told.value.hash ?? null;
+      this.anchorSent = true;
       this.anchorNotice = null;
     } finally {
       this.anchoring = false;

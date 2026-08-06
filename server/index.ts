@@ -282,7 +282,18 @@ const anchorBody = z.object({
   score: z.number().int().min(0).max(board.SCORE_CEILING),
   // Hex, and long enough to be a transaction rather than a typo. The real bound
   // is whether it parses, which anchor.ts does properly.
-  serialized: z.string().regex(/^[0-9a-fA-F]{200,4000}$/, 'Not a serialized transaction.'),
+  /*
+   * Whatever the wallet handed back, loosely bounded.
+   *
+   * It was a strict hex pattern for a serialized transaction, which refused
+   * every real reply and told players their score had not been sent while the
+   * transaction was already on its way. The shape is Nimiq Pay's to choose, so
+   * the only thing checked here is that it is a plausible identifier at all;
+   * what it actually is gets decided in anchor.ts.
+   */
+  receipt: z.string().min(16).max(8000),
+  /** What the client thought it received. Diagnostic only, never trusted. */
+  shape: z.string().max(60).optional(),
 });
 
 const createBody = z.object({
@@ -746,12 +757,38 @@ app.post('/board/anchor', limit(20, 10), (req, res) => {
     return;
   }
 
-  const checked = anchor.verifyAnchor({
-    serialized: body.serialized,
-    claim: { date: body.date, seed: body.seed, stage: body.stage, score: body.score },
-    anchorAddress: ANCHOR_ADDRESS,
-    networkId: ANCHOR_NETWORK_ID,
-  });
+  /*
+   * A full transaction if the wallet gave one, an identifier if it did not.
+   *
+   * Which of the two arrives is the wallet's decision, not ours, so both are
+   * handled and the difference is recorded rather than hidden. See
+   * reportedAnchor for what the weaker one is and is not worth.
+   */
+  const checked = anchor.looksLikeHash(body.receipt)
+    ? anchor.reportedAnchor(body.receipt, profiles.get(body.deviceId, network)?.address ?? null)
+    : anchor.verifyAnchor({
+        serialized: body.receipt,
+        claim: { date: body.date, seed: body.seed, stage: body.stage, score: body.score },
+        anchorAddress: ANCHOR_ADDRESS,
+        networkId: ANCHOR_NETWORK_ID,
+      });
+
+  /*
+   * Logged whatever happens, because the shape is the open question.
+   *
+   * Nothing else can tell us what Nimiq Pay actually returns, and a player who
+   * has already paid a fee should not have to keep paying to find out. One real
+   * line here settles it.
+   */
+  console.warn(
+    '[sface] anchor receipt',
+    JSON.stringify({
+      length: body.receipt.length,
+      hash: anchor.looksLikeHash(body.receipt),
+      accepted: checked.ok,
+      shape: body.shape ?? null,
+    }),
+  );
 
   if (!checked.ok) {
     /*
@@ -771,7 +808,9 @@ app.post('/board/anchor', limit(20, 10), (req, res) => {
     return;
   }
 
-  profiles.bindAddress(body.deviceId, checked.value.sender);
+  // Only the strong path derives a sender from the transaction itself. A
+  // reported one has nothing to bind, and binding a guess would be worse.
+  if (checked.value.sender) profiles.bindAddress(body.deviceId, checked.value.sender);
 
   const result = board.attachAnchor({
     network,
@@ -787,7 +826,13 @@ app.post('/board/anchor', limit(20, 10), (req, res) => {
     return;
   }
 
-  res.json({ ok: true, recorded: true, hash: checked.value.hash, already: result.already });
+  res.json({
+    ok: true,
+    recorded: true,
+    hash: checked.value.hash,
+    strength: checked.value.strength,
+    already: result.already,
+  });
 });
 
 app.post('/board/sign', limit(20, 10), (req, res) => {
