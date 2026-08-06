@@ -3409,7 +3409,19 @@ class App {
          * button again buys a second transaction rather than a second chance.
          */
         this.anchorSent = true;
-        this.anchorNotice = `Sent from your wallet, but sFace could not record it: ${told.error} The transaction is on the chain. Do not send it again.`;
+        /*
+         * The reply's shape goes on screen, not only into a server log.
+         *
+         * What Nimiq Pay actually returns is the open question, and the answer
+         * only exists on a device none of us can attach a console to. Putting it
+         * in the notice means one attempt settles it from the phone that made
+         * it, rather than needing someone to read a container log on a VPS.
+         *
+         * The shape only, never the value: it is a few characters describing a
+         * type and a length, so nothing unexpected from a wallet ends up printed
+         * on a screen.
+         */
+        this.anchorNotice = `Sent from your wallet, but sFace could not record it: ${told.error} The transaction is on the chain, so do not send it again. Wallet returned ${reply.shape}.`;
         return;
       }
 
