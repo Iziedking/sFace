@@ -531,6 +531,18 @@ export interface ResultsOptions {
   /** The finished run, read against the stage's demands. */
   progress: StageProgress;
   canSign: boolean;
+  /**
+   * Whether to offer writing this run onto the chain.
+   *
+   * Only on a run worth the fee. See anchorOffer for why it is not on every
+   * results screen.
+   */
+  canAnchor: boolean;
+  anchoring: boolean;
+  anchorNotice: string | null;
+  /** Set once this run is on the chain, so the offer becomes a receipt. */
+  anchorHash: string | null;
+  onAnchor: () => void;
   signing: boolean;
   /** What went wrong last time, or null. Never implies the score is at risk. */
   signNotice: string | null;
@@ -759,6 +771,7 @@ export function renderResults(root: HTMLElement, options: ResultsOptions): void 
               : null,
 
           signOffer(options),
+      anchorOffer(options),
 
           /*
            * The practice bill, presented after a run they enjoyed rather than
@@ -1118,7 +1131,8 @@ export function maskAddress(address: string): string {
 function receipts(entry: BoardEntry): HTMLElement | null {
   const url = accountUrl(entry.address);
   const proof = entry.proof ?? null;
-  if (!url && !proof) return null;
+  const anchor = entry.anchor ?? null;
+  if (!url && !proof && !anchor) return null;
 
   return el(
     'details',
@@ -1136,7 +1150,14 @@ function receipts(entry: BoardEntry): HTMLElement | null {
        * showing wallets at all. A proof always carries the address it was
        * derived from, so both words are always true together.
        */
-      text: proof ? 'signed · wallet' : 'wallet',
+      /*
+       * On chain outranks signed, because it is the stronger claim.
+       *
+       * A signature proves who set a score and lives in this service. An anchor
+       * is a transaction that exists whether or not this service does, so a row
+       * carrying one says that first.
+       */
+      text: anchor ? 'on chain · wallet' : proof ? 'signed · wallet' : 'wallet',
     }),
     el(
       'div',
@@ -1161,6 +1182,13 @@ function receipts(entry: BoardEntry): HTMLElement | null {
              */
             text: 'This pilot has proved a wallet by signing a run. The total beside it is not itself signed.',
           }),
+      anchor
+        ? el('p', {
+            class: 'board__prooflead',
+            text: 'This run was written onto the chain. The transaction below carries its date, level, stage and score, and does not depend on sFace to stay there.',
+          })
+        : null,
+      anchor ? field('TRANSACTION', anchor) : null,
       proof ? field('PUBLIC KEY', proof.publicKey) : null,
       proof ? field('SIGNATURE', proof.signature) : null,
       entry.address ? field('WALLET', entry.address) : null,
@@ -1218,6 +1246,66 @@ function field(label: string, value: string): HTMLElement {
  * So it says what signing buys: a mark on the row, tied to an address, that a
  * stranger can check without trusting us.
  */
+/**
+ * The offer to write this run onto the chain.
+ *
+ * ## How this differs from signing, which is the thing next to it
+ *
+ * Signing produces a signature that lives in this service's database. It proves
+ * who set a score and it puts nothing anywhere: delete the service and the
+ * proof goes with it. That is worth having and it is not what most people mean
+ * when they say a score is on chain.
+ *
+ * Anchoring is an ordinary Nimiq transaction carrying the run in its data
+ * field. It has a hash, it appears on a public explorer, and it survives this
+ * app entirely. It also costs a network fee, which is the honest reason it is
+ * not simply done for everybody.
+ *
+ * ## Why only on a run worth it
+ *
+ * Offered after a personal best or a first clear rather than on every screen.
+ * A button asking for a fee after every run reads as a toll, and most runs are
+ * not worth paying to remember. The rule is in main.ts, next to the record of
+ * what the player has actually done.
+ */
+function anchorOffer(options: ResultsOptions): HTMLElement | null {
+  if (options.anchorHash) {
+    return el(
+      'div',
+      { class: 'notice notice--anchored' },
+      el('p', { class: 'notice__lead', text: 'This run is on the chain.' }),
+      el('p', {
+        text: 'A transaction carrying this date, level, stage and score was sent from your wallet. It is public, permanent, and readable without this app.',
+      }),
+      el('p', { class: 'notice__hash', text: options.anchorHash }),
+    );
+  }
+
+  if (!options.canAnchor) return null;
+
+  return el(
+    'div',
+    { class: 'notice notice--anchor' },
+    el('p', { class: 'notice__lead', text: 'Put this one on the chain?' }),
+    el('p', {
+      text: 'Your wallet sends a transaction carrying the date, the level, the stage and this score. It gets a hash and appears on the explorer, so the run is provable without this app existing. It costs a network fee.',
+    }),
+    options.anchorNotice
+      ? el('p', { class: 'notice__warn', text: options.anchorNotice })
+      : null,
+    el(
+      'div',
+      { class: 'actions' },
+      button(
+        options.anchoring ? 'Waiting for the wallet...' : 'Write it on chain',
+        options.onAnchor,
+        'ghost',
+        { disabled: options.anchoring },
+      ),
+    ),
+  );
+}
+
 function signOffer(options: ResultsOptions): HTMLElement | null {
   if (!options.canSign) return null;
 

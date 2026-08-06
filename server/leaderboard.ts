@@ -102,6 +102,14 @@ export interface Entry {
    * has always taken unsigned rows and says which is which.
    */
   address?: string | null;
+  /**
+   * Transaction hash, when this run was written onto the chain.
+   *
+   * Different in kind from the signature beside it. A signature proves who set
+   * a score and lives here; an anchor is a transaction that exists whether or
+   * not this service does.
+   */
+  anchor?: string | null;
   /** The signature itself, so the address above can be checked by anyone. */
   proof?: Proof | null;
   /** The level flown, kept on every row so an unsigned one can still be signed. */
@@ -117,6 +125,13 @@ export interface PublicEntry {
   address?: string | null;
   /** And the working needed to check that mark. Null on unsigned rows. */
   proof?: Proof | null;
+  /**
+   * Transaction hash, when the run was written onto the chain.
+   *
+   * The stronger of the two claims a row can carry: a signature lives in this
+   * service, an anchor is a transaction that outlives it.
+   */
+  anchor?: string | null;
 }
 
 export interface SubmitInput {
@@ -255,6 +270,43 @@ export function attachProof(input: {
   return { ok: true };
 }
 
+/**
+ * Record that this run was written onto the chain.
+ *
+ * The verification already happened: by the time this is called the service has
+ * parsed the transaction, checked its signature, its recipient, its data and
+ * its chain, and computed the hash itself. This only writes down what was
+ * proved, which is why it takes a hash rather than a serialized transaction.
+ *
+ * Once set it is never replaced. A second anchor for the same run is somebody
+ * paying a fee twice; the first one is already permanent and overwriting it
+ * would quietly discard the record the player is pointing at.
+ */
+export function attachAnchor(input: {
+  network: string;
+  date: string;
+  deviceId: string;
+  score: number;
+  hash: string;
+  address: string;
+}): { ok: true; already: boolean } | { ok: false; reason: string } {
+  const board = boards.get(keyOf(input.network, input.date));
+  const entry = board?.get(input.deviceId);
+
+  if (!entry) return { ok: false, reason: 'No run of yours on that board.' };
+  if (entry.score !== input.score) {
+    return { ok: false, reason: 'That transaction is for a different run.' };
+  }
+  if (entry.anchor) return { ok: true, already: true };
+
+  entry.anchor = input.hash;
+  // The sender proved a wallet as surely as a signature does, so a run that was
+  // anchored but never signed still shows who set it.
+  entry.address = entry.address ?? input.address;
+  persist();
+  return { ok: true, already: false };
+}
+
 export interface UnsignedRun {
   date: string;
   seed: string;
@@ -310,6 +362,7 @@ export function top(network: string, date: string, limit = BOARD_LIMIT): PublicE
       score: entry.score,
       address: entry.address ?? null,
       proof: entry.proof ?? null,
+      anchor: entry.anchor ?? null,
     }));
 }
 

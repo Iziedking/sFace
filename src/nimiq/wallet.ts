@@ -254,6 +254,61 @@ export interface SignedClaim {
   signature: string;
 }
 
+/**
+ * Where anchored runs are sent. Empty turns the whole feature off.
+ *
+ * A build without it simply never offers to anchor, which is the right
+ * behaviour for a fork or a local checkout: nobody should be able to send NIM
+ * to an address the person running the app did not choose.
+ */
+export const ANCHOR_ADDRESS: string = import.meta.env.VITE_ANCHOR_ADDRESS ?? '';
+
+/**
+ * The smallest amount that can be sent, in lunas. 1 NIM is 100,000 of them.
+ *
+ * The transaction exists to carry its data, not to move money, so it moves the
+ * least the chain will accept. What the player actually pays is the network
+ * fee on top.
+ */
+const ANCHOR_VALUE = 1;
+
+/**
+ * Put a run on the chain.
+ *
+ * ## Why this returns the whole transaction
+ *
+ * The obvious thing to hand back is the hash, and the obvious thing is wrong:
+ * a hash is a string, so a service that accepted one would be publishing a
+ * claim dressed as a receipt. The provider returns the serialized transaction,
+ * which the service can take apart and check field by field before computing
+ * the hash itself. See server/anchor.ts.
+ *
+ * Returns null on every failure, including the player declining in the wallet.
+ * Refusing to anchor must cost nothing: the run is already on the board, and
+ * anchoring only ever adds a permanent record to a row that already exists.
+ */
+export async function anchorRun(data: string): Promise<string | null> {
+  if (!ANCHOR_ADDRESS) return null;
+
+  const nimiq = await getProvider();
+  if (!nimiq) return null;
+
+  try {
+    const result = await nimiq.sendBasicTransactionWithData({
+      recipient: ANCHOR_ADDRESS,
+      value: ANCHOR_VALUE,
+      data,
+    });
+
+    // The provider resolves with an error envelope rather than throwing, so a
+    // resolved promise is not on its own a success. See isProviderError.
+    if (isProviderError(result)) return null;
+    return typeof result === 'string' && result.length > 0 ? result : null;
+  } catch {
+    return null;
+  }
+}
+
 /** True when the wallet has caught up enough to be asked about money. */
 export async function inConsensus(): Promise<boolean> {
   const nimiq = await getProvider();

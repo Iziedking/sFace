@@ -4991,6 +4991,29 @@ body.is-fullscreen .foot,
   margin: 0;
 }
 
+/* On chain ------------------------------------------------------------------
+   The anchored notice is the rescue green rather than the accent, because it is
+   a statement of fact rather than a call to act: the thing already happened. A
+   transaction hash wraps rather than truncating, since half a hash proves
+   nothing and somebody checking one needs all of it. */
+
+.notice--anchored {
+  border-color: var(--rescue);
+}
+
+.notice--anchor .notice__lead {
+  color: var(--accent-deep);
+}
+
+.notice__hash {
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+  margin: 6px 0 0;
+}
+
 .board__wallet {
   font-family: var(--mono);
   font-size: 10px;

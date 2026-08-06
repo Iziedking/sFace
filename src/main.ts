@@ -79,6 +79,7 @@ import {
   unlockSignals,
   postGhost,
   postScore,
+  anchorPostedScore,
   signPostedScore,
   reportSettlement,
   type BoardEntry,
@@ -140,7 +141,7 @@ import { cellInReach } from './game/cell';
 import { buy } from './game/consume';
 import { slotIntent } from './game/intent';
 import { CONSUMABLES } from './data/consumables';
-import { signClaim } from './nimiq/wallet';
+import { ANCHOR_ADDRESS, anchorRun, signClaim } from './nimiq/wallet';
 
 /**
  * The exact string a score is signed over.
@@ -462,6 +463,14 @@ class App {
   private stage = readStage();
   /** Set when the run just finished cleared its stage. Cleared on the next run. */
   private stageCleared = false;
+  /**
+   * How far the campaign had been taken when this run started.
+   *
+   * Captured at the start rather than read at the end, because clearing a stage
+   * writes progress immediately: by the time the results screen asks whether
+   * this was a first clear, the answer has already been overwritten by itself.
+   */
+  private clearedBefore = 0;
   /** Today's three jobs for the selected stage. Recomputed when either changes. */
   private contracts: Contract[] = [];
   /** Which of them the finished run met. */
@@ -548,6 +557,11 @@ class App {
     openMinutes: null,
   };
   private challengeNotice: string | null = null;
+  /** Set while a wallet is being asked to send an anchor transaction. */
+  private anchoring = false;
+  private anchorNotice: string | null = null;
+  /** The transaction hash once this run is on the chain. */
+  private anchorHash: string | null = null;
   private settling = false;
 
   constructor() {
@@ -2881,6 +2895,10 @@ class App {
     this.rankedUp = null;
     this.unlockedWeapon = null;
     this.stageCleared = false;
+    // Before anything this run does can move it. See clearedBefore.
+    this.clearedBefore = this.cleared();
+    this.anchorHash = null;
+    this.anchorNotice = null;
     this.endingShown = false;
     this.cardUrl = null;
     this.cardShareFile = null;
@@ -3253,6 +3271,26 @@ class App {
       signing: this.signing,
       signNotice: this.signNotice,
       onSign: () => void this.signRun(run),
+
+      /*
+       * Offered on a run worth paying to remember, and not on the others.
+       *
+       * A fee prompt after every run reads as a toll, and most runs are not
+       * worth one. A personal best or a stage cleared for the first time are
+       * the two a player would actually want permanent, and both are things
+       * the app already knows without asking anybody.
+       */
+      canAnchor:
+        this.anchorHash === null &&
+        !this.practice &&
+        ANCHOR_ADDRESS !== '' &&
+        (this.session?.available ?? false) &&
+        (this.rank ?? 0) > 0 &&
+        this.worthAnchoring(run),
+      anchoring: this.anchoring,
+      anchorNotice: this.anchorNotice,
+      anchorHash: this.anchorHash,
+      onAnchor: () => void this.anchorRun(run),
     });
   }
 
@@ -3274,6 +3312,83 @@ class App {
    * reason the old version failed and making somebody find the button on
    * another screen to fix it would be a worse version of the same bug.
    */
+  /**
+   * Whether this run is one worth writing onto the chain.
+   *
+   * A personal best, or a stage cleared for the first time. Both are moments a
+   * player would want permanent, and neither needs asking them: the profile
+   * already carries their best score, and the campaign already knows how far
+   * they had got before this run started.
+   *
+   * Deliberately not every run. Anchoring costs a network fee, and a button
+   * asking for one after each attempt turns the results screen into a till.
+   */
+  private worthAnchoring(run: RunState): boolean {
+    const best = this.profile?.bestScore ?? 0;
+    if (run.score > best) return true;
+
+    // Cleared a stage that was not open before this run.
+    return this.stageCleared && run.stage.n > this.clearedBefore;
+  }
+
+  /**
+   * Write a run onto the chain.
+   *
+   * ## Why the whole transaction goes to the service
+   *
+   * The wallet hands back the serialized transaction, and that is what is sent
+   * on rather than the hash. A hash is a string: a service that accepted one
+   * would be publishing a claim dressed as a receipt. The service parses this,
+   * checks the signature, the recipient, the data and the chain, and computes
+   * the hash itself. See server/anchor.ts.
+   *
+   * Nothing here can lose a score. The run is already on the board by the time
+   * this can be pressed, and anchoring only adds a record to a row that exists.
+   */
+  private async anchorRun(run: RunState): Promise<void> {
+    if (this.anchoring) return;
+
+    this.anchoring = true;
+    this.anchorNotice = null;
+    this.showResults();
+
+    try {
+      const address = await this.requireAddress();
+      if (!address) {
+        this.anchorNotice =
+          'The wallet did not hand over an account, so nothing was sent. Your score is still on the board.';
+        return;
+      }
+
+      const data = claimMessage(run);
+      const serialized = await anchorRun(data);
+      if (!serialized) {
+        this.anchorNotice = 'The wallet did not send it. Your score is still on the board.';
+        return;
+      }
+
+      const told = await anchorPostedScore({
+        deviceId: this.pilot,
+        date: run.mission.date,
+        seed: run.mission.seed,
+        stage: run.stage.n,
+        score: run.score,
+        serialized,
+      });
+
+      if (!told.ok) {
+        this.anchorNotice = told.error;
+        return;
+      }
+
+      this.anchorHash = told.value.hash ?? null;
+      this.anchorNotice = null;
+    } finally {
+      this.anchoring = false;
+      this.showResults();
+    }
+  }
+
   private async signRun(run: RunState): Promise<void> {
     if (this.signing) return;
 

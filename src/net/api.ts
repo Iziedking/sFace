@@ -46,6 +46,13 @@ export interface BoardEntry {
   address?: string | null;
   /** The signature over this exact claim. Null on rows nobody signed. */
   proof?: BoardProof | null;
+  /**
+   * Transaction hash, when this run was written onto the chain.
+   *
+   * A different and stronger claim than the signature beside it: a signature
+   * lives in the service, an anchor is a transaction that outlives it.
+   */
+  anchor?: string | null;
   avatarUrl?: string | null;
   clanTag?: string | null;
   /** Lifetime Face, so a row can show a rank badge. Daily rows carry it too. */
@@ -468,6 +475,24 @@ export async function signPostedScore(body: {
   signature: string;
 }): Promise<ApiResult<{ ok: boolean; recorded: boolean; address?: string }>> {
   return request('/board/sign', { method: 'POST', body: JSON.stringify(body) });
+}
+
+/**
+ * Report a run that was written onto the chain.
+ *
+ * Sends the serialized transaction, not a hash. The service checks it and
+ * computes the hash itself, which is the difference between a receipt and a
+ * claim. See server/anchor.ts.
+ */
+export async function anchorPostedScore(body: {
+  deviceId: string;
+  date: string;
+  seed: string;
+  stage: number;
+  score: number;
+  serialized: string;
+}): Promise<ApiResult<{ ok: boolean; recorded: boolean; hash?: string }>> {
+  return request('/board/anchor', { method: 'POST', body: JSON.stringify(body) });
 }
 
 // Contests -----------------------------------------------------------------

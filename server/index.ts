@@ -29,6 +29,7 @@ import * as profiles from './profiles';
 import * as xauth from './xauth';
 import { attachLive } from './live';
 import { backupSnapshot, flush, loadSnapshot, saveNow, scheduleSave } from './store';
+import * as anchor from './anchor';
 import { claimMessage, verifyClaim } from './attest';
 import { levelFacts, refuse } from './verify';
 
@@ -41,6 +42,24 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? '')
   .filter(Boolean);
 /** Set this when running behind Caddy or any proxy, or rate limits key on it. */
 const TRUST_PROXY = process.env.TRUST_PROXY === 'true';
+
+/**
+ * Where anchored runs are sent, and which chain counts.
+ *
+ * Both come from the environment because they are deployment facts, not code:
+ * the address is a wallet somebody owns, and the network id is a number the
+ * library's types do not expose. An unset address turns anchoring off and the
+ * route says so, which is better than accepting transactions with nothing to
+ * check their recipient against.
+ */
+const ANCHOR_ADDRESS = process.env.ANCHOR_ADDRESS ?? '';
+
+/**
+ * Default 5, which is what a transaction built for Nimiq mainnet carries in
+ * the library used here. Overridable because a wrong value refuses every anchor,
+ * and the refusal logs the id it actually saw so the fix is one line.
+ */
+const ANCHOR_NETWORK_ID = Number(process.env.ANCHOR_NETWORK_ID ?? 5);
 
 const app = express();
 
@@ -246,6 +265,24 @@ const signBody = z.object({
   score: z.number().int().min(0).max(board.SCORE_CEILING),
   publicKey: z.string().regex(/^[0-9a-fA-F]{64}$/),
   signature: z.string().regex(/^[0-9a-fA-F]{128}$/),
+});
+
+/**
+ * Anchoring a run. The transaction, and which run it is supposed to be for.
+ *
+ * The run fields are not trusted: they say which board row to look at, and the
+ * transaction must independently carry the same values. Sending one run's
+ * numbers with another run's transaction is exactly what verifyAnchor refuses.
+ */
+const anchorBody = z.object({
+  deviceId,
+  date: isoDate,
+  seed,
+  stage: z.number().int().min(1).max(7),
+  score: z.number().int().min(0).max(board.SCORE_CEILING),
+  // Hex, and long enough to be a transaction rather than a typo. The real bound
+  // is whether it parses, which anchor.ts does properly.
+  serialized: z.string().regex(/^[0-9a-fA-F]{200,4000}$/, 'Not a serialized transaction.'),
 });
 
 const createBody = z.object({
@@ -667,6 +704,92 @@ app.post('/board', limit(20, 10), async (req, res) => {
  * Nothing here changes a ranking. It attaches proof to a row that already
  * exists, or refuses.
  */
+/**
+ * Write a run onto the chain, and prove it.
+ *
+ * ## What arrives, and what is believed
+ *
+ * The client posts the serialized transaction its wallet signed. Nothing it
+ * says about that transaction is taken on trust, including which run it is for:
+ * the expected data is rebuilt here from the row the board already holds, and
+ * the transaction has to match it. The hash is computed from the bytes rather
+ * than accepted, because a hash is a string and any string would do.
+ *
+ * See server/anchor.ts for the five fields that are checked and why leaving out
+ * any one of them makes the other four decorative.
+ *
+ * ## Why this is refused rather than disabled when unconfigured
+ *
+ * Anchoring needs an address to send to. Without one there is nothing to check
+ * a recipient against, so every transaction would either be accepted blindly or
+ * rejected confusingly. Saying so plainly is better than either.
+ */
+app.post('/board/anchor', limit(20, 10), (req, res) => {
+  const parsed = anchorBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: firstIssue(parsed.error) });
+    return;
+  }
+
+  if (!anchor.isAnchorAddress(ANCHOR_ADDRESS)) {
+    res.status(503).json({ error: 'Anchoring is not configured on this service.' });
+    return;
+  }
+
+  const body = parsed.data;
+  const network = networkOf(req);
+
+  // Testnet runs are verified and never written down, so there is no row to
+  // anchor. Said plainly rather than returning a success nothing came of.
+  if (network === 'test') {
+    res.json({ ok: true, recorded: false, note: 'Testnet runs are not kept on the board.' });
+    return;
+  }
+
+  const checked = anchor.verifyAnchor({
+    serialized: body.serialized,
+    claim: { date: body.date, seed: body.seed, stage: body.stage, score: body.score },
+    anchorAddress: ANCHOR_ADDRESS,
+    networkId: ANCHOR_NETWORK_ID,
+  });
+
+  if (!checked.ok) {
+    /*
+     * Logged with the id the transaction actually carried.
+     *
+     * The numeric network ids are not in the library's type definitions, so the
+     * expected one is configured. If it is wrong every anchor fails, and this
+     * line is what turns that from a mystery into a one-line fix.
+     */
+    if (checked.observed !== undefined) {
+      console.warn(
+        '[sface] anchor on unexpected chain',
+        JSON.stringify({ expected: ANCHOR_NETWORK_ID, observed: checked.observed }),
+      );
+    }
+    res.status(422).json({ error: checked.reason });
+    return;
+  }
+
+  profiles.bindAddress(body.deviceId, checked.value.sender);
+
+  const result = board.attachAnchor({
+    network,
+    date: body.date,
+    deviceId: body.deviceId,
+    score: body.score,
+    hash: checked.value.hash,
+    address: checked.value.sender,
+  });
+
+  if (!result.ok) {
+    res.status(404).json({ error: result.reason });
+    return;
+  }
+
+  res.json({ ok: true, recorded: true, hash: checked.value.hash, already: result.already });
+});
+
 app.post('/board/sign', limit(20, 10), (req, res) => {
   const parsed = signBody.safeParse(req.body);
   if (!parsed.success) {
