@@ -28,7 +28,13 @@ import { openPurse, rollDrop, type ScripPurse } from './scrip';
 import { lockUp } from './cell';
 import { makeConvoy, type Convoy } from './convoy';
 import { buildCity, openSpot, roomSpot, type City } from './city';
-import { buildRingCity, spotNearGap, spotOutside, type RingCity } from './rings';
+import {
+  buildRingCity,
+  spotInCore,
+  spotNearGap,
+  spotOutside,
+  type RingCity,
+} from './rings';
 import { makeCar, type Car } from './car';
 import { layOutNodes, type StoryNode } from './node';
 import { BASELINE_ASSIST, type AssistLevel } from './assist';
@@ -672,10 +678,55 @@ export class RunState {
        * A few are left wandering the band so the space between gates is not
        * provably empty, which is what would make skirting the wall a free ride.
        */
+      /*
+       * The last gate is where the stage is won, so it is where the fight is.
+       *
+       * ## What was wrong with spreading them evenly
+       *
+       * Every attacker picked a ring at random, so the defence thinned as you
+       * worked inward: the outermost band is the longest circle and got the same
+       * share as the shortest. The finale then ended on its quietest note. You
+       * answered the last question, passed the last wall, and crossed an empty
+       * floor to the thing the whole campaign is named after.
+       *
+       * A third of the level now waits on the final approach and inside the
+       * core, so saving face is an actual fight rather than a walk. The rest are
+       * spread as before, because a route that is empty until the end is its own
+       * kind of boring.
+       *
+       * ## Why they are placed rather than spawned
+       *
+       * Everything here comes out of the level stream at construction, so two
+       * players on one seed meet the same defence in the same places. Spawning a
+       * wave when the player arrives would be easier and would make the stage
+       * unverifiable, which matters on a level people stake NIM on.
+       */
+      const lastStand = Math.round(this.enemies.length * 0.34);
+
       this.enemies.forEach((enemy, index) => {
-        const ring = levelRng.int(0, rings.rings.length - 1);
-        const spot =
-          index % 4 === 3 ? spotOutside(rings, levelRng, ring) : spotNearGap(rings, levelRng, ring);
+        let spot: { x: number; y: number };
+
+        if (index < lastStand) {
+          /*
+           * Two thirds hold the gap, one third is already past it.
+           *
+           * All of them at the doorway would be a wall you fight once and then
+           * leave behind. Some inside means the ground around the core is
+           * contested while you are trying to finish, which is the moment the
+           * stage is about.
+           */
+          spot =
+            index % 3 === 2
+              ? spotInCore(rings, levelRng)
+              : spotNearGap(rings, levelRng, 0, 0.85);
+        } else {
+          const ring = levelRng.int(0, rings.rings.length - 1);
+          spot =
+            index % 4 === 3
+              ? spotOutside(rings, levelRng, ring)
+              : spotNearGap(rings, levelRng, ring);
+        }
+
         enemy.x = spot.x;
         enemy.y = spot.y;
         enemy.homeY = enemy.y;

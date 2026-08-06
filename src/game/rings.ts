@@ -272,6 +272,34 @@ export function spotNearGap(
   return { x: city.cx + Math.cos(a) * r, y: city.cy + Math.sin(a) * r };
 }
 
+/**
+ * Inside the last wall, in the ring of open ground around the core.
+ *
+ * ## Why this needed its own function
+ *
+ * spotOutside places things in the band OUTSIDE a wall, and spotNearGap does
+ * the same near its opening. Neither can reach the last band of all, because
+ * there is no ring inside the innermost one for them to be outside of. So the
+ * one piece of ground the whole stage is about, the floor the core stands on,
+ * was the only place in the level nothing could be put.
+ *
+ * That is why the finale ended quietly: you answered the last gate, stepped
+ * through, and walked to the objective across an empty circle.
+ *
+ * A margin is left around the core itself so nothing spawns on top of the thing
+ * the player is coming for.
+ */
+export function spotInCore(city: RingCity, rng: Rng): { x: number; y: number } {
+  const wall = city.rings[0];
+  const outer = wall ? wall.radius - wall.thickness - 60 : city.coreRadius + 400;
+  const inner = city.coreRadius + 90;
+
+  const r = rng.range(inner, Math.max(inner + 40, outer));
+  const a = rng.range(0, Math.PI * 2);
+
+  return { x: city.cx + Math.cos(a) * r, y: city.cy + Math.sin(a) * r };
+}
+
 export function spotOutside(
   city: RingCity,
   rng: Rng,
