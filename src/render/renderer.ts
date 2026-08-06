@@ -29,6 +29,7 @@ import { POINT_SPACING, WORLD_HEIGHT, CEILING } from '../game/terrain';
 import { BULLET_RADIUS } from '../game/bullet';
 import { breachButtonAt } from '../core/breachbutton';
 import { BREACH_REACH, CELL_RADIUS, cellInReach, isCaged } from '../game/cell';
+import { FACE_MAX_HEALTH, FACE_RADIUS, faceHurt } from '../game/face';
 import { CONSUMABLES } from '../data/consumables';
 import { CAR_RADIUS, CAR_REACH } from '../game/car';
 import { PATROL_CAR_RADIUS } from '../game/enemy';
@@ -1638,6 +1639,46 @@ private drawExtraction(state: RunState, camera: Camera): void {
       firing: false,
       label: face.state === 'trapped' ? handleTag(face) : null,
     });
+
+    if (faceHurt(face)) this.drawFaceHull(face);
+  }
+
+  /**
+   * A hull over somebody you are carrying, and only while it is not full.
+   *
+   * ## Why it appears rather than always being there
+   *
+   * A bar over every person in the chain is six bars on screen at all times,
+   * saying nothing on almost every frame. It appears when there is something to
+   * say and goes away again when they recover, which also makes the recovery
+   * itself legible: the bar refilling is the game telling you that breaking the
+   * line of fire worked.
+   *
+   * Drawn in world units rather than screen pixels, unlike the buttons, because
+   * this belongs to a person standing somewhere rather than to the interface.
+   * It should shrink with them as the view pulls back.
+   */
+  private drawFaceHull(face: Face): void {
+    const ctx = this.ctx;
+    const width = 34;
+    const height = 5;
+    const x = face.x - width / 2;
+    const y = face.y - FACE_RADIUS - 16;
+    const left = Math.max(0, Math.min(1, face.health / FACE_MAX_HEALTH));
+
+    ctx.save();
+
+    ctx.fillStyle = theme.ink;
+    ctx.globalAlpha = 0.55;
+    ctx.fillRect(x - 1, y - 1, width + 2, height + 2);
+
+    ctx.globalAlpha = 1;
+    // Green while there is room to lose some, the alarm colour once there is
+    // not. The change is the warning, so it lands before the last hit does.
+    ctx.fillStyle = left > 0.35 ? theme.rescue : theme.danger;
+    ctx.fillRect(x, y, width * left, height);
+
+    ctx.restore();
   }
 
   private drawEnemies(state: RunState, camera: Camera): void {

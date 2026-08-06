@@ -16,12 +16,103 @@
 import { circlesOverlap, clamp } from './collision';
 import { threatNear } from './enemy';
 import type { Face, RunState } from './state';
-import { RESCUE_FRACTION } from './state';
+import { FACE_MAX_HEALTH, RESCUE_FRACTION } from './state';
 import { CEILING } from './terrain';
 import { isCaged } from './cell';
 import { spawnBullet } from './bullet';
 
 export const FACE_RADIUS = 15;
+
+/*
+ * What somebody you are carrying can take
+ * ======================================
+ *
+ * ## Why they can be hurt at all
+ *
+ * They could not be, and that quietly undercut the whole game. Freeing people
+ * was a thing you did to a level rather than a thing you then had to protect,
+ * so once somebody was in the chain they were banked and the rest of the run
+ * was about your own hull. A game named after saving people should be able to
+ * lose one.
+ *
+ * ## Why they are hard to kill, and how
+ *
+ * Three separate things make this survivable, and all three are needed.
+ *
+ * They take a share of a round rather than all of it, so a hit costs less than
+ * it costs you. They have more to spend than the arithmetic suggests: at these
+ * numbers it is roughly sixteen hits, against the thirteen it takes to put the
+ * player down. And it comes back. Damage that stops recovers in a couple of
+ * seconds, so a stray round in a crossfire never costs a rescue.
+ *
+ * The last one is what makes the word "sustained" mean something. Killing
+ * somebody in the chain requires holding fire on them without a break, which is
+ * a thing the player can see happening and fly out of. Losing one should feel
+ * like a mistake you made, never like a dice roll you lost.
+ *
+ * ## Only while following
+ *
+ * Somebody trapped or in a cell cannot be touched. A person dying before you
+ * reached them is a run lost to something nobody could prevent, and on a stage
+ * that counts extractions to pass it could make the level unwinnable before it
+ * started.
+ */
+
+/*
+ * Their hull is declared in state.ts, beside the player's, because Face is
+ * declared there and the two files would otherwise import each other for one
+ * number. Re-exported so callers can reach it from the mechanic it belongs to.
+ */
+export { FACE_MAX_HEALTH };
+
+/**
+ * The share of a round that lands on somebody being carried.
+ *
+ * They are smaller than the ship and they are not the thing being aimed at, so
+ * most of what reaches them is a graze. This is the difference between a chain
+ * that dies in a firefight and one that has to be deliberately shot apart.
+ */
+export const FACE_DAMAGE_SHARE = 0.6;
+
+/** Quiet seconds before the recovery starts. */
+const RECOVERY_DELAY = 2.2;
+/** Hull per second once it does. Full again about three seconds after that. */
+const RECOVERY_RATE = 30;
+
+/**
+ * Hurt somebody in the chain. Returns true if that was the hit that ended them.
+ *
+ * A death fails the run rather than merely costing the bounty. That is the
+ * point of the mechanic: the people are the objective, so losing one is losing.
+ */
+export function damageFace(state: RunState, face: Face, amount: number): boolean {
+  if (face.state !== 'following') return false;
+
+  face.health = Math.max(0, face.health - amount * FACE_DAMAGE_SHARE);
+  face.hurtAt = state.time;
+  state.emit({ kind: 'hit', x: face.x, y: face.y });
+
+  if (face.health > 0) return false;
+
+  face.state = 'lost';
+  state.emit({ kind: 'lost', x: face.x, y: face.y, text: `${face.name} DOWN` });
+  state.phase = 'died';
+  return true;
+}
+
+/** Whether to draw a hull over somebody: only when it is not full. */
+export function faceHurt(face: Face): boolean {
+  return face.state === 'following' && face.health < FACE_MAX_HEALTH;
+}
+
+/** Give back what was taken, once the shooting has stopped. */
+function recover(state: RunState, face: Face, dt: number): void {
+  if (face.health >= FACE_MAX_HEALTH) return;
+  if (state.time - face.hurtAt < RECOVERY_DELAY) return;
+
+  face.health = Math.min(FACE_MAX_HEALTH, face.health + RECOVERY_RATE * dt);
+}
+
 
 /** How close you must get to free one. Generous, because thumbs are imprecise. */
 const RESCUE_REACH = 46;
@@ -190,6 +281,7 @@ function escortFire(state: RunState, face: Face, dt: number): void {
 }
 
 function follow(state: RunState, face: Face, dt: number): void {
+  recover(state, face, dt);
   escortFire(state, face, dt);
 
   // The Last Market Maker can get himself out. His fee is separate.

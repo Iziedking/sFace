@@ -55,6 +55,15 @@ import { Terrain, EXTRACTION_X, WORLD_HEIGHT, CEILING } from './terrain';
 export const RUN_SECONDS = 110;
 export const PLAYER_MAX_HEALTH = 100;
 
+/**
+ * What somebody you are carrying can take before they go down.
+ *
+ * Lives here rather than in face.ts because Face is declared here and the two
+ * would otherwise import each other for a number. Why it is this number, and
+ * why they are hard to kill, is documented with the mechanic in face.ts.
+ */
+export const FACE_MAX_HEALTH = 80;
+
 /** Score awarded the moment a face is freed, before it is safely out. */
 export const RESCUE_FRACTION = 0.25;
 export const ATTACKER_SCORE = 50;
@@ -166,6 +175,17 @@ export interface Face {
   caged: boolean;
   /** Position in the follow chain, set when freed. */
   slot: number;
+  /**
+   * What they can take before they go down, once they are following you.
+   *
+   * Only ever spent while following. Somebody still trapped or caged cannot be
+   * hurt, because a person dying before the player has reached them is a run
+   * lost to something nobody could have prevented, and on a stage whose pass
+   * condition counts extractions it can make the level unwinnable on arrival.
+   */
+  health: number;
+  /** Run time of the last hit taken, which is what the recovery counts from. */
+  hurtAt: number;
   /** Talker: run time until which it has stopped to finish a sentence. */
   pausedUntil: number;
   /** Talker: run time of its next interruption. Scheduled, not modulo-tested. */
@@ -1064,6 +1084,8 @@ function layOutFaces(
       x,
       y: Math.max(CEILING + 40, y),
       state: 'trapped',
+      health: FACE_MAX_HEALTH,
+      hurtAt: -999,
       // Set by lockUp() right after the whole roster is placed, so the draw
       // does not interleave with face placement.
       caged: false,

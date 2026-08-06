@@ -18,7 +18,10 @@ import { circlesOverlap, withinRange } from './collision';
 import { CACHE_LINES, type CacheTier } from '../data/story';
 import { PLAYER_RADIUS } from './player';
 import { damageEnemy, radiusOf, updateEnemies, DIVER_CONTACT_DAMAGE } from './enemy';
-import { atExtraction, extractFollowers, loseFollowers } from './face';
+import { atExtraction, extractFollowers, loseFollowers,
+  FACE_RADIUS,
+  damageFace,
+} from './face';
 import { updateFaces } from './face';
 import { damagePlayer, playerCircle, updatePlayer, type PlayerCommand } from './player';
 import { PLAYER_MAX_HEALTH, type RunState } from './state';
@@ -226,6 +229,26 @@ function resolveBulletHits(state: RunState): void {
       bullet.life = 0;
       continue;
     }
+
+    /*
+     * The people behind you, checked after the ship rather than before it.
+     *
+     * A round that would reach both should hurt the one who can dodge. Checking
+     * the chain first would let a player fly in front of their own followers and
+     * have the shot spend itself on somebody who cannot move independently,
+     * which turns the rescue into a shield.
+     */
+    let struckFace = false;
+    for (const face of state.faces) {
+      if (face.state !== 'following') continue;
+      if (!circlesOverlap(shot, { x: face.x, y: face.y, r: FACE_RADIUS })) continue;
+
+      damageFace(state, face, bullet.damage);
+      bullet.life = 0;
+      struckFace = true;
+      break;
+    }
+    if (struckFace) continue;
 
     /*
      * The transport is hittable by anything that missed the player.
