@@ -3278,6 +3278,7 @@ class App {
         !this.practice &&
         (this.session?.available ?? false) &&
         (this.rank ?? 0) > 0,
+      signed: this.signedRun === true,
       signing: this.signing,
       signNotice: this.signNotice,
       onSign: () => void this.signRun(run),
@@ -3290,6 +3291,20 @@ class App {
        * the two a player would actually want permanent, and both are things
        * the app already knows without asking anybody.
        */
+      /*
+       * Offered on every run that can be anchored, not only the good ones.
+       *
+       * It was gated on a personal best or a first clear, on the reasoning that
+       * a fee prompt after every attempt reads as a toll. That reasoning was
+       * fine and the result was not: on any other run the panel simply was not
+       * there, which is indistinguishable from the feature being broken. It was
+       * reported as never appearing at all, by somebody who had gone to the
+       * trouble of buying NIM to try it.
+       *
+       * A control that comes and goes on a rule nobody can see is worse than one
+       * that is always there and easy to ignore. The good runs are still marked
+       * as good; that is now a line of text rather than a reason to hide it.
+       */
       canAnchor:
         this.anchorHash === null &&
         // Never twice. See anchorSent.
@@ -3297,11 +3312,12 @@ class App {
         !this.practice &&
         ANCHOR_ADDRESS !== '' &&
         (this.session?.available ?? false) &&
-        (this.rank ?? 0) > 0 &&
-        this.worthAnchoring(run),
+        (this.rank ?? 0) > 0,
+      anchorNotable: this.worthAnchoring(run),
       anchoring: this.anchoring,
       anchorNotice: this.anchorNotice,
       anchorHash: this.anchorHash,
+      anchorSent: this.anchorSent,
       onAnchor: () => void this.anchorRun(run),
     });
   }

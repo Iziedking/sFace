@@ -532,6 +532,15 @@ export interface ResultsOptions {
   progress: StageProgress;
   canSign: boolean;
   /**
+   * True once this run has been signed.
+   *
+   * Needed because canSign goes false the moment it succeeds, and a panel that
+   * only knows it can no longer offer something cannot tell a job done from a
+   * job never available. That is how a successful signing came to look exactly
+   * like nothing happening.
+   */
+  signed: boolean;
+  /**
    * Whether to offer writing this run onto the chain.
    *
    * Only on a run worth the fee. See anchorOffer for why it is not on every
@@ -542,6 +551,16 @@ export interface ResultsOptions {
   anchorNotice: string | null;
   /** Set once this run is on the chain, so the offer becomes a receipt. */
   anchorHash: string | null;
+  /**
+   * True once a transaction has left the wallet, recorded or not.
+   *
+   * Separate from the hash because they can disagree: the send can succeed
+   * while the service fails to write it down, and the player still needs
+   * telling that their fee bought something.
+   */
+  anchorSent: boolean;
+  /** True on a personal best or a first clear, which the panel says out loud. */
+  anchorNotable: boolean;
   onAnchor: () => void;
   signing: boolean;
   /** What went wrong last time, or null. Never implies the score is at risk. */
@@ -1281,12 +1300,40 @@ function anchorOffer(options: ResultsOptions): HTMLElement | null {
     );
   }
 
+  /*
+   * Sent, but the service could not write it down.
+   *
+   * The same silence as above and worse, because this one costs a fee: the
+   * offer disappeared, no hash appeared, and nothing said whether the money had
+   * bought anything. The transaction is real either way, so this says so and
+   * says not to pay for another.
+   */
+  if (options.anchorSent) {
+    return el(
+      'div',
+      { class: 'notice notice--anchor' },
+      el('p', { class: 'notice__lead', text: 'Sent from your wallet.' }),
+      el('p', {
+        text: 'The transaction went out and carries this run. sFace could not record it against your row, so there is no link here yet, but it is on the chain and the anchor address shows it.',
+      }),
+      options.anchorNotice
+        ? el('p', { class: 'notice__warn', text: options.anchorNotice })
+        : null,
+      el('p', { class: 'notice__aside', text: 'Do not send it again. It is already there.' }),
+    );
+  }
+
   if (!options.canAnchor) return null;
 
   return el(
     'div',
     { class: 'notice notice--anchor' },
-    el('p', { class: 'notice__lead', text: 'Put this one on the chain?' }),
+    el('p', {
+      class: 'notice__lead',
+      text: options.anchorNotable
+        ? 'Your best yet. Put it on the chain?'
+        : 'Put this one on the chain?',
+    }),
     el('p', {
       text: 'Your wallet sends a transaction carrying the date, the level, the stage and this score. It gets a hash and appears on the explorer, so the run is provable without this app existing. It costs a network fee.',
     }),
@@ -1307,6 +1354,35 @@ function anchorOffer(options: ResultsOptions): HTMLElement | null {
 }
 
 function signOffer(options: ResultsOptions): HTMLElement | null {
+  /*
+   * Say it worked.
+   *
+   * This panel used to vanish the moment signing succeeded, because the only
+   * thing it knew was that it could no longer offer to sign. From the player's
+   * side that is indistinguishable from nothing having happened: they approved
+   * something in their wallet, came back, and the screen had quietly removed
+   * the button without a word.
+   *
+   * Reported exactly that way, along with the reasonable next thought, which is
+   * that the score should now be on a chain somewhere. It is not, and this is
+   * where that has to be said: signing costs nothing and sends nothing, so
+   * there is no hash to look for and its absence is not a failure.
+   */
+  if (options.signed) {
+    return el(
+      'div',
+      { class: 'notice notice--anchored' },
+      el('p', { class: 'notice__lead', text: 'This run is signed.' }),
+      el('p', {
+        text: 'Your wallet’s signature is published next to this run on the board, so anyone can check it against your address.',
+      }),
+      el('p', {
+        class: 'notice__aside',
+        text: 'Signing costs no NIM and sends no transaction, so there is no hash for it. Writing the run onto the chain is a separate thing.',
+      }),
+    );
+  }
+
   if (!options.canSign) return null;
 
   return el(
