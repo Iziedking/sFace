@@ -49,6 +49,18 @@ const MAX_VOICE_WAIT_MS = 1500;
  */
 const MAX_CHUNK = 160;
 
+/**
+ * How long to give the engine to actually start talking.
+ *
+ * A speech engine that is going to work begins within a few tens of
+ * milliseconds. One that never fires `start` is not slow, it is absent: the
+ * host has no voice, or will not let this WebView use it.
+ *
+ * Generous enough that a loaded phone under a heavy frame does not get called
+ * silent, short enough that finding out costs nothing anybody notices.
+ */
+const START_PROBE_MS = 700;
+
 /** Time for the engine to settle after a cancel before speaking again. */
 const AFTER_CANCEL_MS = 60;
 
@@ -217,6 +229,19 @@ export class Narrator {
   private primed = false;
   private muted = false;
   /**
+   * Whether the engine has ever actually produced sound in this session.
+   *
+   * Null until the first line has been tried. This exists because nothing else
+   * could tell: `speechSynthesis` is present in every WebView whether or not the
+   * host has a voice behind it, so the feature test says yes and the speaking
+   * says nothing.
+   *
+   * Once it is known to be silent, later lines stop waiting to find out again.
+   * Otherwise every beat of the opening pays the probe for an answer that has
+   * not changed.
+   */
+  private engineSpeaks: boolean | null = null;
+  /**
    * Bumped by every `say()` and every `stop()`.
    *
    * A line whose generation is stale resolves quietly rather than fighting the
@@ -310,13 +335,29 @@ export class Narrator {
     return new Promise<void>((resolve) => {
       let settled = false;
       let watchdog: number | null = null;
+      let probe: number | null = null;
 
       const finish = (): void => {
         if (settled) return;
         settled = true;
         if (watchdog !== null) window.clearTimeout(watchdog);
+        if (probe !== null) window.clearTimeout(probe);
         resolve();
       };
+
+      /*
+       * Known silent: do not queue anything, and come straight back.
+       *
+       * Speaking into an engine that produces nothing is not free. It leaves
+       * utterances queued in an engine that may later flush them all at once,
+       * and every line pays the watchdog before the caller can move on. The
+       * caller already handles a line that took no time by holding it on screen
+       * for as long as it takes to read. See renderIntro.
+       */
+      if (this.engineSpeaks === false) {
+        finish();
+        return;
+      }
 
       try {
         const utterance = new SpeechSynthesisUtterance(text);
@@ -330,10 +371,47 @@ export class Narrator {
         utterance.pitch = 0.85;
         utterance.volume = 1;
 
+        /*
+         * The one listener that was missing, and the reason this was guesswork.
+         *
+         * With only `end` and `error`, an engine that quietly does nothing looks
+         * exactly like one that finished instantly. Reported as the voice not
+         * working in the Nimiq app while working everywhere else, and there was
+         * no way to tell from inside whether a line had been spoken.
+         */
+        utterance.addEventListener('start', () => {
+          this.engineSpeaks = true;
+          if (probe !== null) {
+            window.clearTimeout(probe);
+            probe = null;
+          }
+        });
+
         utterance.addEventListener('end', finish);
-        utterance.addEventListener('error', finish);
+        utterance.addEventListener('error', () => {
+          // An engine that refuses outright is as silent as one that ignores us.
+          if (this.engineSpeaks === null) this.engineSpeaks = false;
+          finish();
+        });
 
         window.speechSynthesis.speak(utterance);
+
+        /*
+         * If nothing has started by now, nothing is going to.
+         *
+         * Without this the line sat on the watchdog below, which is sized for a
+         * slow voice reading a long sentence: a hundred characters is thirteen
+         * seconds of silence before the opening moves on. Learning the answer
+         * once, quickly, is what turns a hang into a pause.
+         */
+        probe = window.setTimeout(() => {
+          probe = null;
+          if (this.engineSpeaks !== null) return;
+
+          this.engineSpeaks = false;
+          if (this.generation === mine) this.cancel();
+          finish();
+        }, START_PROBE_MS);
 
         /*
          * Nudge it awake straight after speaking.
@@ -395,6 +473,19 @@ export class Narrator {
 
   get isSpeaking(): boolean {
     return this.speaking;
+  }
+
+  /**
+   * What the engine turned out to be, once a line has been tried.
+   *
+   * `unknown` before anything has been said, `audible` once a line has really
+   * started, `silent` when the API is there and produces nothing. The third is
+   * the case inside a wallet's WebView, and it is worth being able to name
+   * rather than infer from a stopwatch.
+   */
+  get engineState(): 'unknown' | 'audible' | 'silent' {
+    if (this.engineSpeaks === null) return 'unknown';
+    return this.engineSpeaks ? 'audible' : 'silent';
   }
 }
 

@@ -1767,6 +1767,7 @@ class App {
       fullscreen: isFullscreen(),
       onFullscreen: fullscreenAvailable() ? () => void toggleFullscreen() : null,
       canInstall: installInsteadOfFullscreen(),
+      voiceState: narrator.engineState,
       onReplayIntro: () => this.playIntro(),
       onControls: () => this.showControls(),
     });

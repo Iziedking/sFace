@@ -58,6 +58,13 @@ export interface SettingsOptions {
    * as no fullscreen at all on mobile.
    */
   canInstall: boolean;
+  /**
+   * What the speech engine turned out to be on this device.
+   *
+   * Only ever shown when it is known to produce nothing, so a phone where the
+   * narrator works says nothing about it at all.
+   */
+  voiceState: 'unknown' | 'audible' | 'silent';
   onReplayIntro: () => void;
   /** The illustrated how-to-play guide, which is a document, not a setting. */
   onControls: () => void;
@@ -108,6 +115,31 @@ export function renderSettings(root: HTMLElement, options: SettingsOptions): voi
         button('Replay intro', options.onReplayIntro, 'quiet'),
         button('How to play', options.onControls, 'quiet'),
       ),
+
+      /*
+       * Said when the narrator cannot be heard, and not otherwise.
+       *
+       * A WebView reports that speech synthesis exists whether or not the host
+       * has a voice behind it, so the feature test says yes and the speaking
+       * says nothing. Inside a wallet that is what happens, and until now the
+       * only signal was that the opening played in silence, which reads as
+       * broken rather than as unavailable.
+       *
+       * Nothing is lost by it. Every line the narrator reads is written on the
+       * screen it belongs to, which is the rule the voice was built under: the
+       * text is the story and the voice is decoration.
+       */
+      options.voiceState === 'silent'
+        ? el(
+            'div',
+            { class: 'settings__install' },
+            el('p', { class: 'settings__installhead', text: 'NARRATION' }),
+            el('p', {
+              class: 'settings__installsay',
+              text: 'This app has no voice available, which happens inside some wallets and in-app browsers. Every line the narrator would read is written on the screen it belongs to, so nothing is missing. Open sface.site in Chrome or Safari to hear it.',
+            }),
+          )
+        : null,
 
       /*
        * What to do when there is no fullscreen button.
