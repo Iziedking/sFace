@@ -65,6 +65,17 @@ export interface ChatMessage {
   pilotId: string;
   text: string;
   at: number;
+  /**
+   * A run this message is showing off, as a date and nothing else.
+   *
+   * The same rule as the name and the wallet, for the same reason. A message
+   * carrying its own score would be a number anybody could type, and the whole
+   * point of putting a run in front of people who might tip it is that the
+   * number is the one the board is ranking. So the message says which day, the
+   * board says what happened, and a pilot can only ever post their own: the row
+   * is looked up under the id of whoever sent the message.
+   */
+  runDate: string | null;
 }
 
 interface Stored extends ChatMessage {
@@ -81,10 +92,23 @@ export function say(input: {
   network: string;
   pilotId: string;
   text: string;
+  runDate?: string | null;
   now: number;
 }): Result<ChatMessage> {
   const text = tidyMessage(input.text);
-  if (text.length === 0) return { ok: false, reason: 'Say something first.', code: 400 };
+  const runDate = input.runDate ?? null;
+
+  /*
+   * A run is something to say on its own.
+   *
+   * Everywhere else an empty message is somebody clearing the room with
+   * whitespace, so it is refused. A posted run is not empty: the card is the
+   * message, and demanding a caption for it would mean every share came with a
+   * line of filler nobody meant to write.
+   */
+  if (text.length === 0 && !runDate) {
+    return { ok: false, reason: 'Say something first.', code: 400 };
+  }
   if (text.length > MAX_MESSAGE) {
     return { ok: false, reason: `Keep it under ${MAX_MESSAGE} characters.`, code: 400 };
   }
@@ -99,6 +123,7 @@ export function say(input: {
     pilotId: input.pilotId,
     text,
     at: input.now,
+    runDate,
     network: input.network,
   };
 
@@ -201,6 +226,7 @@ export function restore(raw: unknown): void {
       pilotId: item.pilotId,
       text: tidyMessage(item.text).slice(0, MAX_MESSAGE),
       at: typeof item.at === 'number' ? item.at : 0,
+      runDate: typeof item.runDate === 'string' ? item.runDate : null,
       network: typeof item.network === 'string' ? item.network : 'main',
     });
   }

@@ -37,7 +37,11 @@ export type NotificationKind =
   /** A contest you are in has a result. Opens the contest. */
   | 'contest-settled'
   /** A contest you are in is waiting on stages you have not flown. */
-  | 'contest-waiting';
+  | 'contest-waiting'
+  /** Somebody tipped you. Opens the room. */
+  | 'tip-in'
+  /** Somebody tried to, and could not, because you have no wallet. Opens it. */
+  | 'tip-blocked';
 
 export interface AppNotification {
   id: string;

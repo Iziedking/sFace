@@ -81,6 +81,9 @@ import {
   postScore,
   anchorPostedScore,
   sendChat,
+  reportTip,
+  fetchTips,
+  markTipsSeen,
   signPostedScore,
   reportSettlement,
   type BoardEntry,
@@ -172,7 +175,8 @@ function claimMessage(run: RunState): string {
 }
 import { renderSettings } from './ui/settings';
 import { renderChat } from './ui/chat';
-import type { ChatMessage, ChatPerson } from './net/api';
+import type { ChatMessage, ChatPerson, TipRecord } from './net/api';
+import type { TipTarget } from './ui/chat';
 import { MAX_MESSAGE as CHAT_MAX } from './data/chat';
 import { renderProfile } from './ui/profile';
 import { trackViewport } from './core/viewport';
@@ -569,7 +573,26 @@ class App {
   };
   private roomLoading = false;
   private roomNotice: string | null = null;
+  /**
+   * Whether the notice on the room came from a failed load rather than an act.
+   *
+   * The room re-reads itself every few seconds, and a successful read used to
+   * clear whatever was on screen. That is right for "the room could not be
+   * reached" and wrong for "sent 5 NIM to somebody", which is the one sentence
+   * in this app a player most needs to still be there a moment later.
+   */
+  private roomNoticeIsLoad = false;
   private roomSending = false;
+  /** The day of a run of mine that can be posted, decided by the service. */
+  private roomShareDate: string | null = null;
+  /**
+   * Tips somebody sent or tried to send me, and who sent them.
+   *
+   * The only notification in the app that cannot be worked out on this device,
+   * because it happened on somebody else's. See server/tips.ts.
+   */
+  private tipsWaiting: TipRecord[] = [];
+  private tipPeople: Record<string, { name: string; avatarUrl: string | null }> = {};
   /** Cleared when the room screen is left, so it stops polling an empty page. */
   private roomTimer: number | null = null;
   /**
@@ -1072,6 +1095,16 @@ class App {
    * on screen to correct.
    */
   private async refreshProfile(): Promise<void> {
+    /*
+     * Tips ride along with the record.
+     *
+     * Not because they are related, but because this is the call that already
+     * happens at boot, after a run, and on a network switch, which is every
+     * moment the bell needs to be right. A timer of its own would be a second
+     * schedule polling for something that arrives a few times a day.
+     */
+    void this.loadTips();
+
     const profile = await fetchProfile(this.pilot);
     if (!profile) return;
 
@@ -1567,6 +1600,22 @@ class App {
          * why this only records what has been seen.
          */
         this.dismissed = new Set(this.notifications().map((n) => n.id));
+
+        /*
+         * Tips are the exception, and have to be marked on the service.
+         *
+         * Everything else here is derived from state this device can see, so
+         * dismissing locally is enough: the thing itself is still on its own
+         * screen. A tip has no screen of its own and no local source, so a
+         * dismissal that lived only in this tab would bring three days of them
+         * back on the next reload.
+         */
+        if (this.tipsWaiting.length > 0) {
+          this.tipsWaiting = [];
+          this.tipPeople = {};
+          void markTipsSeen(this.pilot);
+        }
+
         this.paintChrome();
       },
     });
@@ -1621,6 +1670,34 @@ class App {
             : `${contest.entrants.length} in your ${contest.stakeNim} NIM contest.`,
         at: Date.now(),
         go: () => void this.cross(() => this.showContests()),
+      });
+    }
+
+    /*
+     * Tips, which are the one kind that came from somewhere else.
+     *
+     * Two different sentences, deliberately. A tip that was sent names who sent
+     * it and points at the wallet, because the wallet is the receipt and this
+     * service only ever heard a claim about one. A tip that could not be sent
+     * names nobody: there is no way for the reader to check it, and naming
+     * somebody who cannot pay them would be a taunt rather than information.
+     */
+    for (const tip of this.tipsWaiting) {
+      const sent = tip.state === 'sent';
+      const from = this.tipPeople[tip.from]?.name ?? 'Somebody';
+
+      out.push({
+        id: `tip:${tip.id}`,
+        kind: sent ? 'tip-in' : 'tip-blocked',
+        text: sent
+          ? `${from} tipped you ${tip.nim} NIM. Check your wallet.`
+          : `Somebody tried to tip you ${tip.nim} NIM. Connect a wallet in Nimiq Pay to receive tips.`,
+        at: tip.at,
+        // Somewhere to go, which is what earns a place on this list. A tip that
+        // arrived opens the room; one that could not opens the wallet.
+        go: sent
+          ? () => void this.cross(() => this.openChat())
+          : () => void this.cross(() => this.showSettings()),
       });
     }
 
@@ -1782,6 +1859,9 @@ class App {
     this.screen = 'chat';
     this.paintChat();
     void this.loadChat();
+    // The room is where somebody is most likely to be when a tip lands, and
+    // tipping back is the obvious next thing they do.
+    void this.loadTips();
     this.startRoomPolling();
   }
 
@@ -1809,27 +1889,49 @@ class App {
     this.roomTimer = null;
   }
 
+  /**
+   * Say something on the room screen that a refresh will not wipe.
+   *
+   * Every notice raised by something the player did goes through here. The one
+   * raised by a failed read does not, which is the whole distinction: that one
+   * is allowed to disappear the moment the read works.
+   */
+  private setRoomNotice(text: string | null): void {
+    this.roomNotice = text;
+    this.roomNoticeIsLoad = false;
+    this.paintChat();
+  }
+
   private async loadChat(): Promise<void> {
     if (!apiConfigured()) {
       this.roomNotice = 'The room needs the service, which is not configured here.';
+      this.roomNoticeIsLoad = true;
       this.paintChat();
       return;
     }
 
     this.roomLoading = this.room.messages.length === 0;
-    const result = await fetchChat();
+    const result = await fetchChat(this.pilot);
     this.roomLoading = false;
 
     if (!result.ok) {
       // Only complain when there is nothing to show. A failed refresh over a
       // room that is already on screen is not worth an error on top of it.
-      if (this.room.messages.length === 0) this.roomNotice = result.error;
+      if (this.room.messages.length === 0) {
+        this.roomNotice = result.error;
+        this.roomNoticeIsLoad = true;
+      }
       this.paintChat();
       return;
     }
 
     this.room = result.value;
-    this.roomNotice = null;
+    this.roomShareDate = result.value.shareableRunDate;
+    // Only what this function put there. See roomNoticeIsLoad.
+    if (this.roomNoticeIsLoad) {
+      this.roomNotice = null;
+      this.roomNoticeIsLoad = false;
+    }
     if (this.screen === 'chat') this.paintChat();
   }
 
@@ -1844,16 +1946,18 @@ class App {
       notice: this.roomNotice,
       sending: this.roomSending,
       maxLength: CHAT_MAX,
+      ticker: this.mission?.ticker ?? null,
+      today: this.mission?.date ?? '',
       onSend: (text) => void this.sayInRoom(text),
+      onTip: (target, nim) => void this.tip(target, nim),
       /*
-       * Tipping needs a wallet of your own, not just theirs.
+       * Only a run the board actually holds.
        *
-       * Offered only where one is available, because the alternative is a
-       * button that opens nothing and explains nothing on a plain browser.
+       * The service answers this in the same request that fetches the room,
+       * because it is the only thing that knows: the board keeps the best run
+       * of the day, so having flown today is not the same as having a row.
        */
-      onTip: this.session?.available
-        ? (person, name, nim) => void this.tip(person, name, nim)
-        : null,
+      onShareRun: this.roomShareDate ? () => void this.shareRun() : null,
       onClan: (tag) => {
         this.invitedTag = tag;
         void this.cross(() => this.openClan());
@@ -1869,21 +1973,64 @@ class App {
     if (this.roomSending) return;
 
     this.roomSending = true;
-    this.roomNotice = null;
-    this.paintChat();
+    this.setRoomNotice(null);
 
     const result = await sendChat({ deviceId: this.pilot, text });
     this.roomSending = false;
 
     if (!result.ok) {
-      this.roomNotice = result.error;
-      this.paintChat();
+      this.setRoomNotice(result.error);
       return;
     }
 
     // Re-read rather than appending locally, so what is on screen is what the
     // service actually kept.
     await this.loadChat();
+  }
+
+  /**
+   * Post a run of mine into the room.
+   *
+   * Sends the day and nothing else. The service reads the score off the board
+   * under my own id, so what everybody sees is the row being ranked rather than
+   * a number this device claimed about itself.
+   */
+  private async shareRun(): Promise<void> {
+    if (this.roomSending || !this.roomShareDate) return;
+
+    this.roomSending = true;
+    this.setRoomNotice(null);
+
+    const result = await sendChat({
+      deviceId: this.pilot,
+      // No caption. The card is the message, and making somebody write a line
+      // to go with it is how a share turns into a chore.
+      text: '',
+      runDate: this.roomShareDate,
+    });
+    this.roomSending = false;
+
+    if (!result.ok) {
+      this.setRoomNotice(result.error);
+      return;
+    }
+
+    await this.loadChat();
+  }
+
+  /**
+   * Post the run just flown, then go and look at it.
+   *
+   * Landing in the room afterwards is the point. A share that reports success
+   * and leaves you on the results screen gives no reason to believe anything
+   * happened, and the room is where the tip button is.
+   */
+  private async postRunToRoom(date: string): Promise<void> {
+    const result = await sendChat({ deviceId: this.pilot, text: '', runDate: date });
+
+    this.roomNotice = result.ok ? null : result.error;
+    this.roomNoticeIsLoad = false;
+    void this.cross(() => this.openChat());
   }
 
   /**
@@ -1895,23 +2042,96 @@ class App {
    * this service derived from a signature. A tip is real money leaving a real
    * wallet, so the one thing that must not be possible is a message persuading
    * somebody to pay an address it supplied itself.
+   *
+   * ## The four ways this ends
+   *
+   * Sent. Refused because they have no wallet, which costs nothing and puts a
+   * note on their bell. Refused by the wallet, usually for balance, which is
+   * the wallet's answer rendered in tip words rather than the stake words this
+   * used to borrow. And nowhere to send from, on a browser with no wallet at
+   * all, which now explains itself instead of hiding the button.
+   *
+   * There is no balance check before any of this, and there cannot be: the SDK
+   * has no balance read. The wallet is the thing that knows, so the wallet is
+   * the thing that says no.
    */
-  private async tip(person: ChatPerson, name: string, nim: number): Promise<void> {
-    if (!person.address) return;
+  private async tip(target: TipTarget, nim: number): Promise<void> {
+    this.setRoomNotice(null);
 
-    this.roomNotice = null;
-    this.paintChat();
+    /*
+     * Nobody to pay.
+     *
+     * Nothing opens and nothing is spent. The attempt is still recorded, which
+     * is the entire point of letting the button exist for somebody with no
+     * wallet: they find out they are missing tips, which is the only thing that
+     * makes connecting one feel worth doing.
+     */
+    if (!target.address) {
+      this.setRoomNotice(
+        `${target.name} has not connected a wallet yet. They have been told somebody tried.`,
+      );
+      void reportTip({ deviceId: this.pilot, to: target.pilotId, nim });
+      return;
+    }
+
+    if (!this.session?.available) {
+      this.setRoomNotice('Open sFace in Nimiq Pay to send a tip.');
+      return;
+    }
 
     const result = await settle({
-      recipient: person.address,
+      recipient: target.address,
       amountNim: nim,
-      memo: `sFace tip ${name}`.slice(0, 60),
+      memo: `sFace tip ${target.name}`.slice(0, 60),
     });
 
-    this.roomNotice = result.ok
-      ? `Sent ${nim} NIM to ${name}.`
-      : result.reason;
-    this.paintChat();
+    if (!result.ok) {
+      // The wallet's own refusal, in tip words. It used to arrive talking about
+      // stakes, which is challenge wording on a screen with no challenge on it.
+      this.setRoomNotice(
+        result.reason.replace(
+          'Not enough NIM to cover that stake.',
+          `Not enough NIM for a ${nim} NIM tip.`,
+        ),
+      );
+      return;
+    }
+
+    this.setRoomNotice(`Sent ${nim} NIM to ${target.name}.`);
+
+    /*
+     * Told after the fact, and only as a claim.
+     *
+     * The wallet hands back a hash and this app has no node to check it
+     * against, so what the other pilot is told points at their wallet rather
+     * than asserting the money is there. Not awaited: the tip has happened
+     * whether or not the service hears about it, and a failed report must not
+     * turn a successful payment into an error on screen.
+     */
+    void reportTip({
+      deviceId: this.pilot,
+      to: target.pilotId,
+      nim,
+      tx: result.serializedTx,
+    });
+  }
+
+  /**
+   * Tips waiting for me, from the service.
+   *
+   * The one thing the bell cannot derive locally. Read when the app has an
+   * identity to ask about, and again whenever the room is opened, which is
+   * where somebody is most likely to be looking when one lands.
+   */
+  private async loadTips(): Promise<void> {
+    if (!apiConfigured()) return;
+
+    const result = await fetchTips(this.pilot);
+    if (!result.ok) return;
+
+    this.tipsWaiting = result.value.tips;
+    this.tipPeople = result.value.people;
+    this.paintChrome();
   }
 
   private showSettings(): void {
@@ -3443,6 +3663,17 @@ class App {
         void this.cross(() => this.showContestNew()),
       ),
       onShare: () => void this.share(),
+      /*
+       * Only for the run that is actually on the board.
+       *
+       * The room reads a card off that row, so a later and worse run has
+       * nothing to post: the service would refuse it, correctly, after
+       * somebody had already pressed a button that looked like it would work.
+       */
+      onPostToRoom:
+        this.runIsOnBoard && !this.practice
+          ? () => void this.postRunToRoom(run.mission.date)
+          : null,
       onBoard: () => void this.showBoard(),
       practice: this.practice,
       needsWallet: this.needsWallet,

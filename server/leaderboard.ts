@@ -321,6 +321,54 @@ export function bestScore(network: string, date: string, deviceId: string): numb
   return boards.get(keyOf(network, date))?.get(deviceId)?.score ?? null;
 }
 
+/**
+ * One pilot's run on one day, as something that can be shown to other people.
+ *
+ * ## Why the room asks the board instead of being told
+ *
+ * A run posted into the room has to be resolvable from the sender's id and a
+ * date and nothing else, because anything a message carries about itself is
+ * something anybody can type. A score that arrived attached to a message is a
+ * claim; a score read out of the board is the same number the board is ranking.
+ *
+ * The row id is the pilot id, so there is no lookup to get wrong and no way to
+ * ask for somebody else's run by accident: whoever is asked about is whoever is
+ * answered for.
+ *
+ * Returns null when there is no such row, which is the ordinary case at the
+ * rollover. A card can outlive the board it points at by a few hours, and the
+ * room renders those as a message with the run gone rather than as an error.
+ */
+export interface RunCard {
+  date: string;
+  stage: number;
+  score: number;
+  facesExtracted: number;
+  attackersCleared: number;
+  /** Where it sits on that day's board, so a good run reads as a good run. */
+  rank: number;
+  /** A wallet signed for this score. */
+  signed: boolean;
+  /** And this one is a transaction, which outlives this service. */
+  anchor: string | null;
+}
+
+export function runCard(network: string, date: string, deviceId: string): RunCard | null {
+  const entry = boards.get(keyOf(network, date))?.get(deviceId);
+  if (!entry) return null;
+
+  return {
+    date,
+    stage: entry.stage ?? 1,
+    score: entry.score,
+    facesExtracted: entry.facesExtracted,
+    attackersCleared: entry.attackersCleared,
+    rank: rankOf(network, date, deviceId),
+    signed: Boolean(entry.proof),
+    anchor: entry.anchor ?? null,
+  };
+}
+
 export interface UnsignedRun {
   date: string;
   seed: string;

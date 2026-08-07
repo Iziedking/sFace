@@ -5783,11 +5783,21 @@ body.is-fullscreen .foot,
   flex: none;
 }
 
-/* Only the two that need an answer are marked. A colour on everything is a
-   colour that means nothing. */
+/* Only the ones that need an answer are marked. A colour on everything is a
+   colour that means nothing. Money counts: a tip that arrived is worth looking
+   at, and one that could not arrive is worth doing something about. */
 .bellrow__kind--clan-request,
-.bellrow__kind--contest-settled {
+.bellrow__kind--contest-settled,
+.bellrow__kind--tip-in,
+.bellrow__kind--tip-blocked {
   background: var(--accent);
+}
+
+/* Except this one, which is the only entry in the bell that is a loss. Hollow
+   rather than red: nothing has gone wrong, something is simply not connected. */
+.bellrow__kind--tip-blocked {
+  background: var(--canvas);
+  box-shadow: inset 0 0 0 2px var(--ink);
 }
 
 .bellrow__body {
@@ -6706,6 +6716,118 @@ body.is-fullscreen .foot,
 
 .room__tipamount {
   background: var(--accent);
+}
+
+/* A run somebody posted ---------------------------------------------------
+   The card is the reason anybody tips anybody here: a room of text gives you
+   nothing to pay for. Every number on it came off the board, so it is drawn
+   like a printed slip rather than like a message, and the score is the loudest
+   thing in the line. */
+
+.runcard {
+  border: 2px solid var(--ink);
+  background: var(--canvas);
+  padding: 8px 10px;
+  margin-top: 6px;
+  /* Its own width, so a long name above it cannot stretch it off the edge. */
+  max-width: 100%;
+}
+
+.runcard__top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.runcard__what {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.runcard__rank {
+  margin-left: auto;
+  font-weight: 700;
+  color: var(--accent-deep);
+}
+
+.runcard__score {
+  font-family: var(--mono);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+.runcard__detail {
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+
+.runcard__marks {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.runcard__marks:empty {
+  margin-top: 0;
+}
+
+/* The two claims, in the same mono the rest of the app reserves for anything
+   verifiable. Signed lives in the service; on chain outlives it, so it is the
+   one that gets the fill. */
+.runcard__mark {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  border: 2px solid var(--ink);
+  padding: 1px 5px;
+}
+
+.runcard__mark--chain {
+  background: var(--accent);
+}
+
+.runcard .room__tiprow {
+  margin-top: 8px;
+}
+
+/* A message whose run is no longer on the board. Says so plainly and carries no
+   tip button, because there is nothing left to tip. */
+.room__gone {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-muted);
+  margin: 6px 0 0;
+}
+
+.room__sharerow {
+  display: flex;
+}
+
+.room__share {
+  appearance: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 2px solid var(--ink);
+  background: var(--paper-deep);
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.room__share[hidden] {
+  display: none;
 }
 
 .room__compose {

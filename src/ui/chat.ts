@@ -19,16 +19,36 @@
  * so nobody can post as somebody else and a name change lands on every line at
  * once.
  *
+ * ## Runs, and why they are the thing being tipped
+ *
+ * A room of text gives nobody a reason to send anybody money. You cannot see a
+ * run in it, so the only way to find one worth tipping was to read a
+ * leaderboard on another screen that has no tip button on it.
+ *
+ * So a message can carry a run, drawn as a card with the numbers on it and the
+ * tip attached to that rather than to the person. The card is resolved by the
+ * service from the sender's own board row, so the score on it is the score the
+ * board is ranking. Nothing here renders a number a message supplied itself.
+ *
  * ## Tipping
  *
- * Offered only for pilots whose wallet has been proved by a signature, because
- * that is the only address this app has any business sending NIM to. Somebody
- * who has never signed shows no tip button rather than a broken one.
+ * The button shows even for somebody who has never connected a wallet, which is
+ * the opposite of what this screen used to do. Hiding it was tidier and meant
+ * that person never found out they were missing tips; now the attempt fails in
+ * front of the tipper, costs nothing, and puts a note on the other pilot's bell
+ * telling them what to connect.
  */
 
 import { button, el, mount } from './dom';
 import { maskAddress } from './screens';
-import type { ChatMessage, ChatPerson } from '../net/api';
+import type { ChatMessage, ChatPerson, RunCard } from '../net/api';
+
+/** Who a tip is aimed at. The address is the service's, never the message's. */
+export interface TipTarget {
+  pilotId: string;
+  name: string;
+  address: string | null;
+}
 
 export interface ChatOptions {
   messages: ChatMessage[];
@@ -40,9 +60,19 @@ export interface ChatOptions {
   sending: boolean;
   /** Longest a message may be, from the service so the two cannot disagree. */
   maxLength: number;
+  /**
+   * Today's coin and date, so a card flown today can name what it was flown on.
+   *
+   * Supplied by the app rather than by the service, because the client already
+   * knows today's mission and asking the room to look up a ticker per message
+   * would put a paid read behind a page that refreshes every few seconds.
+   */
+  ticker: string | null;
+  today: string;
   onSend: (text: string) => void;
-  /** Null when this pilot cannot tip: no wallet of their own yet. */
-  onTip: ((person: ChatPerson, name: string, nim: number) => void) | null;
+  onTip: (target: TipTarget, nim: number) => void;
+  /** Null when there is no run of yours on today's board to post. */
+  onShareRun: (() => void) | null;
   onClan: (tag: string) => void;
   onBack: () => void;
 }
@@ -91,6 +121,21 @@ function build(root: HTMLElement, first: ChatOptions): Live {
 
   const sendButton = button('Send', send, 'primary');
 
+  /*
+   * Share sits above the box rather than beside Send.
+   *
+   * Posting a run is not sending what is typed, and a second button on that row
+   * would be pressed by people meaning to send a message. Its own line, its own
+   * label, and it disappears entirely on a day you have not flown.
+   */
+  const share = el('button', {
+    class: 'room__share',
+    type: 'button',
+    text: 'Share my run',
+    title: 'Post your run on the board into the room',
+  });
+  share.addEventListener('click', () => options.onShareRun?.());
+
   field.addEventListener('keydown', (event) => {
     if ((event as KeyboardEvent).key === 'Enter') {
       event.preventDefault();
@@ -112,6 +157,7 @@ function build(root: HTMLElement, first: ChatOptions): Live {
     list,
     notice,
 
+    el('div', { class: 'room__sharerow' }, share),
     el('div', { class: 'room__compose' }, field, sendButton),
 
     el('div', { class: 'actions' }, button('Back', () => options.onBack(), 'ghost')),
@@ -122,6 +168,11 @@ function build(root: HTMLElement, first: ChatOptions): Live {
 
     sendButton.disabled = next.sending;
     sendButton.textContent = next.sending ? 'Sending...' : 'Send';
+
+    // Hidden rather than disabled. A greyed button on a day you have not flown
+    // is a thing to wonder about; nothing there is self explanatory.
+    share.hidden = next.onShareRun === null;
+    share.disabled = next.sending;
 
     notice.textContent = next.notice ?? '';
     notice.hidden = !next.notice;
@@ -166,7 +217,19 @@ function line(message: ChatMessage, options: ChatOptions): HTMLElement {
   const name = person?.name ?? 'Pilot';
   const mine = message.pilotId === options.meId;
 
-  const canTip = options.onTip !== null && !mine && Boolean(person?.address);
+  /*
+   * Everybody but you can be tipped, wallet or no wallet.
+   *
+   * The refusal is the feature. A pilot with nothing to receive with gets told
+   * somebody tried, which is the only way anybody ever learns that connecting
+   * one is worth doing.
+   */
+  const canTip = !mine;
+  const target: TipTarget = {
+    pilotId: message.pilotId,
+    name,
+    address: person?.address ?? null,
+  };
 
   return el(
     'div',
@@ -203,10 +266,80 @@ function line(message: ChatMessage, options: ChatOptions): HTMLElement {
        * This is the one screen in the app that shows what a stranger typed. It
        * goes in as a text node and nothing here ever assembles HTML from it.
        */
-      el('p', { class: 'room__said', text: message.text }),
+      message.text.length > 0 ? el('p', { class: 'room__said', text: message.text }) : null,
 
-      canTip && person ? tipChip(person, name, options) : null,
+      /*
+       * The card, when the run behind it still resolves.
+       *
+       * A message can outlive the board row it points at, because a room keeps
+       * a day and a board is pruned on its own schedule. That reads as a line
+       * about a run that is gone rather than as a broken card, and it
+       * deliberately keeps no tip button: there is nothing left to tip.
+       */
+      message.run
+        ? runCard(message.run, mine, target, options)
+        : message.runDate
+          ? el('p', { class: 'room__gone', text: 'That run has rolled off the board.' })
+          : null,
+
+      // The plain tip, for a line with no run on it. Same money, aimed at the
+      // person rather than at something they did.
+      canTip && !message.run ? tipRow(target, options, null) : null,
     ),
+  );
+}
+
+/**
+ * A run, drawn as the thing worth paying for.
+ *
+ * Every number here came from the board. The score is the one being ranked, the
+ * rank is that day's, and the two marks along the bottom are claims this
+ * service can stand behind: signed means a wallet put its name to the score,
+ * on chain means there is a transaction carrying it that outlives all of this.
+ *
+ * That distinction is the reason a card is worth tipping rather than a name. A
+ * stranger's number means nothing; a stranger's number with a transaction under
+ * it is checkable by anybody who cares to.
+ */
+function runCard(
+  run: RunCard,
+  mine: boolean,
+  target: TipTarget,
+  options: ChatOptions,
+): HTMLElement {
+  // Only today's coin is known here, so an older card says the date instead of
+  // naming a ticker it would be guessing at.
+  const what = run.date === options.today && options.ticker ? options.ticker : run.date;
+
+  return el(
+    'div',
+    { class: 'runcard' },
+
+    el(
+      'div',
+      { class: 'runcard__top' },
+      el('span', { class: 'runcard__what', text: what }),
+      el('span', { class: 'runcard__stage', text: `Stage ${run.stage}` }),
+      run.rank > 0 ? el('span', { class: 'runcard__rank', text: `#${run.rank}` }) : null,
+    ),
+
+    el('div', { class: 'runcard__score', text: run.score.toLocaleString() }),
+
+    el('div', {
+      class: 'runcard__detail',
+      text: `${run.facesExtracted} pulled out, ${run.attackersCleared} down`,
+    }),
+
+    el(
+      'div',
+      { class: 'runcard__marks' },
+      run.signed ? el('span', { class: 'runcard__mark', text: 'SIGNED' }) : null,
+      run.anchor
+        ? el('span', { class: 'runcard__mark runcard__mark--chain', text: 'ON CHAIN' })
+        : null,
+    ),
+
+    mine ? null : tipRow(target, options, run),
   );
 }
 
@@ -237,10 +370,16 @@ function clanChip(tag: string, options: ChatOptions): HTMLElement {
  */
 const TIPS = [1, 5, 10];
 
-function tipChip(person: ChatPerson, name: string, options: ChatOptions): HTMLElement {
+function tipRow(target: TipTarget, options: ChatOptions, run: RunCard | null): HTMLElement {
   const row = el('div', { class: 'room__tiprow' });
 
-  const open = el('button', { class: 'room__tip', type: 'button', text: `Tip ${name}` });
+  const open = el('button', {
+    class: 'room__tip',
+    type: 'button',
+    // On a card the money is for the run, so the label says so. On a bare line
+    // there is nothing to point at but the person.
+    text: run ? 'Tip this run' : `Tip ${target.name}`,
+  });
   open.addEventListener('click', () => {
     open.hidden = true;
     for (const amount of amounts) amount.hidden = false;
@@ -259,7 +398,7 @@ function tipChip(person: ChatPerson, name: string, options: ChatOptions): HTMLEl
       // a dialog that is already up.
       open.hidden = false;
       for (const other of amounts) other.hidden = true;
-      options.onTip?.(person, name, nim);
+      options.onTip(target, nim);
     });
     return node;
   });

@@ -123,6 +123,9 @@ the middle of a run.
   happened.
 - **A run can be written onto the chain.** A real transaction carrying the run,
   with a hash and an explorer entry, that outlives this app.
+- **A wallet is also how you get paid.** Somebody who likes your run can tip it
+  from the room, straight to the address you proved by signing. Without one there
+  is nothing to send to, and the app tells you when somebody tried.
 
 Outside the wallet, every stage is a 25-second preview with the day's real chart
 and real cast, and no score at the end.
@@ -191,21 +194,65 @@ So there is one shared room, and it is the smallest thing that fixes that.
   nobody can post as somebody else.
 - **A clan tag opens that clan.** This is how somebody with no friends here
   finds one that has a seat.
-- **Tip a good run.** NIM goes straight to that pilot's wallet, and only ever to
-  an address a signature already proved. Somebody who has never signed shows no
-  tip button rather than a broken one.
+- **Post your run** and it draws as a card with the score, the stage, the rank
+  and whether it is signed or on chain.
+- **Tip a run** in one tap, from the card.
 - **Paste a contest link** and whoever is around can take the seat.
 - **It lasts a day, like the level.** Tomorrow is a different wreck and a
   different conversation.
 
 <div align="center">
-  <img src="docs/shots/room.png" width="300" alt="The room on a phone: messages from several pilots, each with their X handle, clan tag and masked wallet, with tip buttons">
+  <img src="docs/shots/room.png" width="300" alt="The room on a phone: messages from several pilots with their X handles and clan tags, and a posted run drawn as a card showing 78,952 on stage 7, marked signed and on chain, with 1, 5 and 10 NIM tip buttons under it">
   <p><em>One page, everyone playing today. Tip a run, find a clan, take a bet.</em></p>
 </div>
 
 You have to have flown a run to speak, which is checked against your profile
 rather than asked of your browser. A room anybody can post into without opening
 the game fills with people who are not playing it.
+
+### Tipping
+
+A room of text gives nobody a reason to send anybody money, because you cannot
+see a run in it. So a run is a thing you can post, and the tip is attached to
+the run rather than to the person.
+
+**The number on a card is not something the message said.** A posted run carries
+a date and nothing else. The service reads the row off the board under the id of
+whoever sent the message, so the score you are looking at is the score the board
+is ranking, and a pilot can only ever post their own. Same rule as the name and
+the wallet, for the same reason.
+
+**The money never touches this app.** A tip is a transaction from your wallet to
+theirs, approved in Nimiq Pay. Nothing here holds a balance, and the address is
+one the service derived from a signature, never one that arrived attached to a
+message.
+
+There is no confirmation screen of ours in front of the wallet's, and no balance
+check before it: the SDK has no balance read, so the wallet is the thing that
+knows and the wallet is the thing that says no. Four ways it can end, and each
+says its own sentence:
+
+| | |
+|---|---|
+| They have a wallet | The sheet opens, and the room says it was sent |
+| **They have never connected one** | Nothing opens, nothing is spent, and **they get told somebody tried** |
+| Not enough NIM | The wallet's own refusal, in tip words |
+| You are in a plain browser | Says to open sFace in Nimiq Pay |
+
+That second row is the one worth explaining. This screen used to hide the tip
+button for anybody without a wallet, which was tidy and meant that person never
+found out they were missing tips. Now the attempt costs nothing, fails in front
+of the tipper, and puts one line on the other pilot's bell: somebody tried to
+tip you, connect a wallet to receive tips. It names the amount and not the
+sender, because there is no way for them to check the claim and naming somebody
+who cannot pay them is a taunt rather than information.
+
+A tip is the only thing in the app that happens entirely on somebody else's
+phone, so it is the only notification that cannot be worked out locally. It is
+also the only one that is a **claim**: the wallet hands back a hash and this
+service has no node to check it against, so what the other pilot reads points
+them at their wallet rather than asserting the money is there. Nothing is ever
+totalled into a number beside somebody's name.
 
 ## Three ways to hold it, all of them live
 
@@ -325,7 +372,7 @@ Everything else follows from keeping that boundary:
 | `src/ui/` | DOM screens, the results and board and contest pages | run the simulation |
 | `src/core/` | fixed-timestep loop, input, audio, routing, narration | know about stages |
 | `src/nimiq/` | the Mini App provider, signing, sending | decide what is true |
-| `server/` | the day's mission, boards, contests, verification, anchoring | hold anyone's funds |
+| `server/` | the day's mission, boards, contests, the room, tip news, verification, anchoring | hold anyone's funds |
 
 **Three worlds, one simulation.** A stage is a chart (`terrain.ts`), a city
 (`city.ts`), or concentric rings (`rings.ts`). They share the step function and
@@ -340,6 +387,12 @@ level. That failure is invisible until a staked contest settles wrong.
 **The service holds no keys and no money.** It records who owes what and publishes
 what was paid. Settlement is wallet to wallet, because the Mini App provider signs
 ten methods and none of them creates a contract. See the feedback below.
+
+**Nothing a message says about itself is displayed.** A room line carries the id
+of whoever sent it and, at most, the date of a run. The name, picture, clan,
+wallet and score are all read from this service's own records when the room is
+served. That is what makes a stranger's card worth tipping and the tip safe to
+send.
 
 ### Rules the code holds itself to
 
@@ -450,6 +503,8 @@ server/
   verify      rebuilds a level to check a submitted score
   attest      Nimiq signature verification
   contests    stakes, entrants, standings and settlement
+  chat        the room. messages carry an id and a date, nothing else
+  tips        news of a tip, for the phone that was not there
 scripts/
   shoot.mjs   regenerates every screenshot in this file
 ```

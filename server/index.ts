@@ -31,6 +31,7 @@ import { attachLive } from './live';
 import { backupSnapshot, flush, loadSnapshot, saveNow, scheduleSave } from './store';
 import * as anchor from './anchor';
 import * as chat from './chat';
+import * as tips from './tips';
 import { claimMessage, verifyClaim } from './attest';
 import { levelFacts, refuse } from './verify';
 
@@ -275,10 +276,34 @@ const signBody = z.object({
  * transaction must independently carry the same values. Sending one run's
  * numbers with another run's transaction is exactly what verifyAnchor refuses.
  */
-/** A line in the room. The pilot is checked against a profile, never trusted. */
+/**
+ * A line in the room. The pilot is checked against a profile, never trusted.
+ *
+ * The text may be empty when a run is attached, because the card is the
+ * message. `runDate` says which day to look up, and the row that is read is
+ * always the sender's own: it cannot name another pilot, so there is nothing to
+ * check beyond the date being a date.
+ */
 const chatBody = z.object({
   deviceId,
-  text: z.string().min(1).max(chat.MAX_MESSAGE),
+  text: z.string().max(chat.MAX_MESSAGE),
+  runDate: isoDate.nullish(),
+});
+
+/**
+ * A tip somebody just tried to send.
+ *
+ * Nothing here decides whether money moved. The wallet does that, and this only
+ * records that it was attempted so the other phone can be told. `state` is not
+ * taken from the client either: the service works it out from whether the
+ * recipient has ever proved a wallet.
+ */
+const tipBody = z.object({
+  deviceId,
+  to: deviceId,
+  nim: z.number().positive().max(tips.MAX_TIP_NIM),
+  /** Whatever the wallet handed back, when it handed anything back. */
+  tx: z.string().max(2048).nullish(),
 });
 
 const anchorBody = z.object({
@@ -428,7 +453,24 @@ app.get('/mission/today', limit(120, 40), async (req, res) => {
  */
 app.get('/chat', limit(240, 60), (req, res) => {
   const network = networkOf(req);
-  const messages = chat.recent(network);
+  const stored = chat.recent(network);
+
+  /*
+   * A posted run is resolved here, from the board, under the sender's own id.
+   *
+   * The message said which day. It did not say what happened, because a score
+   * that arrived attached to a message is a number somebody typed, and the
+   * entire point of putting a run in front of people who might tip it is that
+   * it is the number the board is ranking.
+   *
+   * A row that has gone is not an error. A message lives a day and a board is
+   * pruned on its own schedule, so a card can outlive the run it points at; the
+   * room draws those as an ordinary line and says the run has aged out.
+   */
+  const messages = stored.map((message) => ({
+    ...message,
+    run: message.runDate ? board.runCard(network, message.runDate, message.pilotId) : null,
+  }));
 
   /*
    * Everyone who has spoken, sent alongside rather than looked up one by one.
@@ -452,7 +494,19 @@ app.get('/chat', limit(240, 60), (req, res) => {
     };
   }
 
-  res.json({ messages, people });
+  /*
+   * Whether the pilot asking has a run to post, answered in the same request.
+   *
+   * The room needs this to decide whether the share button exists at all, and
+   * the only honest source is the board. Asking here rather than in a second
+   * call keeps a screen that refreshes every few seconds down to one request,
+   * and means the button cannot be offered for a run that is not there.
+   */
+  const asking = String(req.query.deviceId ?? '');
+  const today = utcDate();
+  const canShare = asking.length > 0 && board.runCard(network, today, asking) !== null;
+
+  res.json({ messages, people, you: { runDate: canShare ? today : null } });
 });
 
 app.post('/chat', limit(30, 10), (req, res) => {
@@ -479,10 +533,104 @@ app.post('/chat', limit(30, 10), (req, res) => {
     return;
   }
 
+  /*
+   * A run can only be posted if it is on the board.
+   *
+   * Checked before the message is kept rather than when the room is served, so
+   * a share that cannot work fails in front of the person who tried it instead
+   * of becoming a line with a hole in it that everybody else sees.
+   */
+  if (body.runDate && !board.runCard(network, body.runDate, body.deviceId)) {
+    res.status(400).json({ error: 'That run is not on the board.' });
+    return;
+  }
+
   const result = chat.say({
     network,
     pilotId: body.deviceId,
     text: body.text,
+    runDate: body.runDate ?? null,
+    now: Date.now(),
+  });
+
+  if (!result.ok) {
+    res.status(result.code).json({ error: result.reason });
+    return;
+  }
+
+  res.json({
+    ...result.value,
+    run: result.value.runDate
+      ? board.runCard(network, result.value.runDate, body.deviceId)
+      : null,
+  });
+});
+
+/**
+ * Tips.
+ *
+ * ## What these two routes are not
+ *
+ * They are not a payment path. No NIM passes through this service, it holds no
+ * balance and it cannot stop a transaction. A tip goes wallet to wallet, is
+ * approved in Nimiq Pay, and the chain is the receipt.
+ *
+ * What they do is carry the news. A tip is the only thing in this app that
+ * happens entirely on somebody else's phone, so it is the only thing that
+ * cannot be worked out on the device it needs to reach.
+ *
+ * ## Why the state is decided here
+ *
+ * Whether a tip could be sent at all depends on whether the recipient ever
+ * proved a wallet, and that is this service's own record. Taking the client's
+ * word for it would let a message claim money was sent that never could be.
+ */
+app.get('/tips', limit(120, 60), (req, res) => {
+  const who = String(req.query.deviceId ?? '');
+  if (who.length === 0) {
+    res.status(400).json({ error: 'Who is asking?' });
+    return;
+  }
+
+  const network = networkOf(req);
+  const waiting = tips.inbox(network, who);
+
+  // Only the senders of tips that were actually sent. A refused one names
+  // nobody, on purpose, so its sender is not put on the wire either.
+  const people: Record<string, unknown> = {};
+  for (const id of tips.sendersFor(network, who)) {
+    const profile = profiles.get(id, network);
+    if (!profile) continue;
+    people[id] = { name: profile.name, avatarUrl: profile.avatarUrl };
+  }
+
+  res.json({ tips: waiting, people });
+});
+
+app.post('/tips', limit(60, 60), (req, res) => {
+  const parsed = tipBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: firstIssue(parsed.error) });
+    return;
+  }
+
+  const body = parsed.data;
+  const network = networkOf(req);
+
+  const recipient = profiles.get(body.to, network);
+  if (!recipient) {
+    res.status(404).json({ error: 'No such pilot.' });
+    return;
+  }
+
+  const result = tips.record({
+    network,
+    from: body.deviceId,
+    to: body.to,
+    nim: body.nim,
+    // The service's own record of a proved wallet, never the client's claim.
+    state: recipient.address ? 'sent' : 'no-wallet',
+    tx: body.tx ?? null,
     now: Date.now(),
   });
 
@@ -492,6 +640,18 @@ app.post('/chat', limit(30, 10), (req, res) => {
   }
 
   res.json(result.value);
+});
+
+/** Everything waiting has been seen. A watermark, so nothing half-marks. */
+app.post('/tips/seen', limit(60, 60), (req, res) => {
+  const parsed = z.object({ deviceId }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: firstIssue(parsed.error) });
+    return;
+  }
+
+  tips.markSeen(networkOf(req), parsed.data.deviceId, Date.now());
+  res.json({ ok: true });
 });
 
 app.get('/stats', limit(60, 20), (req, res) => {
@@ -1620,6 +1780,7 @@ function snapshot() {
     clans: clans.serialise(),
     contests: contests.serialise(),
     chat: chat.serialise(),
+    tips: tips.serialise(),
     signals: signals.serialise(),
   };
 }
@@ -1637,6 +1798,7 @@ async function main(): Promise<void> {
     clans.restore((restored as { clans?: unknown }).clans);
     contests.restore((restored as { contests?: unknown }).contests);
     chat.restore((restored as { chat?: unknown }).chat);
+    tips.restore((restored as { tips?: unknown }).tips);
     signals.restore((restored as { signals?: unknown }).signals);
     console.log('[sface] restored snapshot');
 
@@ -1681,6 +1843,7 @@ async function main(): Promise<void> {
   clans.onChange(() => scheduleSave(snapshot));
   contests.onChange(() => scheduleSave(snapshot));
   chat.onChange(() => scheduleSave(snapshot));
+  tips.onChange(() => scheduleSave(snapshot));
   signals.onChange(() => scheduleSave(snapshot));
 
   startRefreshLoop();
@@ -1693,6 +1856,7 @@ async function main(): Promise<void> {
       contests.expireDue(Date.now());
       contests.prune(Date.now());
       chat.prune(Date.now());
+      tips.prune(Date.now());
       signals.pruneUnlocks();
       // Traces are the bulkiest thing stored and a seed is only playable on
       // its own day, so everything but today's room goes.

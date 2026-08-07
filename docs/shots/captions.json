@@ -76,7 +76,7 @@
   },
   {
     "name": "room",
-    "caption": "The room: everybody playing today, in one place. Clan tags open the clan, and a tip goes to a wallet that has been proved.",
+    "caption": "The room: everybody playing today, in one place. A posted run carries the score off the board with the tip attached to it, and the money goes to a wallet the service proved from a signature.",
     "view": "phone"
   }
 ]

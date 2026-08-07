@@ -543,6 +543,15 @@ export interface ResultsOptions {
   onReplay: () => void;
   onChallenge: () => void;
   onShare: () => void;
+  /**
+   * Post this run into the room, or null when there is nothing to post.
+   *
+   * Separate from sharing, which sends a picture out to X. This one puts the
+   * run in front of the people playing today, where somebody can tip it, and
+   * it only exists when the run is the one on the board: the room resolves a
+   * card from that row, so anything else would post a card that is not there.
+   */
+  onPostToRoom: (() => void) | null;
   /** True when this run was practice, so none of it was kept. */
   practice: boolean;
   /** Set when a money path refused for want of a wallet. Carries the door. */
@@ -839,6 +848,9 @@ export function renderResults(root: HTMLElement, options: ResultsOptions): void 
             : null,
           button(t('challengeFriend'), options.onChallenge, 'ghost'),
           button(t('shareRun'), options.onShare, 'ghost'),
+          options.onPostToRoom
+            ? button('Post it in the room', options.onPostToRoom, 'ghost')
+            : null,
           el(
             'div',
             { class: 'minor' },

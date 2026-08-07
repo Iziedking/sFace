@@ -601,20 +601,53 @@ export interface ChatPerson {
   address: string | null;
 }
 
+/**
+ * A run somebody posted into the room.
+ *
+ * Resolved by the service from the sender's own board row, never carried by the
+ * message. That is what makes it worth tipping: the score here is the score the
+ * board is ranking, not one that arrived attached to a line of text.
+ */
+export interface RunCard {
+  date: string;
+  stage: number;
+  score: number;
+  facesExtracted: number;
+  attackersCleared: number;
+  rank: number;
+  signed: boolean;
+  anchor: string | null;
+}
+
 export interface ChatMessage {
   id: string;
   pilotId: string;
   text: string;
   at: number;
+  /** Set when a run was posted, whether or not the row still resolves. */
+  runDate: string | null;
+  /** Null on an ordinary line, and on a card whose board row has aged out. */
+  run: RunCard | null;
 }
 
 export interface ChatRoom {
   messages: ChatMessage[];
   people: Record<string, ChatPerson>;
+  /**
+   * The day of a run of yours that could be posted, or null.
+   *
+   * Answered by the service from the board, in the same request that fetches
+   * the room. A share button offered for a run that is not on the board is one
+   * that fails when it is pressed.
+   */
+  shareableRunDate: string | null;
 }
 
-export async function fetchChat(): Promise<ApiResult<ChatRoom>> {
-  const result = await request<{ messages?: unknown; people?: unknown }>('/chat');
+export async function fetchChat(deviceId: string): Promise<ApiResult<ChatRoom>> {
+  const query = new URLSearchParams({ deviceId });
+  const result = await request<{ messages?: unknown; people?: unknown; you?: unknown }>(
+    `/chat?${query}`,
+  );
   if (!result.ok) return result;
 
   const rows = Array.isArray(result.value.messages) ? result.value.messages : [];
@@ -629,16 +662,125 @@ export async function fetchChat(): Promise<ApiResult<ChatRoom>> {
         const m = row as Record<string, unknown>;
         if (typeof m.id !== 'string' || typeof m.text !== 'string') return [];
         if (typeof m.pilotId !== 'string') return [];
-        return [{ id: m.id, pilotId: m.pilotId, text: m.text, at: numberOf(m.at) }];
+        return [
+          {
+            id: m.id,
+            pilotId: m.pilotId,
+            text: m.text,
+            at: numberOf(m.at),
+            runDate: typeof m.runDate === 'string' ? m.runDate : null,
+            run: runCardOf(m.run),
+          },
+        ];
       }),
       people,
+      shareableRunDate: shareableOf(result.value.you),
     },
+  };
+}
+
+function shareableOf(raw: unknown): string | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const date = (raw as { runDate?: unknown }).runDate;
+  return typeof date === 'string' ? date : null;
+}
+
+/**
+ * A run card, checked rather than cast.
+ *
+ * Anything malformed becomes a line without a card, which is the same thing the
+ * room shows for a run whose board row has aged out. A half-drawn card with a
+ * tip button under it is the one outcome worth going out of the way to avoid.
+ */
+function runCardOf(raw: unknown): RunCard | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.date !== 'string' || typeof r.score !== 'number') return null;
+
+  return {
+    date: r.date,
+    stage: numberOf(r.stage),
+    score: r.score,
+    facesExtracted: numberOf(r.facesExtracted),
+    attackersCleared: numberOf(r.attackersCleared),
+    rank: numberOf(r.rank),
+    signed: r.signed === true,
+    anchor: typeof r.anchor === 'string' ? r.anchor : null,
   };
 }
 
 export async function sendChat(body: {
   deviceId: string;
   text: string;
+  /** The day of a run to post alongside it. The service resolves the row. */
+  runDate?: string | null;
 }): Promise<ApiResult<ChatMessage>> {
   return request<ChatMessage>('/chat', { method: 'POST', body: JSON.stringify(body) });
+}
+
+export type TipState = 'sent' | 'no-wallet';
+
+export interface TipRecord {
+  id: string;
+  from: string;
+  to: string;
+  nim: number;
+  state: TipState;
+  at: number;
+}
+
+export interface TipInbox {
+  tips: TipRecord[];
+  /** Names for the senders of tips that were sent. A refused one names nobody. */
+  people: Record<string, { name: string; avatarUrl: string | null }>;
+}
+
+export async function fetchTips(deviceId: string): Promise<ApiResult<TipInbox>> {
+  const query = new URLSearchParams({ deviceId });
+  const result = await request<{ tips?: unknown; people?: unknown }>(`/tips?${query}`);
+  if (!result.ok) return result;
+
+  const rows = Array.isArray(result.value.tips) ? result.value.tips : [];
+
+  return {
+    ok: true,
+    value: {
+      tips: rows.flatMap((row) => {
+        const t = row as Record<string, unknown>;
+        if (typeof t.id !== 'string' || typeof t.from !== 'string') return [];
+        if (typeof t.to !== 'string' || typeof t.nim !== 'number') return [];
+        return [
+          {
+            id: t.id,
+            from: t.from,
+            to: t.to,
+            nim: t.nim,
+            state: t.state === 'no-wallet' ? ('no-wallet' as const) : ('sent' as const),
+            at: numberOf(t.at),
+          },
+        ];
+      }),
+      people: (result.value.people ?? {}) as TipInbox['people'],
+    },
+  };
+}
+
+/**
+ * Tell the service a tip was attempted, so the other phone can hear about it.
+ *
+ * Deliberately says nothing about whether it worked. The service decides that
+ * from its own record of who has proved a wallet, because a client claiming
+ * money was sent is not evidence that any was.
+ */
+export async function reportTip(body: {
+  deviceId: string;
+  to: string;
+  nim: number;
+  tx?: string | null;
+}): Promise<ApiResult<TipRecord>> {
+  return request<TipRecord>('/tips', { method: 'POST', body: JSON.stringify(body) });
+}
+
+export async function markTipsSeen(deviceId: string): Promise<ApiResult<unknown>> {
+  return request('/tips/seen', { method: 'POST', body: JSON.stringify({ deviceId }) });
 }
