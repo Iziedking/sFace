@@ -80,6 +80,7 @@ import {
   postGhost,
   postScore,
   anchorPostedScore,
+  sendChat,
   signPostedScore,
   reportSettlement,
   type BoardEntry,
@@ -170,6 +171,9 @@ function claimMessage(run: RunState): string {
   });
 }
 import { renderSettings } from './ui/settings';
+import { renderChat } from './ui/chat';
+import type { ChatMessage, ChatPerson } from './net/api';
+import { MAX_MESSAGE as CHAT_MAX } from './data/chat';
 import { renderProfile } from './ui/profile';
 import { trackViewport } from './core/viewport';
 import {
@@ -186,6 +190,7 @@ import { renderContest } from './ui/contest';
 import { isExpired, remainingFor, stageRange, stagesLabel, type Contest } from './data/contests';
 import {
   createContest,
+  fetchChat,
   fetchContest,
   fetchContests,
   joinContest,
@@ -557,6 +562,16 @@ class App {
     openMinutes: null,
   };
   private challengeNotice: string | null = null;
+  /** The room, held so a refresh does not blank it while it reloads. */
+  private room: { messages: ChatMessage[]; people: Record<string, ChatPerson> } = {
+    messages: [],
+    people: {},
+  };
+  private roomLoading = false;
+  private roomNotice: string | null = null;
+  private roomSending = false;
+  /** Cleared when the room screen is left, so it stops polling an empty page. */
+  private roomTimer: number | null = null;
   /**
    * Whether the run just finished is the one on today's board.
    *
@@ -1497,6 +1512,9 @@ class App {
       case 'signals':
         this.openSignals();
         return;
+      case 'chat':
+        this.openChat();
+        return;
       case 'loadout':
         this.showLoadout();
         return;
@@ -1750,6 +1768,150 @@ class App {
       },
     });
     this.notice = null;
+  }
+
+  /**
+   * The room.
+   *
+   * Painted first, fetched second, same split as the clan screen: a render that
+   * starts its own fetch and then repaints is how that screen once ended up
+   * looping against the service.
+   */
+  private openChat(): void {
+    this.ui.className = '';
+    this.screen = 'chat';
+    this.paintChat();
+    void this.loadChat();
+    this.startRoomPolling();
+  }
+
+  /**
+   * Re-read the room while it is open, and only while it is open.
+   *
+   * A conversation nobody is looking at is not worth a request every few
+   * seconds, and a timer that outlives its screen keeps one running for the
+   * rest of the session. Cleared by every other screen through stopRoomPolling.
+   */
+  private startRoomPolling(): void {
+    this.stopRoomPolling();
+    this.roomTimer = window.setInterval(() => {
+      if (this.screen !== 'chat') {
+        this.stopRoomPolling();
+        return;
+      }
+      void this.loadChat();
+    }, 6_000);
+  }
+
+  private stopRoomPolling(): void {
+    if (this.roomTimer === null) return;
+    window.clearInterval(this.roomTimer);
+    this.roomTimer = null;
+  }
+
+  private async loadChat(): Promise<void> {
+    if (!apiConfigured()) {
+      this.roomNotice = 'The room needs the service, which is not configured here.';
+      this.paintChat();
+      return;
+    }
+
+    this.roomLoading = this.room.messages.length === 0;
+    const result = await fetchChat();
+    this.roomLoading = false;
+
+    if (!result.ok) {
+      // Only complain when there is nothing to show. A failed refresh over a
+      // room that is already on screen is not worth an error on top of it.
+      if (this.room.messages.length === 0) this.roomNotice = result.error;
+      this.paintChat();
+      return;
+    }
+
+    this.room = result.value;
+    this.roomNotice = null;
+    if (this.screen === 'chat') this.paintChat();
+  }
+
+  private paintChat(): void {
+    if (this.screen !== 'chat') return;
+
+    renderChat(this.ui, {
+      messages: this.room.messages,
+      people: this.room.people,
+      meId: this.pilot,
+      loading: this.roomLoading,
+      notice: this.roomNotice,
+      sending: this.roomSending,
+      maxLength: CHAT_MAX,
+      onSend: (text) => void this.sayInRoom(text),
+      /*
+       * Tipping needs a wallet of your own, not just theirs.
+       *
+       * Offered only where one is available, because the alternative is a
+       * button that opens nothing and explains nothing on a plain browser.
+       */
+      onTip: this.session?.available
+        ? (person, name, nim) => void this.tip(person, name, nim)
+        : null,
+      onClan: (tag) => {
+        this.invitedTag = tag;
+        void this.cross(() => this.openClan());
+      },
+      onBack: () => {
+        this.stopRoomPolling();
+        void this.cross(() => this.showBrief());
+      },
+    });
+  }
+
+  private async sayInRoom(text: string): Promise<void> {
+    if (this.roomSending) return;
+
+    this.roomSending = true;
+    this.roomNotice = null;
+    this.paintChat();
+
+    const result = await sendChat({ deviceId: this.pilot, text });
+    this.roomSending = false;
+
+    if (!result.ok) {
+      this.roomNotice = result.error;
+      this.paintChat();
+      return;
+    }
+
+    // Re-read rather than appending locally, so what is on screen is what the
+    // service actually kept.
+    await this.loadChat();
+  }
+
+  /**
+   * Send somebody NIM for a good run.
+   *
+   * ## Why the address is never taken from the room
+   *
+   * It comes from the sender's profile, and a profile only carries an address
+   * this service derived from a signature. A tip is real money leaving a real
+   * wallet, so the one thing that must not be possible is a message persuading
+   * somebody to pay an address it supplied itself.
+   */
+  private async tip(person: ChatPerson, name: string, nim: number): Promise<void> {
+    if (!person.address) return;
+
+    this.roomNotice = null;
+    this.paintChat();
+
+    const result = await settle({
+      recipient: person.address,
+      amountNim: nim,
+      memo: `sFace tip ${name}`.slice(0, 60),
+    });
+
+    this.roomNotice = result.ok
+      ? `Sent ${nim} NIM to ${name}.`
+      : result.reason;
+    this.paintChat();
   }
 
   private showSettings(): void {
@@ -2370,6 +2532,19 @@ class App {
         : 'head to head, clans',
       contestsAlert: this.contests.some((c) => c.hostId === this.pilot),
       onContests: this.needsName('Contests', () => void this.cross(() => this.showContests())),
+      onRoom: () => void this.cross(() => this.openChat()),
+      /*
+       * How many people have spoken today, not how many messages.
+       *
+       * A count of lines rewards whoever talks most; a count of people answers
+       * the question somebody opening this actually has, which is whether there
+       * is anybody in there.
+       */
+      roomValue: (() => {
+        const people = new Set(this.room.messages.map((m) => m.pilotId)).size;
+        if (people === 0) return 'say hello';
+        return `${people} ${people === 1 ? 'pilot' : 'pilots'} talking`;
+      })(),
       stage: stageAt(this.activeStage()),
       stagesCleared: this.cleared(),
       contracts: this.todaysContracts(),

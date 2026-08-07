@@ -73,5 +73,10 @@
     "name": "testnet",
     "caption": "On testnet, the faucet claim lives in the app rather than behind a link.",
     "view": "phone"
+  },
+  {
+    "name": "room",
+    "caption": "The room: everybody playing today, in one place. Clan tags open the clan, and a tip goes to a wallet that has been proved.",
+    "view": "phone"
   }
 ]

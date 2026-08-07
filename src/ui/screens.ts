@@ -54,6 +54,9 @@ export interface BriefOptions {
   contestsValue: string;
   contestsAlert: boolean;
   onContests: () => void;
+  onRoom: () => void;
+  /** What the room tile says under its name, so it can carry a count. */
+  roomValue: string;
   /** The stage about to be flown, and how far up the campaign they are. */
   stage: Stage;
   stagesCleared: number;
@@ -268,6 +271,15 @@ export function renderBrief(root: HTMLElement, options: BriefOptions): void {
               options.profileAlert,
             ),
             tile('Settings', 'sound, controls, network', options.onSettings),
+            /*
+             * The room, last.
+             *
+             * Everything above it is today's game or your own account. This is
+             * the only tile that leads to other people, which is why it carries
+             * a mark: a leaderboard full of strangers you cannot reach is
+             * exactly the problem it exists to solve.
+             */
+            tile('Room', options.roomValue, options.onRoom, false, 'room'),
           ),
         ),
       ),
@@ -291,11 +303,25 @@ function tile(
   value: string,
   onClick: () => void,
   live = false,
+  icon?: string,
 ): HTMLElement {
   const node = el(
     'button',
     { class: live ? 'tile tile--live' : 'tile', type: 'button' },
-    el('span', { class: 'tile__label', text: label }),
+    el(
+      'span',
+      { class: 'tile__label' },
+      /*
+       * A mark rather than a picture.
+       *
+       * Drawn in CSS so it inherits the ink, never arrives late, and cannot be
+       * a missing image on a slow connection. Only the room carries one, which
+       * is what makes it read as the different kind of place it is: everything
+       * else on this page is today's game or your own account.
+       */
+      icon ? el('span', { class: `tile__icon tile__icon--${icon}`, 'aria-hidden': 'true' }) : null,
+      el('span', { text: label }),
+    ),
     el('span', { class: 'tile__value', text: value }),
   );
   node.addEventListener('click', onClick);

@@ -584,3 +584,61 @@ export async function reportContestPayment(
     body: JSON.stringify(body),
   });
 }
+
+/**
+ * The room: recent messages, and who said them.
+ *
+ * People come alongside rather than being looked up one at a time. A hundred
+ * lines from a dozen pilots is a dozen profiles, and asking for each of them
+ * separately is the difference between one small payload and a hundred.
+ */
+export interface ChatPerson {
+  name: string;
+  avatarUrl: string | null;
+  clanTag: string | null;
+  lifetimeFace: number;
+  /** Only ever an address the service proved from a signature. Null otherwise. */
+  address: string | null;
+}
+
+export interface ChatMessage {
+  id: string;
+  pilotId: string;
+  text: string;
+  at: number;
+}
+
+export interface ChatRoom {
+  messages: ChatMessage[];
+  people: Record<string, ChatPerson>;
+}
+
+export async function fetchChat(): Promise<ApiResult<ChatRoom>> {
+  const result = await request<{ messages?: unknown; people?: unknown }>('/chat');
+  if (!result.ok) return result;
+
+  const rows = Array.isArray(result.value.messages) ? result.value.messages : [];
+  const people = (result.value.people ?? {}) as Record<string, ChatPerson>;
+
+  return {
+    ok: true,
+    value: {
+      // Shape-checked rather than cast. Anything malformed becomes a missing
+      // line, never an exception in the middle of a render.
+      messages: rows.flatMap((row) => {
+        const m = row as Record<string, unknown>;
+        if (typeof m.id !== 'string' || typeof m.text !== 'string') return [];
+        if (typeof m.pilotId !== 'string') return [];
+        return [{ id: m.id, pilotId: m.pilotId, text: m.text, at: numberOf(m.at) }];
+      }),
+      people,
+    },
+  };
+}
+
+export async function sendChat(body: {
+  deviceId: string;
+  text: string;
+}): Promise<ApiResult<ChatMessage>> {
+  return request<ChatMessage>('/chat', { method: 'POST', body: JSON.stringify(body) });
+}

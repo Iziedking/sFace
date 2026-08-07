@@ -176,6 +176,37 @@ was mined. The explorer settles that.
   <p><em>Built for phones. Both thumbs, and a guide written for a thumb.</em></p>
 </div>
 
+## The room
+
+A leaderboard full of strangers is not a community. Everything social here used
+to assume you already knew somebody: a clan is joined by tag, a contest entered
+by link, a challenge sent to a friend. That works for people who arrived with
+friends and leaves everybody else with a list of names they have no way to
+reach.
+
+So there is one shared room, and it is the smallest thing that fixes that.
+
+- **Everyone shows as their X handle**, with their clan beside it. The name,
+  picture, clan and wallet are read from the profile when the room is served, so
+  nobody can post as somebody else.
+- **A clan tag opens that clan.** This is how somebody with no friends here
+  finds one that has a seat.
+- **Tip a good run.** NIM goes straight to that pilot's wallet, and only ever to
+  an address a signature already proved. Somebody who has never signed shows no
+  tip button rather than a broken one.
+- **Paste a contest link** and whoever is around can take the seat.
+- **It lasts a day, like the level.** Tomorrow is a different wreck and a
+  different conversation.
+
+<div align="center">
+  <img src="docs/shots/room.png" width="300" alt="The room on a phone: messages from several pilots, each with their X handle, clan tag and masked wallet, with tip buttons">
+  <p><em>One page, everyone playing today. Tip a run, find a clan, take a bet.</em></p>
+</div>
+
+You have to have flown a run to speak, which is checked against your profile
+rather than asked of your browser. A room anybody can post into without opening
+the game fills with people who are not playing it.
+
 ## Three ways to hold it, all of them live
 
 Most games make you pick a control scheme and then punish you for picking wrong.
@@ -411,7 +442,7 @@ src/
     ally        stage 7: intel, and the gates it opens
     assist      aim help, and why a staked run is levelled
   render/     canvas only. reads state, never writes it
-  ui/         DOM screens
+  ui/         DOM screens, including the room
   net/        anything that talks to the service
 server/
   oracle      builds the day from CoinGecko and Fear and Greed

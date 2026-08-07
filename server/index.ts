@@ -30,6 +30,7 @@ import * as xauth from './xauth';
 import { attachLive } from './live';
 import { backupSnapshot, flush, loadSnapshot, saveNow, scheduleSave } from './store';
 import * as anchor from './anchor';
+import * as chat from './chat';
 import { claimMessage, verifyClaim } from './attest';
 import { levelFacts, refuse } from './verify';
 
@@ -274,6 +275,12 @@ const signBody = z.object({
  * transaction must independently carry the same values. Sending one run's
  * numbers with another run's transaction is exactly what verifyAnchor refuses.
  */
+/** A line in the room. The pilot is checked against a profile, never trusted. */
+const chatBody = z.object({
+  deviceId,
+  text: z.string().min(1).max(chat.MAX_MESSAGE),
+});
+
 const anchorBody = z.object({
   deviceId,
   date: isoDate,
@@ -405,6 +412,88 @@ app.get('/mission/today', limit(120, 40), async (req, res) => {
  * proved one, so the number is smaller than the flattering version and cannot
  * be padded by anybody who feels like posting an address. See walletCount.
  */
+/*
+ * The room.
+ *
+ * ## Why the message carries only an id
+ *
+ * A posted message says who sent it and nothing else about them. The name, the
+ * picture, the clan, the rank and the wallet are all read from that pilot's
+ * profile when the room is served, so nobody can post under somebody else's
+ * name by asking to, and a name change shows up on every line at once.
+ *
+ * It is also what makes tipping safe: the address a tip goes to is one this
+ * service proved from a signature, never one that arrived attached to a
+ * message.
+ */
+app.get('/chat', limit(240, 60), (req, res) => {
+  const network = networkOf(req);
+  const messages = chat.recent(network);
+
+  /*
+   * Everyone who has spoken, sent alongside rather than looked up one by one.
+   *
+   * The room needs a name and a picture for every line, and a hundred lines
+   * from a dozen people is a dozen profiles. Sending them once as a map is the
+   * difference between one small payload and a hundred repeated ones.
+   */
+  const people: Record<string, unknown> = {};
+  for (const id of chat.speakers(network)) {
+    const profile = profiles.get(id, network);
+    if (!profile) continue;
+
+    people[id] = {
+      name: profile.name,
+      avatarUrl: profile.avatarUrl,
+      clanTag: profile.clanTag,
+      lifetimeFace: profile.lifetimeFace,
+      // Only ever an address a signature proved. See the note above.
+      address: profile.address,
+    };
+  }
+
+  res.json({ messages, people });
+});
+
+app.post('/chat', limit(30, 10), (req, res) => {
+  const parsed = chatBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: firstIssue(parsed.error) });
+    return;
+  }
+
+  const body = parsed.data;
+  const network = networkOf(req);
+
+  /*
+   * You have to have played to speak.
+   *
+   * Not gatekeeping for its own sake: a room anybody can post into without ever
+   * opening the game is a room that fills with people who are not playing it.
+   * One run is the whole requirement, and it is checked against the profile
+   * rather than asked of the client.
+   */
+  const profile = profiles.get(body.deviceId, network);
+  if (!profile || profile.runs <= 0) {
+    res.status(403).json({ error: 'Fly a run first. The room is for people playing.' });
+    return;
+  }
+
+  const result = chat.say({
+    network,
+    pilotId: body.deviceId,
+    text: body.text,
+    now: Date.now(),
+  });
+
+  if (!result.ok) {
+    res.status(result.code).json({ error: result.reason });
+    return;
+  }
+
+  res.json(result.value);
+});
+
 app.get('/stats', limit(60, 20), (req, res) => {
   res.json(profiles.usage(networkOf(req)));
 });
@@ -1530,6 +1619,7 @@ function snapshot() {
     ghosts: ghosts.serialise(),
     clans: clans.serialise(),
     contests: contests.serialise(),
+    chat: chat.serialise(),
     signals: signals.serialise(),
   };
 }
@@ -1546,6 +1636,7 @@ async function main(): Promise<void> {
     ghosts.restore((restored as { ghosts?: unknown }).ghosts);
     clans.restore((restored as { clans?: unknown }).clans);
     contests.restore((restored as { contests?: unknown }).contests);
+    chat.restore((restored as { chat?: unknown }).chat);
     signals.restore((restored as { signals?: unknown }).signals);
     console.log('[sface] restored snapshot');
 
@@ -1589,6 +1680,7 @@ async function main(): Promise<void> {
   ghosts.onChange(() => scheduleSave(snapshot));
   clans.onChange(() => scheduleSave(snapshot));
   contests.onChange(() => scheduleSave(snapshot));
+  chat.onChange(() => scheduleSave(snapshot));
   signals.onChange(() => scheduleSave(snapshot));
 
   startRefreshLoop();
@@ -1600,6 +1692,7 @@ async function main(): Promise<void> {
       challenges.prune();
       contests.expireDue(Date.now());
       contests.prune(Date.now());
+      chat.prune(Date.now());
       signals.pruneUnlocks();
       // Traces are the bulkiest thing stored and a seed is only playable on
       // its own day, so everything but today's room goes.

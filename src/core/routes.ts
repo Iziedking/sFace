@@ -46,6 +46,7 @@ export type Screen =
   | 'campaign'
   | 'dispatch'
   | 'signals'
+  | 'chat'
   | 'brief'
   | 'run'
   | 'results'
@@ -75,6 +76,7 @@ const FIXED: ReadonlyArray<readonly [Screen, string]> = [
   ['clan', '/clan'],
   ['dispatch', '/dispatch'],
   ['signals', '/signals'],
+  ['chat', '/room'],
   ['loadout', '/loadout'],
   ['settings', '/settings'],
   /*

@@ -6590,3 +6590,169 @@ body.is-fullscreen .foot,
     flex: 1 1 100%;
   }
 }
+
+/* The room ===================================================================
+   One shared page where the people playing today can find each other. It is the
+   only screen that shows what a stranger typed, so it is also the only one that
+   has to survive a long word, a wall of text and an empty state. */
+
+.room__list {
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  /* Its own scroller, so the conversation moves without the page moving. A
+     room that scrolls the whole screen loses the composer off the bottom. */
+  max-height: min(52vh, 480px);
+  overflow-y: auto;
+  display: grid;
+  gap: 0;
+}
+
+.room__empty {
+  padding: 22px 16px;
+  margin: 0;
+  text-align: center;
+  color: var(--ink-muted);
+  font-size: 13px;
+}
+
+.room__line {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--paper-deep);
+}
+
+.room__line:last-child {
+  border-bottom: none;
+}
+
+/* Your own lines, marked without being shouted. A room where half the messages
+   are a different colour reads as two conversations. */
+.room__line--mine {
+  background: var(--accent-pale);
+}
+
+.room__avatar {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: var(--paper-deep);
+  object-fit: cover;
+}
+
+.room__body {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.room__who {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.room__name {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.room__clan,
+.room__tip,
+.room__tipamount {
+  appearance: none;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  border: 2px solid var(--ink);
+  background: var(--canvas);
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.room__clan {
+  background: var(--paper-deep);
+}
+
+.room__wallet {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-muted);
+}
+
+/* Breaks anywhere, because a message can be one long unbroken string and a room
+   that scrolls sideways is a room nobody can read. */
+.room__said {
+  font-size: 14px;
+  line-height: 1.45;
+  margin: 3px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.room__tiprow {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.room__tip {
+  color: var(--accent-deep);
+}
+
+.room__tipamount {
+  background: var(--accent);
+}
+
+.room__compose {
+  display: flex;
+  gap: 8px;
+}
+
+.room__field {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--sans);
+  font-size: 16px;
+  border: 2px solid var(--ink);
+  background: var(--canvas);
+  padding: 10px 12px;
+}
+
+.room__notice {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--danger);
+  margin: 0;
+}
+
+/* The mark on the room tile -------------------------------------------------
+   Two overlapping speech shapes, drawn rather than fetched so it inherits the
+   ink and cannot be a missing image on a slow connection. No emoji anywhere. */
+
+.tile__icon--room {
+  display: inline-block;
+  position: relative;
+  width: 13px;
+  height: 10px;
+  margin-right: 6px;
+  border: 2px solid currentColor;
+  border-radius: 3px;
+  vertical-align: -1px;
+}
+
+.tile__icon--room::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 11px;
+  height: 8px;
+  border: 2px solid currentColor;
+  border-radius: 3px;
+  background: var(--paper);
+}
