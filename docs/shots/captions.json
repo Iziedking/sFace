@@ -76,12 +76,12 @@
   },
   {
     "name": "room",
-    "caption": "The room: everybody playing today, in one place. A reply quotes what it answers, a burst from one person reads as one turn, and an sFace invite becomes a button rather than a link.",
+    "caption": "The room: everybody playing today, in one place. Your messages sit on the right and everybody else's on the left, a reply quotes what it answers, and a burst from one person reads as one turn.",
     "view": "phone"
   },
   {
     "name": "room-tip",
-    "caption": "A run posted into the room. The score is read off the board rather than carried by the message, and the tip goes to a wallet the service proved from a signature.",
+    "caption": "A run posted into the room, with a reply to the reader marked in accent below it. The score is read off the board rather than carried by the message, and the tip goes to a wallet the service proved from a signature.",
     "view": "phone"
   }
 ]

@@ -194,8 +194,12 @@ So there is one shared room, and it is the smallest thing that fixes that.
   nobody can post as somebody else.
 - **A clan tag opens that clan.** This is how somebody with no friends here
   finds one that has a seat.
+- **Your messages sit on the right, everybody else's on the left.** Which side a
+  line is on is the fastest thing to read on a screen full of them.
 - **Reply to anybody**, and the answer carries a quote of what it is answering.
   Tap the quote to go to the original.
+- **An answer to you is coloured differently** from an answer to somebody else,
+  and reads as *You* rather than as your own handle.
 - **Post your run** and it draws as a card with the score, the stage, the rank
   and whether it is signed or on chain.
 - **Tip a run** in one tap, from the card.
@@ -204,13 +208,17 @@ So there is one shared room, and it is the smallest thing that fixes that.
   different conversation.
 
 <div align="center">
-  <img src="docs/shots/room.png" width="300" alt="The room on a phone: a question, an answer quoting it, three lines from one pilot grouped as one turn, and a pasted contest link rendered as a take a seat button">
+  <img src="docs/shots/room.png" width="300" alt="The room on a phone: other pilots' messages on the left with their avatars, a reply quoting the question above it, and three lines from one pilot grouped as a single turn">
   <p><em>One page, everyone playing today. Answer somebody, find a clan, take a bet.</em></p>
 </div>
 
 A burst from one person reads as one turn: the first line carries the avatar,
 name, clan, wallet and time, and the rest are just what they said. Repeating a
 masked wallet under every sentence turns a conversation into a list.
+
+Only one thing here gets a colour of its own, and it is a reply **to you**. The
+question in a busy room is never "is this a reply", it is "is this a reply to
+me", and marking every reply alike answers the wrong one.
 
 You have to have flown a run to speak, which is checked against your profile
 rather than asked of your browser. A room anybody can post into without opening
@@ -247,7 +255,7 @@ is ranking, and a pilot can only ever post their own. Same rule as the name and
 the wallet, for the same reason.
 
 <div align="center">
-  <img src="docs/shots/room-tip.png" width="300" alt="A run posted in the room, drawn as a card reading PEPE stage 7, 78,952, marked signed and on chain, with a tip this run button under it">
+  <img src="docs/shots/room-tip.png" width="300" alt="A run posted in the room, drawn as a card reading PEPE stage 7, 78,952, marked signed and on chain, with a tip this run button under it, and below it a reply quoting the reader's own message in orange marked You">
   <p><em>The card is the message. Every number on it came off the board.</em></p>
 </div>
 

@@ -375,7 +375,9 @@ function line(
     {
       class: [
         'room__line',
-        mine ? 'room__line--mine' : '',
+        // Which side of the room this belongs on. Yours is the right, everybody
+        // else's is the left, which is the whole of the layout rule.
+        mine ? 'room__line--mine' : 'room__line--theirs',
         grouped ? 'room__line--grouped' : '',
       ]
         .filter(Boolean)
@@ -488,10 +490,26 @@ function quote(
     }));
   }
 
+  /*
+   * An answer to you is coloured differently from an answer to anybody else.
+   *
+   * That is the distinction worth spending a colour on. Scrolling a busy room,
+   * the question is never "is this a reply" but "is this a reply to me", and
+   * marking every reply the same way answers the question nobody asked.
+   *
+   * It also reads as "You" rather than as your own handle, because a quote of
+   * yourself with your name on it is a sentence about a stranger.
+   */
+  const toMe = parent.pilotId === options.meId;
+
   const node = el(
     'button',
-    { class: 'room__quote', type: 'button', title: 'Go to that message' },
-    el('span', { class: 'room__quotename', text: nameOf(parent.pilotId, options) }),
+    {
+      class: toMe ? 'room__quote room__quote--tome' : 'room__quote',
+      type: 'button',
+      title: 'Go to that message',
+    },
+    el('span', { class: 'room__quotename', text: toMe ? 'You' : nameOf(parent.pilotId, options) }),
     el('span', { class: 'room__quotetext', text: summarise(parent) }),
   );
 

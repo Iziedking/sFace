@@ -6636,30 +6636,86 @@ body.is-fullscreen .foot,
   font-size: 13px;
 }
 
+/* Two sides ----------------------------------------------------------------
+   Yours on the right, everybody else's on the left, the way every chat app on
+   the phone this runs on already does it. Which side a message is on is the
+   fastest thing to read on a screen full of them: faster than a name, faster
+   than a colour, and it survives being glanced at while scrolling.
+
+   The dividing rules are gone with it. A row of full-width separators is what
+   a list needs and what a conversation does not: the gap between two bubbles
+   already says where one ends. */
+
 .room__line {
   display: flex;
   gap: 10px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--paper-deep);
+  padding: 7px 12px;
   /* Same reason as the track above: without this the row refuses to be
      narrower than the longest quote inside it. */
   min-width: 0;
 }
 
-.room__line:last-child {
-  border-bottom: none;
+.room__line--mine {
+  /* Avatar on the outside, which is the edge the eye follows on this side. */
+  flex-direction: row-reverse;
 }
 
-/* Your own lines, marked without being shouted. A room where half the messages
-   are a different colour reads as two conversations. */
-.room__line--mine {
+/* The bubble stops well short of the far edge, so the side it is on is
+   obvious even when a message is long enough to fill the line. */
+.room__body {
+  max-width: 84%;
+  flex: 0 1 auto;
+}
+
+.room__line--mine .room__body {
+  text-align: right;
+}
+
+/* Everything inside a right-hand bubble that is a row has to turn around with
+   it, or it packs against the wrong edge and reads as a stray. */
+.room__line--mine .room__acts,
+.room__line--mine .room__acts > .room__tiprow {
+  justify-content: flex-end;
+}
+
+/* The name row reverses rather than just aligning right, so the handle stays
+   next to the avatar it belongs to and the time falls to the outside. */
+.room__line--mine .room__who {
+  flex-direction: row-reverse;
+}
+
+.room__line--mine .room__when {
+  /* The auto margin is what pushed it away from the name on the left-hand
+     side. Reversed, the row already puts it at the far edge. */
+  margin-left: 0;
+}
+
+/* Your own, marked with a fill as well as a side. Quiet: a room where half the
+   messages are a loud colour reads as two conversations rather than one. This
+   pair is about whose message it is rather than where it sits, which is why it
+   did not move when the sides were swapped. */
+.room__line--mine .room__said,
+.room__line--mine .room__gone {
   background: var(--accent-pale);
 }
 
+.room__line--theirs .room__said,
+.room__line--theirs .room__gone {
+  background: var(--paper-deep);
+}
+
+.room__said,
+.room__gone {
+  display: inline-block;
+  border: 2px solid var(--ink);
+  padding: 6px 10px;
+  text-align: left;
+}
+
 .room__avatar {
-  width: 30px;
-  height: 30px;
-  flex: 0 0 30px;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
   border: 2px solid var(--ink);
   border-radius: 50%;
   background: var(--paper-deep);
@@ -6712,7 +6768,7 @@ body.is-fullscreen .foot,
    that scrolls sideways is a room nobody can read. */
 .room__said {
   font-size: 14px;
-  line-height: 1.45;
+  line-height: 1.4;
   margin: 3px 0 0;
   overflow-wrap: anywhere;
 }
@@ -6823,14 +6879,27 @@ body.is-fullscreen .foot,
   margin: 6px 0 0;
 }
 
+/* A card is a printed slip and reads left to right whichever side it is on.
+   Mirroring the numbers with the bubble would make a right-hand run harder to
+   read than a left-hand one, for nothing. That includes the tip on it: the
+   button belongs under the score it is paying for. */
+.room__line--mine .runcard {
+  text-align: left;
+}
+
+.room__line--mine .runcard .room__tiprow,
+.room__line--mine .runcard__marks,
+.room__line--mine .runcard__top {
+  justify-content: flex-start;
+}
+
 /* Grouped lines -------------------------------------------------------------
    A burst from one person reads as one turn. The follow-on lines keep the
    avatar column so the text stays in line, and drop everything else: repeating
    a masked wallet under every sentence turns a conversation into a list. */
 
 .room__line--grouped {
-  padding-top: 2px;
-  border-bottom: none;
+  padding-top: 1px;
 }
 
 .room__avatar--tuck {
@@ -6846,10 +6915,12 @@ body.is-fullscreen .foot,
 }
 
 /* The line a quote sent you to. Held long enough to find, then let go, so a
-   refresh never inherits a highlight from a jump nobody remembers making. */
-.room__line--found {
-  background: var(--accent-pale);
-  box-shadow: inset 3px 0 0 var(--accent);
+   refresh never inherits a highlight from a jump nobody remembers making.
+   On the bubble rather than the row, because a row is mostly empty space now
+   and highlighting empty space points at nothing. */
+.room__line--found .room__said,
+.room__line--found .runcard {
+  box-shadow: 0 0 0 3px var(--accent);
 }
 
 /* What a reply is answering ------------------------------------------------- */
@@ -6872,6 +6943,17 @@ body.is-fullscreen .foot,
   overflow: hidden;
 }
 
+/* An answer to you, which is the one worth a colour.
+   The question in a busy room is never "is this a reply", it is "is this a
+   reply to me", and marking every reply alike answers the wrong one. */
+.room__quote--tome {
+  background: var(--accent);
+}
+
+.room__quote--tome .room__quotetext {
+  color: var(--ink);
+}
+
 .room__quote--gone {
   border-left-color: var(--ink-faint);
   cursor: default;
@@ -6891,6 +6973,13 @@ body.is-fullscreen .foot,
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+}
+
+.room__line--mine .room__quote {
+  border-left: none;
+  border-right: 3px solid var(--accent);
+  flex-direction: row-reverse;
+  text-align: right;
 }
 
 .room__acts {
