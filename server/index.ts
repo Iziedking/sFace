@@ -683,6 +683,18 @@ app.post('/board', limit(20, 10), async (req, res) => {
   res.json({
     rank: result.rank,
     profile,
+    /*
+     * Whether THIS run is the one on the board.
+     *
+     * The board keeps the best run of the day, so a later, worse run leaves the
+     * earlier row in place. Anything that attaches to a row, which is what
+     * anchoring does, can only attach to that one.
+     *
+     * Without this the client had no way to know, so it offered to write any
+     * run onto the chain, took the fee, and only then found a row whose score
+     * did not match. Reported with the fee already gone.
+     */
+    onBoard: board.bestScore(networkOf(req), body.date, body.deviceId) === body.score,
     ...(body.publicKey && body.signature
       ? { signed: !signatureRefused }
       : {}),

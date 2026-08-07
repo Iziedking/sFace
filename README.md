@@ -121,9 +121,53 @@ the middle of a run.
 - **Scores are signed and re-checked.** Your wallet signs the score. The service
   rebuilds the level from the same seed and refuses a run that could not have
   happened.
+- **A run can be written onto the chain.** A real transaction carrying the run,
+  with a hash and an explorer entry, that outlives this app.
 
 Outside the wallet, every stage is a 25-second preview with the day's real chart
 and real cast, and no score at the end.
+
+### Signing a run and writing it on chain are two different things
+
+They both involve your wallet and they are not the same, which caused enough
+confusion in testing to be worth stating plainly.
+
+|  | Signing | Writing on chain |
+| --- | --- | --- |
+| What happens | Your wallet signs a message | Your wallet sends a transaction |
+| Costs | Nothing | A network fee |
+| Produces | A signature next to your board row | A transaction hash on a public explorer |
+| Proves | This run is yours | This run existed, to anyone, forever |
+| Survives sFace shutting down | No | Yes |
+| Needs NIM | No | Yes |
+
+**Signing** is an Ed25519 signature over the date, the seed, the stage and the
+score. It is verified by the service and published beside the row, so a stranger
+can check it against your address without trusting us. Nothing is sent anywhere,
+so there is no hash to look for and its absence is not a failure.
+
+**Writing on chain** sends an ordinary Nimiq transaction whose data field carries
+the same four values. That is what a chain is for: the record exists whether or
+not this service does. Every anchored run goes to one address, so a single
+explorer page lists every run ever written and every wallet that wrote one.
+
+Only the run on the daily board can be written, because that is the row an anchor
+attaches to, and the board keeps your best run of the day.
+
+#### What the service checks, and what it cannot
+
+When the wallet hands back a full serialized transaction, the service takes it
+apart and checks five things before recording anything: the signature, the
+sender, the recipient, the data, and which chain it is on. Each one is a way to
+fake an anchor, and leaving any of them out makes the other four decorative.
+
+When the wallet hands back only a transaction hash, which is what Nimiq Pay does
+today, the service records it and says so: the transaction exists, but its
+contents have not been seen from here. That is a weaker claim and it is labelled
+as one rather than dressed up.
+
+Either way the service has no Nimiq node, so it cannot tell you the transaction
+was mined. The explorer settles that.
 
 <div align="center">
   <img src="docs/shots/home-phone.png" width="270" alt="sFace on a phone">
@@ -206,6 +250,65 @@ CoinGecko and Fear and Greed, reads crypto X for the story, and verifies scores.
 
 **Chain.** Nimiq Pay Mini App SDK. Ed25519 signatures over the Nimiq
 signed-message envelope, verified on the server with `@nimiq/core`.
+
+### How the pieces fit
+
+Three layers, and the line between them is load bearing rather than tidy.
+
+```
+      the day                          your device                    the service
+ ┌──────────────────┐         ┌───────────────────────────┐      ┌──────────────────┐
+ │ market: worst    │         │  src/game/   the simulation│      │ server/          │
+ │   top-100 coin   │  seed   │    no DOM, no canvas,      │      │   daily mission  │
+ │ Fear and Greed   │────────▶│    no fetch, deterministic │◀────▶│   leaderboard    │
+ │ crypto X roster  │ + roster│                            │ score│   contests       │
+ └──────────────────┘         │  src/render/ canvas only   │      │   verify.ts      │
+                              │    reads state, never      │      │    rebuilds the  │
+                              │    writes it               │      │    level from    │
+                              │                            │      │    the same seed │
+                              │  src/ui/     DOM screens   │      └────────┬─────────┘
+                              │  src/core/   loop, input,  │               │
+                              │    audio, routes, voice    │               │
+                              │  src/nimiq/  the wallet    │               │
+                              └─────────────┬──────────────┘               │
+                                            │ sign / send                  │
+                                            ▼                              ▼
+                                    ┌───────────────┐            ┌──────────────────┐
+                                    │  Nimiq Pay    │            │   Nimiq chain    │
+                                    │  your wallet  │───────────▶│  anchored runs   │
+                                    └───────────────┘            └──────────────────┘
+```
+
+**`src/game/` is free of the browser, and that is the whole design.** No DOM, no
+canvas, no `fetch`, no clock but its own. It is a pure function of a seed and a
+list of inputs, which is what lets `server/verify.ts` import the same modules in
+Node and rebuild any run from scratch. A score is not trusted because it arrived
+politely; it is checked by replaying the level it claims to come from.
+
+Everything else follows from keeping that boundary:
+
+| Layer | Holds | Never does |
+| --- | --- | --- |
+| `src/game/` | terrain, city, rings, enemies, faces, bullets, the step function | touch the DOM, fetch, or read the wall clock |
+| `src/render/` | canvas drawing, camera, HUD, hints | change game state |
+| `src/ui/` | DOM screens, the results and board and contest pages | run the simulation |
+| `src/core/` | fixed-timestep loop, input, audio, routing, narration | know about stages |
+| `src/nimiq/` | the Mini App provider, signing, sending | decide what is true |
+| `server/` | the day's mission, boards, contests, verification, anchoring | hold anyone's funds |
+
+**Three worlds, one simulation.** A stage is a chart (`terrain.ts`), a city
+(`city.ts`), or concentric rings (`rings.ts`). They share the step function and
+differ in what stops you, which is why stage seven could become a puzzle without a
+second engine.
+
+**Two random streams.** `levelRng` lays the level out once; `runRng` handles
+everything reactive. Mixing them would mean one player killing an enemy early
+shifted every later draw, and two people on one seed would stop playing the same
+level. That failure is invisible until a staked contest settles wrong.
+
+**The service holds no keys and no money.** It records who owes what and publishes
+what was paid. Settlement is wallet to wallet, because the Mini App provider signs
+ten methods and none of them creates a contract. See the feedback below.
 
 ### Rules the code holds itself to
 

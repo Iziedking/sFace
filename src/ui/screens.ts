@@ -532,15 +532,6 @@ export interface ResultsOptions {
   progress: StageProgress;
   canSign: boolean;
   /**
-   * True once this run has been signed.
-   *
-   * Needed because canSign goes false the moment it succeeds, and a panel that
-   * only knows it can no longer offer something cannot tell a job done from a
-   * job never available. That is how a successful signing came to look exactly
-   * like nothing happening.
-   */
-  signed: boolean;
-  /**
    * Whether to offer writing this run onto the chain.
    *
    * Only on a run worth the fee. See anchorOffer for why it is not on every
@@ -1262,8 +1253,16 @@ function field(label: string, value: string): HTMLElement {
  * at the cost of the one thing this product is actually selling, which is that
  * what it tells you is true.
  *
- * So it says what signing buys: a mark on the row, tied to an address, that a
- * stranger can check without trusting us.
+ * So it says what signing buys, in one line, and nothing else.
+ *
+ * ## Why there is no panel afterwards
+ *
+ * There was, briefly: a confirmation added because the offer used to vanish on
+ * success, which read as nothing having happened. It fixed the silence and
+ * replaced it with a wall of explanation on a screen somebody is trying to
+ * leave. The wallet already confirms the signature at the moment it happens,
+ * which is the right place for it, and the board row carries the mark from then
+ * on. So the offer simply goes when it is done.
  */
 /**
  * The offer to write this run onto the chain.
@@ -1293,20 +1292,13 @@ function anchorOffer(options: ResultsOptions): HTMLElement | null {
       'div',
       { class: 'notice notice--anchored' },
       el('p', { class: 'notice__lead', text: 'This run is on the chain.' }),
-      el('p', {
-        text: 'A transaction carrying this date, level, stage and score was sent from your wallet. It is public, permanent, and readable without this app.',
-      }),
       el('p', { class: 'notice__hash', text: options.anchorHash }),
     );
   }
 
   /*
-   * Sent, but the service could not write it down.
-   *
-   * The same silence as above and worse, because this one costs a fee: the
-   * offer disappeared, no hash appeared, and nothing said whether the money had
-   * bought anything. The transaction is real either way, so this says so and
-   * says not to pay for another.
+   * Sent, but not linked to the row. The transaction is real and the fee is
+   * spent, so this says so and says not to pay for another.
    */
   if (options.anchorSent) {
     return el(
@@ -1314,12 +1306,11 @@ function anchorOffer(options: ResultsOptions): HTMLElement | null {
       { class: 'notice notice--anchor' },
       el('p', { class: 'notice__lead', text: 'Sent from your wallet.' }),
       el('p', {
-        text: 'The transaction went out and carries this run. sFace could not record it against your row, so there is no link here yet, but it is on the chain and the anchor address shows it.',
+        text: 'It is on the chain. sFace could not link it here, so do not send it again.',
       }),
       options.anchorNotice
         ? el('p', { class: 'notice__warn', text: options.anchorNotice })
         : null,
-      el('p', { class: 'notice__aside', text: 'Do not send it again. It is already there.' }),
     );
   }
 
@@ -1331,12 +1322,10 @@ function anchorOffer(options: ResultsOptions): HTMLElement | null {
     el('p', {
       class: 'notice__lead',
       text: options.anchorNotable
-        ? 'Your best yet. Put it on the chain?'
-        : 'Put this one on the chain?',
+        ? 'Your best yet. Write it on chain?'
+        : 'Write this score on chain?',
     }),
-    el('p', {
-      text: 'Your wallet sends a transaction carrying the date, the level, the stage and this score. It gets a hash and appears on the explorer, so the run is provable without this app existing. It costs a network fee.',
-    }),
+    el('p', { text: 'Costs a small network fee. It becomes permanent and public.' }),
     options.anchorNotice
       ? el('p', { class: 'notice__warn', text: options.anchorNotice })
       : null,
@@ -1354,56 +1343,25 @@ function anchorOffer(options: ResultsOptions): HTMLElement | null {
 }
 
 function signOffer(options: ResultsOptions): HTMLElement | null {
-  /*
-   * Say it worked.
-   *
-   * This panel used to vanish the moment signing succeeded, because the only
-   * thing it knew was that it could no longer offer to sign. From the player's
-   * side that is indistinguishable from nothing having happened: they approved
-   * something in their wallet, came back, and the screen had quietly removed
-   * the button without a word.
-   *
-   * Reported exactly that way, along with the reasonable next thought, which is
-   * that the score should now be on a chain somewhere. It is not, and this is
-   * where that has to be said: signing costs nothing and sends nothing, so
-   * there is no hash to look for and its absence is not a failure.
-   */
-  if (options.signed) {
-    return el(
-      'div',
-      { class: 'notice notice--anchored' },
-      el('p', { class: 'notice__lead', text: 'This run is signed.' }),
-      el('p', {
-        text: 'Your wallet’s signature is published next to this run on the board, so anyone can check it against your address.',
-      }),
-      el('p', {
-        class: 'notice__aside',
-        text: 'Signing costs no NIM and sends no transaction, so there is no hash for it. Writing the run onto the chain is a separate thing.',
-      }),
-    );
-  }
-
   if (!options.canSign) return null;
 
   return el(
     'div',
     { class: 'notice notice--sign' },
+    el('p', { class: 'notice__lead', text: 'Prove this run is yours?' }),
     el('p', {
-      class: 'notice__lead',
-      text: 'Your score is on the board. Want to prove it is yours?',
+      text: 'Your wallet signs it and the board publishes the signature. Free, and nothing is sent.',
     }),
-    el('p', {
-      text: 'Your wallet signs this run and the board publishes the signature next to it, so anyone can check it against your address. It costs no NIM and sends no transaction.',
-    }),
-    options.signNotice
-      ? el('p', { class: 'notice__warn', text: options.signNotice })
-      : null,
+    options.signNotice ? el('p', { class: 'notice__warn', text: options.signNotice }) : null,
     el(
       'div',
       { class: 'actions' },
-      button(options.signing ? 'Waiting for the wallet...' : 'Sign this run', options.onSign, 'ghost', {
-        disabled: options.signing,
-      }),
+      button(
+        options.signing ? 'Waiting for the wallet...' : 'Sign this run',
+        options.onSign,
+        'ghost',
+        { disabled: options.signing },
+      ),
     ),
   );
 }

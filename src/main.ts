@@ -557,6 +557,13 @@ class App {
     openMinutes: null,
   };
   private challengeNotice: string | null = null;
+  /**
+   * Whether the run just finished is the one on today's board.
+   *
+   * Reported by the service when the score is posted, because only it knows
+   * which row survived: the board keeps the best run of the day.
+   */
+  private runIsOnBoard = false;
   /** Set while a wallet is being asked to send an anchor transaction. */
   private anchoring = false;
   private anchorNotice: string | null = null;
@@ -3278,7 +3285,6 @@ class App {
         !this.practice &&
         (this.session?.available ?? false) &&
         (this.rank ?? 0) > 0,
-      signed: this.signedRun === true,
       signing: this.signing,
       signNotice: this.signNotice,
       onSign: () => void this.signRun(run),
@@ -3312,7 +3318,16 @@ class App {
         !this.practice &&
         ANCHOR_ADDRESS !== '' &&
         (this.session?.available ?? false) &&
-        (this.rank ?? 0) > 0,
+        (this.rank ?? 0) > 0 &&
+        /*
+         * Only the run that is actually on the board.
+         *
+         * The board keeps the best run of the day and anchoring attaches to
+         * that row, so a later and worse run has nothing to attach to. Offering
+         * it anyway spent the fee first and found out afterwards, which is the
+         * one failure a paid action must never have.
+         */
+        this.runIsOnBoard,
       anchorNotable: this.worthAnchoring(run),
       anchoring: this.anchoring,
       anchorNotice: this.anchorNotice,
@@ -3612,6 +3627,17 @@ class App {
 
     if (result.ok) {
       this.rank = result.value.rank;
+      /*
+       * Whether this run is the one the board kept.
+       *
+       * Only the service knows: it keeps the best run of the day, so a later
+       * and worse one leaves the earlier row in place. Anchoring attaches to
+       * that row, so this decides whether the offer can appear at all.
+       *
+       * An older service that does not send it leaves this false, which offers
+       * nothing rather than offering something that would take a fee and fail.
+       */
+      this.runIsOnBoard = result.value.onBoard === true;
 
       // The server returns the updated record alongside the rank, so the
       // strip on the results screen is the real total rather than a local

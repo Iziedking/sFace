@@ -295,7 +295,16 @@ export function attachAnchor(input: {
 
   if (!entry) return { ok: false, reason: 'No run of yours on that board.' };
   if (entry.score !== input.score) {
-    return { ok: false, reason: 'That transaction is for a different run.' };
+    /*
+     * The board keeps the best run of the day, so this is somebody trying to
+     * anchor a later, worse one. Said as the actual reason: the old wording
+     * blamed the transaction, which sent people looking at their wallet for a
+     * problem that was never there.
+     */
+    return {
+      ok: false,
+      reason: 'Only your best run of the day is on the board, and this is not it.',
+    };
   }
   if (entry.anchor) return { ok: true, already: true };
 
@@ -305,6 +314,11 @@ export function attachAnchor(input: {
   entry.address = entry.address ?? input.address;
   persist();
   return { ok: true, already: false };
+}
+
+/** The score currently on the board for this pilot, or null if they have none. */
+export function bestScore(network: string, date: string, deviceId: string): number | null {
+  return boards.get(keyOf(network, date))?.get(deviceId)?.score ?? null;
 }
 
 export interface UnsignedRun {

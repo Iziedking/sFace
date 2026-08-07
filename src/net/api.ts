@@ -179,10 +179,25 @@ export async function fetchBoard(date: string): Promise<ApiResult<BoardEntry[]>>
  * profile strip on the same screen would be a bug the player can see, and two
  * calls is exactly how that happens.
  */
+/** What the board says back when a run is posted. */
+export interface ScorePosted {
+  rank: number;
+  profile?: unknown;
+  /**
+   * Whether THIS run is the one on the board.
+   *
+   * The board keeps the best run of the day, and anchoring attaches to that
+   * row, so a later and worse run has nothing to attach to. Optional because an
+   * older service does not send it, and absent has to mean no rather than yes:
+   * offering to anchor a run that cannot be anchored spends a fee to find out.
+   */
+  onBoard?: boolean;
+}
+
 export async function postScore(
   submission: ScoreSubmission,
-): Promise<ApiResult<{ rank: number; profile?: unknown }>> {
-  return request<{ rank: number; profile?: unknown }>('/board', {
+): Promise<ApiResult<ScorePosted>> {
+  return request<ScorePosted>('/board', {
     method: 'POST',
     body: JSON.stringify(submission),
   });
