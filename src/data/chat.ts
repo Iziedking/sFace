@@ -54,6 +54,60 @@ function classify(code: number): 'keep' | 'space' | 'drop' {
 }
 
 /**
+ * An invite somebody pasted into the room.
+ *
+ * ## Why only our own links, and why nothing else is ever a link
+ *
+ * The room is the one screen in this app that shows what a stranger typed, and
+ * turning arbitrary text into something tappable is how a room full of
+ * strangers becomes a delivery mechanism. So no URL in a message ever becomes a
+ * link. Not one.
+ *
+ * The single exception is an sFace invite on this app's own origin, which
+ * becomes a button that goes to a screen inside the app rather than out to the
+ * web. It is checked by parsing the URL and comparing the origin, never by
+ * looking for the origin inside the string: `https://evil.example/?x=sface.site`
+ * contains our host and is not our host.
+ *
+ * Everything else, including a link to somewhere real and useful, stays as
+ * plain text that the reader can decide about themselves.
+ */
+export interface Invite {
+  kind: 'contest' | 'challenge';
+  id: string;
+}
+
+export function findInvite(text: string, origin: string): Invite | null {
+  if (origin.length === 0) return null;
+
+  for (const token of text.split(/\s+/)) {
+    if (!token.startsWith('http://') && !token.startsWith('https://')) continue;
+
+    let url: URL;
+    try {
+      url = new URL(token);
+    } catch {
+      continue;
+    }
+
+    // The parsed origin, not a substring of the text.
+    if (url.origin !== new URL(origin).origin) continue;
+
+    const contest = url.searchParams.get('contest');
+    if (contest) return { kind: 'contest', id: contest };
+
+    const challenge = url.searchParams.get('c');
+    if (challenge) return { kind: 'challenge', id: challenge };
+
+    // The routed forms, /contest/<id> and /challenge/<id>.
+    const match = /^\/(contest|challenge)\/([^/]+)$/.exec(url.pathname);
+    if (match) return { kind: match[1] as Invite['kind'], id: decodeURIComponent(match[2]!) };
+  }
+
+  return null;
+}
+
+/**
  * Clean a message down to the text it claims to be.
  *
  * Shared so the count in the field and the count on the service agree. A client

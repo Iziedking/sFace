@@ -194,21 +194,45 @@ So there is one shared room, and it is the smallest thing that fixes that.
   nobody can post as somebody else.
 - **A clan tag opens that clan.** This is how somebody with no friends here
   finds one that has a seat.
+- **Reply to anybody**, and the answer carries a quote of what it is answering.
+  Tap the quote to go to the original.
 - **Post your run** and it draws as a card with the score, the stage, the rank
   and whether it is signed or on chain.
 - **Tip a run** in one tap, from the card.
-- **Paste a contest link** and whoever is around can take the seat.
+- **Paste a contest link** and it becomes a button that takes a seat.
 - **It lasts a day, like the level.** Tomorrow is a different wreck and a
   different conversation.
 
 <div align="center">
-  <img src="docs/shots/room.png" width="300" alt="The room on a phone: messages from several pilots with their X handles and clan tags, and a posted run drawn as a card showing 78,952 on stage 7, marked signed and on chain, with 1, 5 and 10 NIM tip buttons under it">
-  <p><em>One page, everyone playing today. Tip a run, find a clan, take a bet.</em></p>
+  <img src="docs/shots/room.png" width="300" alt="The room on a phone: a question, an answer quoting it, three lines from one pilot grouped as one turn, and a pasted contest link rendered as a take a seat button">
+  <p><em>One page, everyone playing today. Answer somebody, find a clan, take a bet.</em></p>
 </div>
+
+A burst from one person reads as one turn: the first line carries the avatar,
+name, clan, wallet and time, and the rest are just what they said. Repeating a
+masked wallet under every sentence turns a conversation into a list.
 
 You have to have flown a run to speak, which is checked against your profile
 rather than asked of your browser. A room anybody can post into without opening
 the game fills with people who are not playing it.
+
+**Somebody answering you shows up on the bell**, and that is worked out from the
+room rather than stored anywhere: which messages point at one of mine, and did
+any land since I last had the room open. Whose message is whose comes from the
+service's record of who said what, so nothing can claim to be answering you.
+
+### Links in a message
+
+**No link anybody pastes is ever turned into a link.** Not one, however useful
+it looks. This is the only screen in the app that shows what a stranger typed,
+and making arbitrary text tappable is how a room full of strangers becomes a
+delivery mechanism.
+
+The single exception is an sFace invite on this app's own origin, which becomes
+a button that goes to a screen **inside** the app rather than out to the web. It
+is checked by parsing the URL and comparing origins, never by looking for our
+host inside the string: `https://evil.example/?x=sface.site` contains our host
+and is not our host.
 
 ### Tipping
 
@@ -221,6 +245,11 @@ a date and nothing else. The service reads the row off the board under the id of
 whoever sent the message, so the score you are looking at is the score the board
 is ranking, and a pilot can only ever post their own. Same rule as the name and
 the wallet, for the same reason.
+
+<div align="center">
+  <img src="docs/shots/room-tip.png" width="300" alt="A run posted in the room, drawn as a card reading PEPE stage 7, 78,952, marked signed and on chain, with a tip this run button under it">
+  <p><em>The card is the message. Every number on it came off the board.</em></p>
+</div>
 
 **The money never touches this app.** A tip is a transaction from your wallet to
 theirs, approved in Nimiq Pay. Nothing here holds a balance, and the address is
@@ -389,7 +418,8 @@ what was paid. Settlement is wallet to wallet, because the Mini App provider sig
 ten methods and none of them creates a contract. See the feedback below.
 
 **Nothing a message says about itself is displayed.** A room line carries the id
-of whoever sent it and, at most, the date of a run. The name, picture, clan,
+of whoever sent it and, at most, the date of a run and the id of the message it
+answers. The name, picture, clan,
 wallet and score are all read from this service's own records when the room is
 served. That is what makes a stranger's card worth tipping and the tip safe to
 send.
@@ -503,7 +533,7 @@ server/
   verify      rebuilds a level to check a submitted score
   attest      Nimiq signature verification
   contests    stakes, entrants, standings and settlement
-  chat        the room. messages carry an id and a date, nothing else
+  chat        the room. a message carries an id, a date and a reply, no more
   tips        news of a tip, for the phone that was not there
 scripts/
   shoot.mjs   regenerates every screenshot in this file

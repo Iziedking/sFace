@@ -288,6 +288,8 @@ const chatBody = z.object({
   deviceId,
   text: z.string().max(chat.MAX_MESSAGE),
   runDate: isoDate.nullish(),
+  /** The message being answered. Dropped by the store if it does not exist. */
+  replyTo: z.string().max(64).nullish(),
 });
 
 /**
@@ -550,6 +552,7 @@ app.post('/chat', limit(30, 10), (req, res) => {
     pilotId: body.deviceId,
     text: body.text,
     runDate: body.runDate ?? null,
+    replyTo: body.replyTo ?? null,
     now: Date.now(),
   });
 

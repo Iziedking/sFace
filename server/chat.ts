@@ -21,9 +21,15 @@
  *
  * ## What it deliberately does not do
  *
- * No editing, no deletion by the author, no threads, no reactions. Every one of
- * those is a store of its own and a screen of its own, and none of them is what
- * somebody opening this needs. The room is a list of lines with names on them.
+ * No editing, no deletion by the author, no reactions, and no threads. Every one
+ * of those is a store of its own and a screen of its own, and none of them is
+ * what somebody opening this needs.
+ *
+ * A reply is the exception, and deliberately the cheap version of one: a message
+ * points at another message and the room draws what it is answering above it.
+ * There is no thread to open, no reply count, and no separate view. In a room
+ * where a dozen people are talking at once, being able to say which line you are
+ * answering is the difference between a conversation and a wall.
  *
  * ## Identity is not taken on trust
  *
@@ -76,6 +82,16 @@ export interface ChatMessage {
    * is looked up under the id of whoever sent the message.
    */
   runDate: string | null;
+  /**
+   * The message this one answers, by id.
+   *
+   * Kept only when that message actually exists here, so a line cannot claim to
+   * answer something nobody can see. What the reply looks like is worked out
+   * where it is drawn: the room already holds every message, so resolving the
+   * parent on the client means a name change lands on the quote too, and one
+   * reply never carries a stale copy of what it is answering.
+   */
+  replyTo: string | null;
 }
 
 interface Stored extends ChatMessage {
@@ -93,6 +109,7 @@ export function say(input: {
   pilotId: string;
   text: string;
   runDate?: string | null;
+  replyTo?: string | null;
   now: number;
 }): Result<ChatMessage> {
   const text = tidyMessage(input.text);
@@ -118,12 +135,25 @@ export function say(input: {
     return { ok: false, reason: 'One at a time. Give it a second.', code: 429 };
   }
 
+  /*
+   * A reply has to point at something real, on this chain, that is still here.
+   *
+   * An id that resolves to nothing would draw as a quote of a message nobody
+   * can find, and one pointing across chains would quote a room the reader is
+   * not in. Both are refused by dropping the reference rather than the message:
+   * what somebody typed still gets said, it simply answers nothing.
+   */
+  const parent = input.replyTo
+    ? (messages.find((m) => m.id === input.replyTo && m.network === input.network) ?? null)
+    : null;
+
   const message: Stored = {
     id: randomUUID(),
     pilotId: input.pilotId,
     text,
     at: input.now,
     runDate,
+    replyTo: parent ? parent.id : null,
     network: input.network,
   };
 
@@ -227,6 +257,7 @@ export function restore(raw: unknown): void {
       text: tidyMessage(item.text).slice(0, MAX_MESSAGE),
       at: typeof item.at === 'number' ? item.at : 0,
       runDate: typeof item.runDate === 'string' ? item.runDate : null,
+      replyTo: typeof item.replyTo === 'string' ? item.replyTo : null,
       network: typeof item.network === 'string' ? item.network : 'main',
     });
   }

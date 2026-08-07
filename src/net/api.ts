@@ -626,6 +626,14 @@ export interface ChatMessage {
   at: number;
   /** Set when a run was posted, whether or not the row still resolves. */
   runDate: string | null;
+  /**
+   * The message this one answers, when it answers one.
+   *
+   * Resolved where it is drawn rather than sent expanded: the room already
+   * holds every message, so a quote is always the current text under the
+   * current name, and never a copy that went stale.
+   */
+  replyTo: string | null;
   /** Null on an ordinary line, and on a card whose board row has aged out. */
   run: RunCard | null;
 }
@@ -669,6 +677,7 @@ export async function fetchChat(deviceId: string): Promise<ApiResult<ChatRoom>> 
             text: m.text,
             at: numberOf(m.at),
             runDate: typeof m.runDate === 'string' ? m.runDate : null,
+            replyTo: typeof m.replyTo === 'string' ? m.replyTo : null,
             run: runCardOf(m.run),
           },
         ];
@@ -714,6 +723,8 @@ export async function sendChat(body: {
   text: string;
   /** The day of a run to post alongside it. The service resolves the row. */
   runDate?: string | null;
+  /** The message being answered, when this is a reply. */
+  replyTo?: string | null;
 }): Promise<ApiResult<ChatMessage>> {
   return request<ChatMessage>('/chat', { method: 'POST', body: JSON.stringify(body) });
 }

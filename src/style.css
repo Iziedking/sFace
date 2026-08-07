@@ -5788,6 +5788,7 @@ body.is-fullscreen .foot,
    at, and one that could not arrive is worth doing something about. */
 .bellrow__kind--clan-request,
 .bellrow__kind--contest-settled,
+.bellrow__kind--reply,
 .bellrow__kind--tip-in,
 .bellrow__kind--tip-blocked {
   background: var(--accent);
@@ -6614,6 +6615,16 @@ body.is-fullscreen .foot,
   max-height: min(52vh, 480px);
   overflow-y: auto;
   display: grid;
+  /*
+   * A track that is allowed to be narrower than its content.
+   *
+   * A grid item defaults to min-width auto, so the row is at least as wide as
+   * the widest unbreakable thing in it. A reply quote is one line of text with
+   * no wrapping, which made every row as wide as the longest quote and set the
+   * whole conversation scrolling sideways. minmax(0, 1fr) is what lets the
+   * ellipsis on the quote do the job it was put there to do.
+   */
+  grid-template-columns: minmax(0, 1fr);
   gap: 0;
 }
 
@@ -6630,6 +6641,9 @@ body.is-fullscreen .foot,
   gap: 10px;
   padding: 10px 12px;
   border-bottom: 1px solid var(--paper-deep);
+  /* Same reason as the track above: without this the row refuses to be
+     narrower than the longest quote inside it. */
+  min-width: 0;
 }
 
 .room__line:last-child {
@@ -6807,6 +6821,165 @@ body.is-fullscreen .foot,
   font-size: 11px;
   color: var(--ink-muted);
   margin: 6px 0 0;
+}
+
+/* Grouped lines -------------------------------------------------------------
+   A burst from one person reads as one turn. The follow-on lines keep the
+   avatar column so the text stays in line, and drop everything else: repeating
+   a masked wallet under every sentence turns a conversation into a list. */
+
+.room__line--grouped {
+  padding-top: 2px;
+  border-bottom: none;
+}
+
+.room__avatar--tuck {
+  border: none;
+  background: none;
+}
+
+.room__when {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+  margin-left: auto;
+}
+
+/* The line a quote sent you to. Held long enough to find, then let go, so a
+   refresh never inherits a highlight from a jump nobody remembers making. */
+.room__line--found {
+  background: var(--accent-pale);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+/* What a reply is answering ------------------------------------------------- */
+
+.room__quote {
+  appearance: none;
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-left: 3px solid var(--accent);
+  background: var(--paper-deep);
+  padding: 4px 8px;
+  margin: 4px 0;
+  cursor: pointer;
+  /* One line. A quote that grows with what it quotes competes with the answer
+     underneath it, which is the thing actually being read. */
+  overflow: hidden;
+}
+
+.room__quote--gone {
+  border-left-color: var(--ink-faint);
+  cursor: default;
+}
+
+.room__quotename {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  flex: none;
+}
+
+.room__quotetext {
+  font-size: 11px;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.room__acts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.room__acts:empty {
+  display: none;
+}
+
+.room__reply,
+.room__invite {
+  appearance: none;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  border: 2px solid var(--ink);
+  background: var(--canvas);
+  padding: 2px 6px;
+  cursor: pointer;
+  margin-top: 6px;
+}
+
+.room__reply--on {
+  background: var(--accent);
+}
+
+/* An invite is the only thing in a message that is ever tappable, and it goes
+   to a screen inside the app. Filled, because it is an offer rather than a
+   tool. */
+.room__invite {
+  background: var(--accent);
+}
+
+/* The reply bar over the composer ------------------------------------------ */
+
+.room__replybar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 2px solid var(--ink);
+  border-bottom: none;
+  background: var(--paper-deep);
+  padding: 6px 10px;
+}
+
+.room__replybar[hidden] {
+  display: none;
+}
+
+.room__replybody {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.room__replyname {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  flex: none;
+}
+
+.room__replytext {
+  font-size: 11px;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.room__replycancel {
+  appearance: none;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  border: 2px solid var(--ink);
+  background: var(--canvas);
+  padding: 2px 6px;
+  cursor: pointer;
+  flex: none;
 }
 
 .room__sharerow {

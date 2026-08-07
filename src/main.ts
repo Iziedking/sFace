@@ -306,6 +306,28 @@ function clearSnapshot(): void {
   }
 }
 
+/** When the room was last open on this device. Zero if it never has been. */
+const ROOM_SEEN_KEY = 'sface.room.seen';
+
+function readRoomSeen(): number {
+  try {
+    const raw = Number(localStorage.getItem(ROOM_SEEN_KEY));
+    return Number.isFinite(raw) ? raw : 0;
+  } catch {
+    // Private mode. Everything unread, every session, which is the safe way to
+    // be wrong: it over-announces rather than swallowing a reply.
+    return 0;
+  }
+}
+
+function writeRoomSeen(at: number): void {
+  try {
+    localStorage.setItem(ROOM_SEEN_KEY, String(at));
+  } catch {
+    // As above.
+  }
+}
+
 function writeStage(stage: number): void {
   try {
     localStorage.setItem(STAGE_KEY, String(stage));
@@ -585,6 +607,17 @@ class App {
   private roomSending = false;
   /** The day of a run of mine that can be posted, decided by the service. */
   private roomShareDate: string | null = null;
+  /** The message being answered, if any. Cleared once it is sent. */
+  private replyingTo: string | null = null;
+  /**
+   * When this pilot last had the room open, as epoch milliseconds.
+   *
+   * Kept on the device rather than on the service. It exists to decide whether
+   * a reply is news, which is a question about this screen having been looked
+   * at, and a room that had already been read on a phone should not keep
+   * announcing itself on a laptop.
+   */
+  private roomSeenAt = readRoomSeen();
   /**
    * Tips somebody sent or tried to send me, and who sent them.
    *
@@ -1104,6 +1137,14 @@ class App {
      * schedule polling for something that arrives a few times a day.
      */
     void this.loadTips();
+    /*
+     * And the room, for the same reason.
+     *
+     * A reply is derived from the messages, so the bell cannot know about one
+     * until the room has been read at least once. Without this it only ever
+     * appeared after opening the room, which is the one place it is not needed.
+     */
+    void this.loadChat();
 
     const profile = await fetchProfile(this.pilot);
     if (!profile) return;
@@ -1674,6 +1715,34 @@ class App {
     }
 
     /*
+     * Replies, worked out from the room rather than stored anywhere.
+     *
+     * The room holds every message of the last day, so "somebody answered me"
+     * is a question this device can answer for itself: which messages point at
+     * one of mine, and did any of them land since I last had the room open.
+     * That is the same shape as every other entry here, and it means a reply
+     * cannot go stale or be announced twice by two stores disagreeing.
+     *
+     * Grouped into one line. Five answers to a good message is one reason to
+     * open the room, not five things waiting on you.
+     */
+    const replies = this.repliesToMe();
+    if (replies.length > 0) {
+      const only = replies.length === 1 ? replies[0]! : null;
+      const from = only ? (this.room.people[only.pilotId]?.name ?? 'Somebody') : null;
+
+      out.push({
+        id: `replies:${replies.length}:${replies[replies.length - 1]!.id}`,
+        kind: 'reply',
+        text: only
+          ? `${from} replied to you in the room.`
+          : `${replies.length} replies to you in the room.`,
+        at: replies[replies.length - 1]!.at,
+        go: () => void this.cross(() => this.openChat()),
+      });
+    }
+
+    /*
      * Tips, which are the one kind that came from somewhere else.
      *
      * Two different sentences, deliberately. A tip that was sent names who sent
@@ -1702,6 +1771,30 @@ class App {
     }
 
     return out.filter((n) => !this.dismissed.has(n.id));
+  }
+
+  /**
+   * Answers to something I said, since the last time I looked at the room.
+   *
+   * Mine is decided by the pilot id on the parent, which is the service's own
+   * record of who said what. A message cannot claim to be answering me.
+   */
+  private repliesToMe(): ChatMessage[] {
+    if (this.room.messages.length === 0) return [];
+
+    const mine = new Set(
+      this.room.messages.filter((m) => m.pilotId === this.pilot).map((m) => m.id),
+    );
+    if (mine.size === 0) return [];
+
+    return this.room.messages.filter(
+      (m) =>
+        m.replyTo !== null &&
+        mine.has(m.replyTo) &&
+        // Not my own answers to myself, and nothing I have already seen.
+        m.pilotId !== this.pilot &&
+        m.at > this.roomSeenAt,
+    );
   }
 
   /**
@@ -1857,6 +1950,16 @@ class App {
   private openChat(): void {
     this.ui.className = '';
     this.screen = 'chat';
+    /*
+     * Opening it is reading it.
+     *
+     * The watermark moves now rather than when the messages arrive, so a reply
+     * that lands while the room is open in front of somebody is not counted as
+     * unread the next time the bell is drawn.
+     */
+    this.roomSeenAt = Date.now();
+    writeRoomSeen(this.roomSeenAt);
+
     this.paintChat();
     void this.loadChat();
     // The room is where somebody is most likely to be when a tip lands, and
@@ -1927,6 +2030,14 @@ class App {
 
     this.room = result.value;
     this.roomShareDate = result.value.shareableRunDate;
+    /*
+     * The bell is drawn from this too, so it has to be redrawn here.
+     *
+     * A reply is worked out from the room rather than stored, which means the
+     * only moment the app can learn about one is a read like this. Off the room
+     * screen there is nothing else that would repaint the bar.
+     */
+    if (this.screen !== 'chat') this.paintChrome();
     // Only what this function put there. See roomNoticeIsLoad.
     if (this.roomNoticeIsLoad) {
       this.roomNotice = null;
@@ -1948,6 +2059,13 @@ class App {
       maxLength: CHAT_MAX,
       ticker: this.mission?.ticker ?? null,
       today: this.mission?.date ?? '',
+      // The only origin an invite in a message may point at. See findInvite.
+      origin: typeof window === 'undefined' ? '' : window.location.origin,
+      replyingTo: this.replyingTo,
+      onReply: (messageId) => {
+        this.replyingTo = messageId;
+        this.paintChat();
+      },
       onSend: (text) => void this.sayInRoom(text),
       onTip: (target, nim) => void this.tip(target, nim),
       /*
@@ -1958,6 +2076,17 @@ class App {
        * of the day, so having flown today is not the same as having a row.
        */
       onShareRun: this.roomShareDate ? () => void this.shareRun() : null,
+      /*
+       * An invite goes to the screen it names, inside the app.
+       *
+       * Not a link out and not a new page: the room is a WebView inside a
+       * wallet, and opening one would put the player in a browser they then
+       * have to find their way back from.
+       */
+      onInvite: (invite) => {
+        if (invite.kind === 'contest') void this.openContestById(invite.id);
+        else void this.openChallenge(invite.id);
+      },
       onClan: (tag) => {
         this.invitedTag = tag;
         void this.cross(() => this.openClan());
@@ -1975,7 +2104,17 @@ class App {
     this.roomSending = true;
     this.setRoomNotice(null);
 
-    const result = await sendChat({ deviceId: this.pilot, text });
+    const answering = this.replyingTo;
+    /*
+     * Cleared before the answer comes back, with the box.
+     *
+     * The bar is about what you are writing, and it stops being true the moment
+     * the message goes. Leaving it up until the service replies means the next
+     * thing typed silently answers the same line again.
+     */
+    this.replyingTo = null;
+
+    const result = await sendChat({ deviceId: this.pilot, text, replyTo: answering });
     this.roomSending = false;
 
     if (!result.ok) {

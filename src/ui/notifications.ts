@@ -38,6 +38,8 @@ export type NotificationKind =
   | 'contest-settled'
   /** A contest you are in is waiting on stages you have not flown. */
   | 'contest-waiting'
+  /** Somebody answered something you said. Opens the room. */
+  | 'reply'
   /** Somebody tipped you. Opens the room. */
   | 'tip-in'
   /** Somebody tried to, and could not, because you have no wallet. Opens it. */

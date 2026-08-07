@@ -76,7 +76,12 @@
   },
   {
     "name": "room",
-    "caption": "The room: everybody playing today, in one place. A posted run carries the score off the board with the tip attached to it, and the money goes to a wallet the service proved from a signature.",
+    "caption": "The room: everybody playing today, in one place. A reply quotes what it answers, a burst from one person reads as one turn, and an sFace invite becomes a button rather than a link.",
+    "view": "phone"
+  },
+  {
+    "name": "room-tip",
+    "caption": "A run posted into the room. The score is read off the board rather than carried by the message, and the tip goes to a wallet the service proved from a signature.",
     "view": "phone"
   }
 ]

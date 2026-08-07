@@ -19,6 +19,20 @@
  * so nobody can post as somebody else and a name change lands on every line at
  * once.
  *
+ * Consecutive lines from one person are grouped: the first carries the avatar,
+ * name, clan, wallet and time, and the rest are just what they said. A dozen
+ * people talking is the case this screen has to survive, and repeating a masked
+ * wallet under every sentence of a burst turns a conversation into a list.
+ *
+ * ## Replies
+ *
+ * A message can answer another one, and the answer draws a quote of what it is
+ * answering. The quote is resolved here, from the room, rather than sent along
+ * with the reply: the room already holds every message, so the quote is always
+ * the current text under the current name instead of a copy that went stale.
+ * Tapping it goes to the original and marks it, which is the whole navigation
+ * this needs. There is no thread to open.
+ *
  * ## Runs, and why they are the thing being tipped
  *
  * A room of text gives nobody a reason to send anybody money. You cannot see a
@@ -37,10 +51,19 @@
  * that person never found out they were missing tips; now the attempt fails in
  * front of the tipper, costs nothing, and puts a note on the other pilot's bell
  * telling them what to connect.
+ *
+ * ## Nothing a stranger typed is ever markup, and almost nothing is a link
+ *
+ * Every piece of message text goes in as a text node. The only tappable thing
+ * ever made out of a message is an sFace invite on this app's own origin, which
+ * becomes a button to a screen inside the app. See findInvite for why a room
+ * full of strangers is the wrong place to turn text into links.
  */
 
 import { button, el, mount } from './dom';
 import { maskAddress } from './screens';
+import { findInvite } from '../data/chat';
+import type { Invite } from '../data/chat';
 import type { ChatMessage, ChatPerson, RunCard } from '../net/api';
 
 /** Who a tip is aimed at. The address is the service's, never the message's. */
@@ -69,10 +92,16 @@ export interface ChatOptions {
    */
   ticker: string | null;
   today: string;
+  /** This app's own origin, which is the only one an invite may point at. */
+  origin: string;
+  /** The message being answered, if any. Held by the app, not by this screen. */
+  replyingTo: string | null;
+  onReply: (messageId: string | null) => void;
   onSend: (text: string) => void;
   onTip: (target: TipTarget, nim: number) => void;
   /** Null when there is no run of yours on today's board to post. */
   onShareRun: (() => void) | null;
+  onInvite: (invite: Invite) => void;
   onClan: (tag: string) => void;
   onBack: () => void;
 }
@@ -83,6 +112,14 @@ interface Live {
 }
 
 const live = new WeakMap<HTMLElement, Live>();
+
+/**
+ * How close together two messages from one person have to be to group.
+ *
+ * Long enough that a burst of typing reads as one turn, short enough that
+ * somebody coming back an hour later gets their name and the time again.
+ */
+const GROUP_MS = 4 * 60_000;
 
 export function renderChat(root: HTMLElement, options: ChatOptions): void {
   const existing = live.get(root);
@@ -136,10 +173,42 @@ function build(root: HTMLElement, first: ChatOptions): Live {
   });
   share.addEventListener('click', () => options.onShareRun?.());
 
+  /*
+   * What you are answering, above the box, the way every chat does it.
+   *
+   * It has to be visible while typing and it has to be cancellable, because the
+   * common mistake is tapping reply on the wrong line and only noticing while
+   * writing. Built once and filled in, like everything else on this screen.
+   */
+  const replyName = el('span', { class: 'room__replyname' });
+  const replyText = el('span', { class: 'room__replytext' });
+  const replyCancel = el('button', {
+    class: 'room__replycancel',
+    type: 'button',
+    text: 'Cancel',
+    'aria-label': 'Stop replying',
+  });
+  replyCancel.addEventListener('click', () => options.onReply(null));
+
+  const replyBar = el(
+    'div',
+    { class: 'room__replybar' },
+    el('div', { class: 'room__replybody' }, replyName, replyText),
+    replyCancel,
+  );
+
   field.addEventListener('keydown', (event) => {
-    if ((event as KeyboardEvent).key === 'Enter') {
+    const key = (event as KeyboardEvent).key;
+    if (key === 'Enter') {
       event.preventDefault();
       send();
+      return;
+    }
+    // Escape drops the reply rather than the whole message, which is what it
+    // does everywhere else and what somebody reaching for it expects.
+    if (key === 'Escape' && options.replyingTo) {
+      event.preventDefault();
+      options.onReply(null);
     }
   });
 
@@ -158,12 +227,14 @@ function build(root: HTMLElement, first: ChatOptions): Live {
     notice,
 
     el('div', { class: 'room__sharerow' }, share),
+    replyBar,
     el('div', { class: 'room__compose' }, field, sendButton),
 
     el('div', { class: 'actions' }, button('Back', () => options.onBack(), 'ghost')),
   );
 
   function update(next: ChatOptions): void {
+    const wasReplyingTo = options.replyingTo;
     options = next;
 
     sendButton.disabled = next.sending;
@@ -176,6 +247,19 @@ function build(root: HTMLElement, first: ChatOptions): Live {
 
     notice.textContent = next.notice ?? '';
     notice.hidden = !next.notice;
+
+    const answering = next.replyingTo
+      ? (next.messages.find((m) => m.id === next.replyingTo) ?? null)
+      : null;
+
+    replyBar.hidden = answering === null;
+    if (answering) {
+      replyName.textContent = nameOf(answering.pilotId, next);
+      replyText.textContent = summarise(answering);
+      // Only when it has just been opened. Focusing on every refresh would drag
+      // the keyboard back up under somebody who had put it away.
+      if (wasReplyingTo !== next.replyingTo) field.focus();
+    }
 
     /*
      * The list is rebuilt, and only the list.
@@ -197,7 +281,15 @@ function build(root: HTMLElement, first: ChatOptions): Live {
                 : 'Nobody has said anything today. Go first.',
             }),
           ]
-        : next.messages.map((message) => line(message, next))),
+        : next.messages.map((message, index) =>
+            line(
+              message,
+              next,
+              list,
+              next.messages[index - 1] ?? null,
+              next.messages[index + 1] ?? null,
+            ),
+          )),
     );
 
     // Follow the conversation, unless the reader has scrolled up to read
@@ -211,11 +303,43 @@ function build(root: HTMLElement, first: ChatOptions): Live {
   return { screen, update };
 }
 
+function nameOf(pilotId: string, options: ChatOptions): string {
+  return options.people[pilotId]?.name ?? 'Pilot';
+}
+
+/** What a message reads as in one line, for a quote or a reply bar. */
+function summarise(message: ChatMessage): string {
+  if (message.text.length > 0) return message.text;
+  if (message.run) return `A run: ${message.run.score.toLocaleString()}`;
+  return 'A run';
+}
+
+/**
+ * Whether this message continues the one before it.
+ *
+ * Same person, close in time, and not answering somebody else: a reply always
+ * starts its own group, because it carries a quote and needs the name above it
+ * to make sense of who is answering whom.
+ */
+function continues(message: ChatMessage | null, previous: ChatMessage | null): boolean {
+  if (!message || !previous) return false;
+  if (previous.pilotId !== message.pilotId) return false;
+  if (message.replyTo) return false;
+  return message.at - previous.at <= GROUP_MS;
+}
+
 /** One message, with whatever can be done about the person who sent it. */
-function line(message: ChatMessage, options: ChatOptions): HTMLElement {
+function line(
+  message: ChatMessage,
+  options: ChatOptions,
+  list: HTMLElement,
+  previous: ChatMessage | null,
+  next: ChatMessage | null,
+): HTMLElement {
   const person = options.people[message.pilotId];
-  const name = person?.name ?? 'Pilot';
+  const name = nameOf(message.pilotId, options);
   const mine = message.pilotId === options.meId;
+  const grouped = continues(message, previous);
 
   /*
    * Everybody but you can be tipped, wallet or no wallet.
@@ -224,41 +348,77 @@ function line(message: ChatMessage, options: ChatOptions): HTMLElement {
    * somebody tried, which is the only way anybody ever learns that connecting
    * one is worth doing.
    */
-  const canTip = !mine;
+  /*
+   * Once per turn, not once per sentence.
+   *
+   * Somebody firing off three lines in a row is one person to tip, and a Tip
+   * @name under each of them was the single noisiest thing on this screen.
+   * Reply stays on every line, because which line you are answering is exactly
+   * the thing a reply is for.
+   */
+  const endsGroup = !continues(next, message);
+  const canTip = !mine && endsGroup;
   const target: TipTarget = {
     pilotId: message.pilotId,
     name,
     address: person?.address ?? null,
   };
 
-  return el(
-    'div',
-    { class: mine ? 'room__line room__line--mine' : 'room__line' },
+  const parent = message.replyTo
+    ? (options.messages.find((m) => m.id === message.replyTo) ?? null)
+    : null;
 
-    person?.avatarUrl
-      ? el('img', {
-          class: 'room__avatar',
-          src: person.avatarUrl,
-          alt: '',
-          referrerpolicy: 'no-referrer',
-          loading: 'lazy',
-        })
-      : el('div', { class: 'room__avatar' }),
+  const invite = message.text.length > 0 ? findInvite(message.text, options.origin) : null;
+
+  const node = el(
+    'div',
+    {
+      class: [
+        'room__line',
+        mine ? 'room__line--mine' : '',
+        grouped ? 'room__line--grouped' : '',
+      ]
+        .filter(Boolean)
+        .join(' '),
+      // So a quote can find what it points at without holding a reference to a
+      // node that the next refresh throws away.
+      'data-id': message.id,
+    },
+
+    grouped
+      ? el('div', { class: 'room__avatar room__avatar--tuck' })
+      : person?.avatarUrl
+        ? el('img', {
+            class: 'room__avatar',
+            src: person.avatarUrl,
+            alt: '',
+            referrerpolicy: 'no-referrer',
+            loading: 'lazy',
+          })
+        : el('div', { class: 'room__avatar' }),
 
     el(
       'div',
       { class: 'room__body' },
-      el(
-        'div',
-        { class: 'room__who' },
-        el('span', { class: 'room__name', text: name }),
-        // A clan tag is a thing you can act on, so it is a button rather than a
-        // label: this is how somebody with no friends here finds a clan.
-        person?.clanTag ? clanChip(person.clanTag, options) : null,
-        person?.address
-          ? el('span', { class: 'room__wallet', text: maskAddress(person.address) })
-          : null,
-      ),
+
+      grouped
+        ? null
+        : el(
+            'div',
+            { class: 'room__who' },
+            el('span', { class: 'room__name', text: name }),
+            // A clan tag is a thing you can act on, so it is a button rather
+            // than a label: this is how somebody with no friends here finds a
+            // clan.
+            person?.clanTag ? clanChip(person.clanTag, options) : null,
+            person?.address
+              ? el('span', { class: 'room__wallet', text: maskAddress(person.address) })
+              : null,
+            el('span', { class: 'room__when', text: clock(message.at) }),
+          ),
+
+      // What is being answered, drawn above the answer.
+      message.replyTo ? quote(parent, options, list) : null,
 
       /*
        * Set as text, never as markup.
@@ -267,6 +427,10 @@ function line(message: ChatMessage, options: ChatOptions): HTMLElement {
        * goes in as a text node and nothing here ever assembles HTML from it.
        */
       message.text.length > 0 ? el('p', { class: 'room__said', text: message.text }) : null,
+
+      // The one thing in a message that is ever made tappable, and only because
+      // it points inside this app. See findInvite.
+      invite ? inviteChip(invite, options) : null,
 
       /*
        * The card, when the run behind it still resolves.
@@ -282,11 +446,117 @@ function line(message: ChatMessage, options: ChatOptions): HTMLElement {
           ? el('p', { class: 'room__gone', text: 'That run has rolled off the board.' })
           : null,
 
-      // The plain tip, for a line with no run on it. Same money, aimed at the
-      // person rather than at something they did.
-      canTip && !message.run ? tipRow(target, options, null) : null,
+      el(
+        'div',
+        { class: 'room__acts' },
+        // Reply is offered on everybody's line except your own, where it would
+        // be a conversation with yourself.
+        mine ? null : replyChip(message, options),
+        // The plain tip, for a line with no run on it. Same money, aimed at the
+        // person rather than at something they did.
+        canTip && !message.run ? tipRow(target, options, null) : null,
+      ),
     ),
   );
+
+  return node;
+}
+
+/** Hours and minutes, local. Nothing here is precise to the second. */
+function clock(at: number): string {
+  const when = new Date(at);
+  return `${String(when.getHours()).padStart(2, '0')}:${String(when.getMinutes()).padStart(2, '0')}`;
+}
+
+/**
+ * The message being answered, drawn above the answer.
+ *
+ * A parent that is no longer in the room says so rather than disappearing. The
+ * room keeps a day and the newest few hundred, so a reply can outlive what it
+ * was answering, and a quote that silently vanished would leave an answer to
+ * nothing with no explanation of what happened.
+ */
+function quote(
+  parent: ChatMessage | null,
+  options: ChatOptions,
+  list: HTMLElement,
+): HTMLElement {
+  if (!parent) {
+    return el('div', { class: 'room__quote room__quote--gone' }, el('span', {
+      class: 'room__quotetext',
+      text: 'A message that is no longer here',
+    }));
+  }
+
+  const node = el(
+    'button',
+    { class: 'room__quote', type: 'button', title: 'Go to that message' },
+    el('span', { class: 'room__quotename', text: nameOf(parent.pilotId, options) }),
+    el('span', { class: 'room__quotetext', text: summarise(parent) }),
+  );
+
+  node.addEventListener('click', () => {
+    const original = list.querySelector(`[data-id="${CSS.escape(parent.id)}"]`);
+    if (!original) return;
+
+    original.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    /*
+     * Marked, then unmarked.
+     *
+     * Scrolling on its own is not an answer in a busy room: the line you were
+     * sent to looks like every other line once it stops moving. The class is
+     * removed rather than left, so the next refresh does not inherit a
+     * highlight from a jump nobody remembers making.
+     */
+    original.classList.add('room__line--found');
+    window.setTimeout(() => original.classList.remove('room__line--found'), 1600);
+  });
+
+  return node;
+}
+
+function replyChip(message: ChatMessage, options: ChatOptions): HTMLElement {
+  const answering = options.replyingTo === message.id;
+
+  const node = el('button', {
+    class: answering ? 'room__reply room__reply--on' : 'room__reply',
+    type: 'button',
+    text: answering ? 'Replying' : 'Reply',
+  });
+
+  // Tapping the one you are already answering puts it back, which is the
+  // cheapest way out of a reply opened by accident.
+  node.addEventListener('click', () => options.onReply(answering ? null : message.id));
+  return node;
+}
+
+/**
+ * An sFace invite somebody pasted, as a button rather than as a link.
+ *
+ * It goes to a screen in this app, so it is a navigation and not a link out.
+ * Nothing else in a message is ever made tappable: see findInvite for why a
+ * room full of strangers is the wrong place to be turning text into links.
+ */
+function inviteChip(invite: Invite, options: ChatOptions): HTMLElement {
+  const node = el('button', {
+    class: 'room__invite',
+    type: 'button',
+    text: invite.kind === 'contest' ? 'Take a seat' : 'See the challenge',
+  });
+  node.addEventListener('click', () => options.onInvite(invite));
+  return node;
+}
+
+/** A clan tag you can press, which is how somebody here finds one to join. */
+function clanChip(tag: string, options: ChatOptions): HTMLElement {
+  const node = el('button', {
+    class: 'room__clan',
+    type: 'button',
+    text: tag,
+    title: `Look at clan ${tag}`,
+  });
+  node.addEventListener('click', () => options.onClan(tag));
+  return node;
 }
 
 /**
@@ -341,18 +611,6 @@ function runCard(
 
     mine ? null : tipRow(target, options, run),
   );
-}
-
-/** A clan tag you can press, which is how somebody here finds one to join. */
-function clanChip(tag: string, options: ChatOptions): HTMLElement {
-  const node = el('button', {
-    class: 'room__clan',
-    type: 'button',
-    text: tag,
-    title: `Look at clan ${tag}`,
-  });
-  node.addEventListener('click', () => options.onClan(tag));
-  return node;
 }
 
 /**
