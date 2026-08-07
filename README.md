@@ -200,6 +200,8 @@ So there is one shared room, and it is the smallest thing that fixes that.
   Tap the quote to go to the original.
 - **An answer to you is coloured differently** from an answer to somebody else,
   and reads as *You* rather than as your own handle.
+- **Fix a typo** in something you said, for fifteen minutes, and the message
+  says it was edited for the rest of its life.
 - **Post your run** and it draws as a card with the score, the stage, the rank
   and whether it is signed or on chain.
 - **Tip a run** in one tap, from the card.

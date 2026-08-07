@@ -570,6 +570,44 @@ app.post('/chat', limit(30, 10), (req, res) => {
 });
 
 /**
+ * Change a message already said.
+ *
+ * The service decides whose it is and whether the window has closed. Nothing
+ * about ownership is taken from the request: the id on the stored message is
+ * this service's own record of who said what.
+ */
+app.post('/chat/:id', limit(30, 10), (req, res) => {
+  const parsed = z
+    .object({ deviceId, text: z.string().max(chat.MAX_MESSAGE) })
+    .safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: firstIssue(parsed.error) });
+    return;
+  }
+
+  const network = networkOf(req);
+  const result = chat.edit({
+    network,
+    pilotId: parsed.data.deviceId,
+    id: String(req.params.id ?? ''),
+    text: parsed.data.text,
+    now: Date.now(),
+  });
+
+  if (!result.ok) {
+    res.status(result.code).json({ error: result.reason });
+    return;
+  }
+
+  res.json({
+    ...result.value,
+    run: result.value.runDate
+      ? board.runCard(network, result.value.runDate, parsed.data.deviceId)
+      : null,
+  });
+});
+
+/**
  * Tips.
  *
  * ## What these two routes are not

@@ -62,7 +62,7 @@
 
 import { button, el, mount } from './dom';
 import { maskAddress } from './screens';
-import { MAX_TIP_NIM, findInvite, readTipAmount } from '../data/chat';
+import { MAX_TIP_NIM, findInvite, readTipAmount, stillEditable } from '../data/chat';
 import type { Invite } from '../data/chat';
 import type { ChatMessage, ChatPerson, RunCard } from '../net/api';
 
@@ -97,6 +97,9 @@ export interface ChatOptions {
   /** The message being answered, if any. Held by the app, not by this screen. */
   replyingTo: string | null;
   onReply: (messageId: string | null) => void;
+  /** The message being changed, if any. Puts its text back in the box. */
+  editingId: string | null;
+  onEdit: (messageId: string | null) => void;
   onSend: (text: string) => void;
   onTip: (target: TipTarget, nim: number) => void;
   /** Null when there is no run of yours on today's board to post. */
@@ -148,11 +151,18 @@ function build(root: HTMLElement, first: ChatOptions): Live {
   const send = (): void => {
     const text = field.value.trim();
     if (text.length === 0 || options.sending) return;
-    // Cleared here rather than when the service answers, so the room feels like
-    // it took the message. A refusal puts the notice up and the text is short
-    // enough to retype; leaving it in the box while it may or may not have sent
-    // is the worse of the two.
-    field.value = '';
+    /*
+     * Cleared here rather than when the service answers, so the room feels like
+     * it took the message. A refusal puts the notice up and the text is short
+     * enough to retype; leaving it in the box while it may or may not have sent
+     * is the worse of the two.
+     *
+     * An edit is the exception. It is a version of something that already
+     * exists, and losing it to a refused save would mean retyping a correction
+     * rather than a message. It clears when the save actually lands, which is
+     * when the edit stops being open.
+     */
+    if (!options.editingId) field.value = '';
     options.onSend(text);
   };
 
@@ -188,7 +198,12 @@ function build(root: HTMLElement, first: ChatOptions): Live {
     text: 'Cancel',
     'aria-label': 'Stop replying',
   });
-  replyCancel.addEventListener('click', () => options.onReply(null));
+  replyCancel.addEventListener('click', () => {
+    // One button for both, because there is only ever one of them up: the bar
+    // says either what is being answered or what is being changed.
+    if (options.editingId) options.onEdit(null);
+    else options.onReply(null);
+  });
 
   const replyBar = el(
     'div',
@@ -204,8 +219,13 @@ function build(root: HTMLElement, first: ChatOptions): Live {
       send();
       return;
     }
-    // Escape drops the reply rather than the whole message, which is what it
-    // does everywhere else and what somebody reaching for it expects.
+    // Escape drops the reply or the edit rather than the whole message, which
+    // is what it does everywhere else and what somebody reaching for it wants.
+    if (key === 'Escape' && options.editingId) {
+      event.preventDefault();
+      options.onEdit(null);
+      return;
+    }
     if (key === 'Escape' && options.replyingTo) {
       event.preventDefault();
       options.onReply(null);
@@ -235,10 +255,12 @@ function build(root: HTMLElement, first: ChatOptions): Live {
 
   function update(next: ChatOptions): void {
     const wasReplyingTo = options.replyingTo;
+    const wasEditingId = options.editingId;
     options = next;
 
     sendButton.disabled = next.sending;
     sendButton.textContent = next.sending ? 'Sending...' : 'Send';
+    // Overwritten below when a message is being changed rather than said.
 
     // Hidden rather than disabled. A greyed button on a day you have not flown
     // is a thing to wonder about; nothing there is self explanatory.
@@ -248,12 +270,33 @@ function build(root: HTMLElement, first: ChatOptions): Live {
     notice.textContent = next.notice ?? '';
     notice.hidden = !next.notice;
 
-    const answering = next.replyingTo
-      ? (next.messages.find((m) => m.id === next.replyingTo) ?? null)
+    /*
+     * The bar over the box says one of two things, never both.
+     *
+     * Answering somebody and changing something you said are different jobs
+     * for the same field, and a screen that could be doing both at once would
+     * need the player to work out which Send meant what.
+     */
+    const editing = next.editingId
+      ? (next.messages.find((m) => m.id === next.editingId) ?? null)
       : null;
+    const answering =
+      !editing && next.replyingTo
+        ? (next.messages.find((m) => m.id === next.replyingTo) ?? null)
+        : null;
 
-    replyBar.hidden = answering === null;
-    if (answering) {
+    replyBar.hidden = answering === null && editing === null;
+    if (editing) {
+      replyName.textContent = 'Editing';
+      replyText.textContent = summarise(editing);
+      sendButton.textContent = next.sending ? 'Saving...' : 'Save';
+      if (wasEditingId !== next.editingId) {
+        // The text goes back in the box, which is the whole of editing: change
+        // what is there and send it again.
+        field.value = editing.text;
+        field.focus();
+      }
+    } else if (answering) {
       replyName.textContent = nameOf(answering.pilotId, next);
       replyText.textContent = summarise(answering);
       // Only when it has just been opened. Focusing on every refresh would drag
@@ -261,13 +304,31 @@ function build(root: HTMLElement, first: ChatOptions): Live {
       if (wasReplyingTo !== next.replyingTo) field.focus();
     }
 
+    // Leaving an edit takes the draft with it, or the next thing typed starts
+    // as a copy of the message that is no longer being changed.
+    if (wasEditingId && !next.editingId) field.value = '';
+
     /*
      * The list is rebuilt, and only the list.
      *
      * It is the part that genuinely changes, and it holds nothing anybody is
      * typing into. The field and the button are built once and left alone,
      * which is the whole reason this screen updates in place at all.
+     *
+     * ## Except while somebody is using it
+     *
+     * That last sentence stopped being true when the tip grew a box of its
+     * own. The room re-reads itself every few seconds, and a rebuild throws
+     * away every node in the list, so an amount half typed into a tip vanished
+     * within six seconds of being started: it read as the box closing itself
+     * the moment anything was entered.
+     *
+     * So a rebuild waits for the list to be idle. Nothing is lost by waiting,
+     * because the next read is a few seconds away and arrives with the same
+     * messages plus whatever is new.
      */
+    if (busy(list)) return;
+
     const atBottom =
       list.scrollHeight - list.scrollTop - list.clientHeight < 60 || list.childElementCount === 0;
 
@@ -301,6 +362,25 @@ function build(root: HTMLElement, first: ChatOptions): Live {
   update(first);
   mount(root, screen);
   return { screen, update };
+}
+
+/**
+ * Whether the list is in the middle of being used.
+ *
+ * Two cases, and the second is the one that is easy to miss. Something focused
+ * inside it is obvious: a rebuild would take the field away mid-word and shut
+ * the keyboard on a phone. An open tip row has no focus at all until the box
+ * appears, and rebuilding while three amounts are showing puts the single
+ * button back under a thumb already on its way down to one of them.
+ */
+function busy(list: HTMLElement): boolean {
+  const active = document.activeElement;
+  if (active && active !== document.body && list.contains(active)) return true;
+
+  // A tip that has been opened: its single button is hidden and the amounts
+  // are not. Read from the DOM rather than tracked, so nothing has to stay in
+  // step with it.
+  return list.querySelector('.room__tip[hidden]') !== null;
 }
 
 function nameOf(pilotId: string, options: ChatOptions): string {
@@ -428,7 +508,17 @@ function line(
        * This is the one screen in the app that shows what a stranger typed. It
        * goes in as a text node and nothing here ever assembles HTML from it.
        */
-      message.text.length > 0 ? el('p', { class: 'room__said', text: message.text }) : null,
+      message.text.length > 0
+        ? el(
+            'p',
+            { class: 'room__said' },
+            el('span', { text: message.text }),
+            // Marked for the rest of its life, not for a while. A room where a
+            // message can change without a trace is a room where nobody can
+            // rely on having read anything.
+            message.editedAt ? el('span', { class: 'room__edited', text: 'edited' }) : null,
+          )
+        : null,
 
       // The one thing in a message that is ever made tappable, and only because
       // it points inside this app. See findInvite.
@@ -452,8 +542,8 @@ function line(
         'div',
         { class: 'room__acts' },
         // Reply is offered on everybody's line except your own, where it would
-        // be a conversation with yourself.
-        mine ? null : replyChip(message, options),
+        // be a conversation with yourself. Edit is the mirror of that.
+        mine ? editChip(message, options) : replyChip(message, options),
         // The plain tip, for a line with no run on it. Same money, aimed at the
         // person rather than at something they did.
         canTip && !message.run ? tipRow(target, options, null) : null,
@@ -530,6 +620,28 @@ function quote(
     window.setTimeout(() => original.classList.remove('room__line--found'), 1600);
   });
 
+  return node;
+}
+
+/**
+ * Change something you said, for as long as the service will take it.
+ *
+ * Nothing at all once the window has closed, rather than a button that explains
+ * itself after being pressed. The same rule the service enforces decides
+ * whether it is drawn, so the two cannot disagree about what is still editable.
+ */
+function editChip(message: ChatMessage, options: ChatOptions): HTMLElement | null {
+  if (!stillEditable(message.at, Date.now())) return null;
+
+  const editing = options.editingId === message.id;
+
+  const node = el('button', {
+    class: editing ? 'room__reply room__reply--on' : 'room__reply',
+    type: 'button',
+    text: editing ? 'Editing' : 'Edit',
+  });
+
+  node.addEventListener('click', () => options.onEdit(editing ? null : message.id));
   return node;
 }
 

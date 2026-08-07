@@ -703,7 +703,45 @@ export class Input {
     this.bought.push(slot);
   }
 
+  /**
+   * Whether the keyboard currently belongs to something being typed into.
+   *
+   * ## The bug this exists to stop, which reached a real user
+   *
+   * These listeners are on the window and are never taken off, because the
+   * player can be at the keyboard on any screen. So every key the game claims
+   * was claimed everywhere: Space fired the gun and was swallowed, and 1 to 4
+   * bought consumables and were swallowed.
+   *
+   * On a screen with a text field in it that means the field cannot take a
+   * space. Somebody typed a sentence into the room and it arrived with every
+   * space missing, as one run-on word, and nothing anywhere reported an error.
+   * A number field was worse: it refused 1, 2, 3 and 4, so a custom stake could
+   * be typed only out of the digits the game had not claimed.
+   *
+   * Checked at the event rather than by tracking focus, because focus can move
+   * without this class hearing about it and a stale answer here silently eats
+   * keys again.
+   */
+  private typingInto(event: KeyboardEvent): boolean {
+    const target = event.target as HTMLElement | null;
+    if (!target) return false;
+    if (target.isContentEditable) return true;
+
+    const tag = target.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+  }
+
   private onKeyDown = (event: KeyboardEvent): void => {
+    /*
+     * Nothing at all while somebody is typing.
+     *
+     * Not just no preventDefault: the key is not recorded either. Holding W to
+     * write a word would otherwise leave the ship drifting when the run
+     * resumes, because keyup arrives at the field and the set never clears.
+     */
+    if (this.typingInto(event)) return;
+
     this.keys.add(event.code);
     this.applyKeys();
     if (event.code === 'Space') {
@@ -729,6 +767,14 @@ export class Input {
   };
 
   private onKeyUp = (event: KeyboardEvent): void => {
+    /*
+     * Release always, even from a field.
+     *
+     * The asymmetry is deliberate. Keydown is ignored while typing so nothing
+     * is held by accident, but a key that went down on the game and came up
+     * over a field has to be let go of, or it stays held forever. Deleting
+     * something that was never added costs nothing.
+     */
     this.keys.delete(event.code);
     this.applyKeys();
     if (event.code === 'Space') this.firing = false;

@@ -74,7 +74,7 @@ describe('saying something', () => {
     // runDate is a pointer, not a fact about the run: it says which day to look
     // up, and the board says what happened. Everything else stays absent.
     expect(said.ok && Object.keys(said.value).sort()).toEqual([
-      'at', 'id', 'pilotId', 'replyTo', 'runDate', 'text',
+      'at', 'editedAt', 'id', 'pilotId', 'replyTo', 'runDate', 'text',
     ]);
     expect(said.ok && said.value.runDate).toBeNull();
   });
@@ -106,7 +106,7 @@ describe('posting a run', () => {
     const said = chat.say({ network: 'main', pilotId: ONE, text: '', runDate: DATE, now: NOON });
     expect(said.ok).toBe(true);
     expect(said.ok && Object.keys(said.value).sort()).toEqual([
-      'at', 'id', 'pilotId', 'replyTo', 'runDate', 'text',
+      'at', 'editedAt', 'id', 'pilotId', 'replyTo', 'runDate', 'text',
     ]);
   });
 
@@ -233,6 +233,124 @@ describe('answering somebody', () => {
 
     chat.restore(chat.serialise());
     expect(chat.recent('main', NOON)[1]?.replyTo).toBe(parent);
+  });
+});
+
+describe('changing something you said', () => {
+  it('changes it, and says that it changed', () => {
+    const first = say(ONE, 'go wid on the approach', NOON);
+    const id = first.ok ? first.value.id : '';
+
+    const fixed = chat.edit({
+      network: 'main', pilotId: ONE, id, text: 'go wide on the approach', now: NOON + 1000,
+    });
+
+    expect(fixed.ok && fixed.value.text).toBe('go wide on the approach');
+    // Marked for the rest of its life. A message that can change without a
+    // trace is one nobody can rely on having read.
+    expect(fixed.ok && fixed.value.editedAt).toBe(NOON + 1000);
+  });
+
+  it('refuses one that belongs to somebody else', () => {
+    /*
+     * Ownership is read off the stored message, which is this service's own
+     * record of who said what. Nothing about it is taken from the request.
+     */
+    const first = say(ONE, 'mine', NOON);
+    const id = first.ok ? first.value.id : '';
+
+    const theft = chat.edit({
+      network: 'main', pilotId: TWO, id, text: 'not any more', now: NOON + 1000,
+    });
+
+    expect(theft.ok).toBe(false);
+    expect(!theft.ok && theft.code).toBe(403);
+    expect(chat.recent('main', NOON)[0]?.text).toBe('mine');
+  });
+
+  it('refuses one whose window has closed', () => {
+    // Editing is for typos, not for changing what you said after it has been
+    // read and answered.
+    const first = say(ONE, 'typo', NOON);
+    const id = first.ok ? first.value.id : '';
+
+    const late = chat.edit({
+      network: 'main', pilotId: ONE, id, text: 'rewritten', now: NOON + 20 * 60_000,
+    });
+    expect(late.ok).toBe(false);
+  });
+
+  it('refuses one that is not there', () => {
+    const missing = chat.edit({
+      network: 'main', pilotId: ONE, id: 'made-up', text: 'hello', now: NOON,
+    });
+    expect(!missing.ok && missing.code).toBe(404);
+  });
+
+  it('cannot reach across chains', () => {
+    const there = chat.say({ network: 'test', pilotId: ONE, text: 'on test', now: NOON });
+    const id = there.ok ? there.value.id : '';
+
+    const here = chat.edit({
+      network: 'main', pilotId: ONE, id, text: 'reached', now: NOON + 1000,
+    });
+    expect(here.ok).toBe(false);
+  });
+
+  it('cannot be used to empty a message', () => {
+    // Deleting by stealth. There is no delete in this room, and an edit that
+    // leaves a blank line is one.
+    const first = say(ONE, 'said', NOON);
+    const id = first.ok ? first.value.id : '';
+
+    expect(chat.edit({ network: 'main', pilotId: ONE, id, text: '   ', now: NOON + 1 }).ok)
+      .toBe(false);
+  });
+
+  it('leaves a run posted with no caption editable', () => {
+    // The card is the message there, so empty is not empty.
+    const posted = chat.say({
+      network: 'main', pilotId: ONE, text: '', runDate: DATE, now: NOON,
+    });
+    const id = posted.ok ? posted.value.id : '';
+
+    expect(chat.edit({ network: 'main', pilotId: ONE, id, text: 'beat that', now: NOON + 1 }).ok)
+      .toBe(true);
+  });
+
+  it('does not move it in the room', () => {
+    /*
+     * The order is the conversation. An edit that moved a message to the bottom
+     * would be a way to push your own line back up in front of everybody, which
+     * is exactly what the posting cooldown exists to prevent.
+     */
+    const first = say(ONE, 'first', NOON);
+    say(TWO, 'second', NOON + 1000);
+    const id = first.ok ? first.value.id : '';
+
+    chat.edit({ network: 'main', pilotId: ONE, id, text: 'first, fixed', now: NOON + 2000 });
+    expect(chat.recent('main', NOON + 3000).map((m) => m.text)).toEqual(['first, fixed', 'second']);
+  });
+
+  it('cleans an edit the same way it cleans a message', () => {
+    const first = say(ONE, 'clean', NOON);
+    const id = first.ok ? first.value.id : '';
+
+    const dirty = chat.edit({
+      network: 'main', pilotId: ONE, id, text: 'still‮clean', now: NOON + 1,
+    });
+    expect(dirty.ok && dirty.value.text).toBe('stillclean');
+  });
+
+  it('keeps the mark across a restart', () => {
+    const first = say(ONE, 'before', NOON);
+    const id = first.ok ? first.value.id : '';
+    chat.edit({ network: 'main', pilotId: ONE, id, text: 'after', now: NOON + 1000 });
+
+    chat.restore(chat.serialise());
+    const kept = chat.recent('main', NOON)[0];
+    expect(kept?.text).toBe('after');
+    expect(kept?.editedAt).toBe(NOON + 1000);
   });
 });
 

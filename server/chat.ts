@@ -21,11 +21,16 @@
  *
  * ## What it deliberately does not do
  *
- * No editing, no deletion by the author, no reactions, and no threads. Every one
- * of those is a store of its own and a screen of its own, and none of them is
- * what somebody opening this needs.
+ * No deletion by the author, no reactions, and no threads. Every one of those is
+ * a store of its own and a screen of its own, and none of them is what somebody
+ * opening this needs.
  *
- * A reply is the exception, and deliberately the cheap version of one: a message
+ * Editing is allowed, briefly, and never quietly: a message says that it was
+ * changed for the rest of its life. It is here for typos and wrong numbers
+ * rather than for changing what you said after it has been read, which is why
+ * the window is fifteen minutes and why the mark is permanent.
+ *
+ * A reply is the other exception, and deliberately the cheap version of one: a message
  * points at another message and the room draws what it is answering above it.
  * There is no thread to open, no reply count, and no separate view. In a room
  * where a dozen people are talking at once, being able to say which line you are
@@ -42,9 +47,9 @@
 
 import { randomUUID } from 'node:crypto';
 
-import { MAX_MESSAGE, tidyMessage } from '../src/data/chat';
+import { EDIT_WINDOW_MS, MAX_MESSAGE, stillEditable, tidyMessage } from '../src/data/chat';
 
-export { MAX_MESSAGE };
+export { EDIT_WINDOW_MS, MAX_MESSAGE };
 
 /**
  * How many messages a room keeps.
@@ -92,6 +97,15 @@ export interface ChatMessage {
    * reply never carries a stale copy of what it is answering.
    */
   replyTo: string | null;
+  /**
+   * When it was last changed, or null if it never was.
+   *
+   * Kept and shown rather than quietly applied. A room where a message can
+   * change with no trace is a room where nobody can rely on having read
+   * anything, and a reply here quotes its parent live rather than keeping a
+   * copy, so an edit changes what the answer appears to be answering.
+   */
+  editedAt: number | null;
 }
 
 interface Stored extends ChatMessage {
@@ -154,12 +168,69 @@ export function say(input: {
     at: input.now,
     runDate,
     replyTo: parent ? parent.id : null,
+    editedAt: null,
     network: input.network,
   };
 
   messages.push(message);
   lastPost.set(input.pilotId, input.now);
   trim(input.now);
+  persist();
+
+  return { ok: true, value: toPublic(message) };
+}
+
+/**
+ * Change something already said.
+ *
+ * Only your own, only for a short while, and never silently. Everything here is
+ * a refusal with a sentence on it rather than a boolean, because each one is
+ * something the person who pressed edit has to be told.
+ *
+ * Ownership is checked against the id on the stored message, which is this
+ * service's own record of who said what. A client asking to edit is not asked
+ * whose message it is.
+ */
+export function edit(input: {
+  network: string;
+  pilotId: string;
+  id: string;
+  text: string;
+  now: number;
+}): Result<ChatMessage> {
+  const message = messages.find((m) => m.id === input.id && m.network === input.network);
+  if (!message) {
+    return { ok: false, reason: 'That message is no longer here.', code: 404 };
+  }
+  if (message.pilotId !== input.pilotId) {
+    return { ok: false, reason: 'That is not yours to edit.', code: 403 };
+  }
+  if (!stillEditable(message.at, input.now)) {
+    return { ok: false, reason: 'Too late to edit that one.', code: 400 };
+  }
+
+  const text = tidyMessage(input.text);
+  // The same rule as saying something: empty is only allowed where a run is
+  // carrying the message, and editing cannot be a way to delete by stealth.
+  if (text.length === 0 && !message.runDate) {
+    return { ok: false, reason: 'A message cannot be emptied.', code: 400 };
+  }
+  if (text.length > MAX_MESSAGE) {
+    return { ok: false, reason: `Keep it under ${MAX_MESSAGE} characters.`, code: 400 };
+  }
+
+  /*
+   * No cooldown, and no change to `at`.
+   *
+   * The cooldown is there to stop one person filling the room, and an edit adds
+   * no line to it. Moving `at` would be worse than pointless: it would reorder
+   * the conversation around a correction and let an edit push a message back to
+   * the bottom, which is exactly the thing the cooldown exists to prevent.
+   */
+  if (text === message.text) return { ok: true, value: toPublic(message) };
+
+  message.text = text;
+  message.editedAt = input.now;
   persist();
 
   return { ok: true, value: toPublic(message) };
@@ -258,6 +329,7 @@ export function restore(raw: unknown): void {
       at: typeof item.at === 'number' ? item.at : 0,
       runDate: typeof item.runDate === 'string' ? item.runDate : null,
       replyTo: typeof item.replyTo === 'string' ? item.replyTo : null,
+      editedAt: typeof item.editedAt === 'number' ? item.editedAt : null,
       network: typeof item.network === 'string' ? item.network : 'main',
     });
   }

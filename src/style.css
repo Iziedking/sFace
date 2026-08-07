@@ -6921,6 +6921,19 @@ body.is-fullscreen .foot,
   margin-top: 8px;
 }
 
+/* Said once and quietly, in the mono the app keeps for anything factual. It
+   never goes away: a message that could change without a trace is a message
+   nobody can rely on having read. */
+.room__edited {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+  margin-left: 6px;
+  /* Sits with the last line of the text rather than on a line of its own. */
+  white-space: nowrap;
+}
+
 /* A message whose run is no longer on the board. Says so plainly and carries no
    tip button, because there is nothing left to tip. */
 .room__gone {

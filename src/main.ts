@@ -81,6 +81,7 @@ import {
   postScore,
   anchorPostedScore,
   sendChat,
+  editChat,
   reportTip,
   fetchTips,
   markTipsSeen,
@@ -609,6 +610,8 @@ class App {
   private roomShareDate: string | null = null;
   /** The message being answered, if any. Cleared once it is sent. */
   private replyingTo: string | null = null;
+  /** The message being changed, if any. Its text goes back in the box. */
+  private editingId: string | null = null;
   /**
    * When this pilot last had the room open, as epoch milliseconds.
    *
@@ -2062,8 +2065,17 @@ class App {
       // The only origin an invite in a message may point at. See findInvite.
       origin: typeof window === 'undefined' ? '' : window.location.origin,
       replyingTo: this.replyingTo,
+      editingId: this.editingId,
       onReply: (messageId) => {
         this.replyingTo = messageId;
+        // Answering and editing are the same box, so starting one puts the
+        // other down rather than leaving two half-open jobs on one field.
+        this.editingId = null;
+        this.paintChat();
+      },
+      onEdit: (messageId) => {
+        this.editingId = messageId;
+        this.replyingTo = null;
         this.paintChat();
       },
       onSend: (text) => void this.sayInRoom(text),
@@ -2101,6 +2113,12 @@ class App {
   private async sayInRoom(text: string): Promise<void> {
     if (this.roomSending) return;
 
+    // The same box does both. Which one it is doing is whichever job is open.
+    if (this.editingId) {
+      await this.saveEdit(this.editingId, text);
+      return;
+    }
+
     this.roomSending = true;
     this.setRoomNotice(null);
 
@@ -2124,6 +2142,30 @@ class App {
 
     // Re-read rather than appending locally, so what is on screen is what the
     // service actually kept.
+    await this.loadChat();
+  }
+
+  /**
+   * Save a change to something I said.
+   *
+   * The service decides whether it is mine and whether the window has closed,
+   * so a refusal here is read out rather than guessed at. Nothing is changed on
+   * screen until the room has been re-read: an edit that looked applied and was
+   * not is worse than one that takes a moment.
+   */
+  private async saveEdit(id: string, text: string): Promise<void> {
+    this.roomSending = true;
+    this.setRoomNotice(null);
+
+    const result = await editChat({ id, deviceId: this.pilot, text });
+    this.roomSending = false;
+
+    if (!result.ok) {
+      this.setRoomNotice(result.error);
+      return;
+    }
+
+    this.editingId = null;
     await this.loadChat();
   }
 

@@ -626,6 +626,8 @@ export interface ChatMessage {
   at: number;
   /** Set when a run was posted, whether or not the row still resolves. */
   runDate: string | null;
+  /** When it was last changed. Shown, never quietly applied. */
+  editedAt: number | null;
   /**
    * The message this one answers, when it answers one.
    *
@@ -677,6 +679,7 @@ export async function fetchChat(deviceId: string): Promise<ApiResult<ChatRoom>> 
             text: m.text,
             at: numberOf(m.at),
             runDate: typeof m.runDate === 'string' ? m.runDate : null,
+            editedAt: typeof m.editedAt === 'number' ? m.editedAt : null,
             replyTo: typeof m.replyTo === 'string' ? m.replyTo : null,
             run: runCardOf(m.run),
           },
@@ -727,6 +730,18 @@ export async function sendChat(body: {
   replyTo?: string | null;
 }): Promise<ApiResult<ChatMessage>> {
   return request<ChatMessage>('/chat', { method: 'POST', body: JSON.stringify(body) });
+}
+
+/** Change one of your own, inside the window the service allows. */
+export async function editChat(body: {
+  id: string;
+  deviceId: string;
+  text: string;
+}): Promise<ApiResult<ChatMessage>> {
+  return request<ChatMessage>(`/chat/${encodeURIComponent(body.id)}`, {
+    method: 'POST',
+    body: JSON.stringify({ deviceId: body.deviceId, text: body.text }),
+  });
 }
 
 export type TipState = 'sent' | 'no-wallet';

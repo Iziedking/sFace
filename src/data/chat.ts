@@ -54,6 +54,25 @@ function classify(code: number): 'keep' | 'space' | 'drop' {
 }
 
 /**
+ * How long a message stays editable.
+ *
+ * Editing exists for the reason everybody edits: a typo, a wrong number, a
+ * missing word. It is not a way to change what you said after it has been read
+ * and answered, which is why the window is short and why an edited message says
+ * so for the rest of its life.
+ *
+ * Short matters more here than in most chats. A reply quotes its parent live
+ * rather than keeping a copy, so an edit changes what the quote shows. Fifteen
+ * minutes is long enough to fix a sentence and too short to rewrite an argument
+ * somebody has already answered.
+ */
+export const EDIT_WINDOW_MS = 15 * 60_000;
+
+export function stillEditable(at: number, now: number): boolean {
+  return now - at <= EDIT_WINDOW_MS;
+}
+
+/**
  * The biggest single tip, and the smallest.
  *
  * Here rather than in server/tips.ts for the same reason MAX_MESSAGE is: a
