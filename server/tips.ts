@@ -35,6 +35,10 @@
 
 import { randomUUID } from 'node:crypto';
 
+import { MAX_TIP_NIM } from '../src/data/chat';
+
+export { MAX_TIP_NIM };
+
 /** Whether the money could go anywhere. Decided by the route from the profile. */
 export type TipState = 'sent' | 'no-wallet';
 
@@ -53,15 +57,6 @@ export interface TipRecord {
 interface Stored extends TipRecord {
   network: string;
 }
-
-/**
- * The biggest single tip.
- *
- * A tip is a thumbs up with money on it, not a transfer. The wallet enforces
- * the real limit by holding the balance; this only refuses a figure that can
- * only be a mistake or a tampered request, before it reaches a confirm dialog.
- */
-export const MAX_TIP_NIM = 1000;
 
 /** Nothing older is worth telling anybody about. */
 const TTL_MS = 3 * 24 * 3_600_000;

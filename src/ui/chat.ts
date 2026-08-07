@@ -62,7 +62,7 @@
 
 import { button, el, mount } from './dom';
 import { maskAddress } from './screens';
-import { findInvite } from '../data/chat';
+import { MAX_TIP_NIM, findInvite, readTipAmount } from '../data/chat';
 import type { Invite } from '../data/chat';
 import type { ChatMessage, ChatPerson, RunCard } from '../net/api';
 
@@ -641,8 +641,13 @@ function runCard(
  * answering anything at all, which is a bad trade for a number somebody would
  * have picked from three options anyway.
  *
- * So the tip opens three amounts in place. Tapping one goes straight to the
- * wallet, which is where the real confirmation belongs and already exists.
+ * So the tip opens three amounts in place, and a box for anything else. Tapping
+ * one goes straight to the wallet, which is where the real confirmation belongs
+ * and already exists.
+ *
+ * The three are the common cases and the box is everything else: a run worth
+ * more than ten NIM is exactly the run somebody wants to pay properly for, and
+ * three fixed buttons made that impossible without leaving the room.
  */
 const TIPS = [1, 5, 10];
 
@@ -656,9 +661,39 @@ function tipRow(target: TipTarget, options: ChatOptions, run: RunCard | null): H
     // there is nothing to point at but the person.
     text: run ? 'Tip this run' : `Tip ${target.name}`,
   });
+
+  const custom = el('div', { class: 'room__custom' });
+
+  const field = el('input', {
+    class: 'room__customfield',
+    type: 'number',
+    // A phone keyboard with a decimal point on it, which the plain number type
+    // does not guarantee inside a WebView.
+    inputmode: 'decimal',
+    min: '0',
+    max: String(MAX_TIP_NIM),
+    step: 'any',
+    placeholder: 'NIM',
+    'aria-label': `How much to tip ${target.name}`,
+  }) as HTMLInputElement;
+
+  const confirm = el('button', { class: 'room__customsend', type: 'button', text: 'Send' });
+  const problem = el('span', { class: 'room__customproblem' });
+
+  /** Everything except the one button, put away. */
+  const collapse = (): void => {
+    open.hidden = false;
+    for (const other of amounts) other.hidden = true;
+    other.hidden = true;
+    custom.hidden = true;
+    field.value = '';
+    problem.textContent = '';
+  };
+
   open.addEventListener('click', () => {
     open.hidden = true;
     for (const amount of amounts) amount.hidden = false;
+    other.hidden = false;
   });
 
   const amounts = TIPS.map((nim) => {
@@ -672,13 +707,64 @@ function tipRow(target: TipTarget, options: ChatOptions, run: RunCard | null): H
       // Back to the single button straight away. The wallet is about to take
       // over, and a row of amounts left open behind it invites a second tap on
       // a dialog that is already up.
-      open.hidden = false;
-      for (const other of amounts) other.hidden = true;
+      collapse();
       options.onTip(target, nim);
     });
     return node;
   });
 
-  row.append(open, ...amounts);
+  const other = el('button', { class: 'room__tipamount', type: 'button', text: 'Other' });
+  other.hidden = true;
+  other.addEventListener('click', () => {
+    for (const amount of amounts) amount.hidden = true;
+    other.hidden = true;
+    custom.hidden = false;
+    field.focus();
+  });
+
+  const sendCustom = (): void => {
+    /*
+     * Read here as well as on the service.
+     *
+     * Not because the service is trusted less, but because this is the only
+     * place that can say what is wrong while the number is still in front of
+     * the person who typed it. A round trip to be told about a decimal point
+     * is a round trip to find out you have to start again.
+     */
+    const read = readTipAmount(field.value);
+    if ('error' in read) {
+      problem.textContent = read.error;
+      return;
+    }
+
+    const nim = read.nim;
+    collapse();
+    options.onTip(target, nim);
+  };
+
+  confirm.addEventListener('click', sendCustom);
+  field.addEventListener('keydown', (event) => {
+    const key = (event as KeyboardEvent).key;
+    if (key === 'Enter') {
+      event.preventDefault();
+      sendCustom();
+      return;
+    }
+    // Out of the box without sending anything, and back to where this started.
+    if (key === 'Escape') {
+      event.preventDefault();
+      collapse();
+    }
+  });
+  // Clear the complaint as soon as they start fixing it, rather than leaving a
+  // sentence about a number that is no longer there.
+  field.addEventListener('input', () => {
+    problem.textContent = '';
+  });
+
+  custom.hidden = true;
+  custom.append(field, confirm, problem);
+
+  row.append(open, ...amounts, other, custom);
   return row;
 }

@@ -6788,6 +6788,57 @@ body.is-fullscreen .foot,
   background: var(--accent);
 }
 
+/* Any other amount ----------------------------------------------------------
+   A box rather than a prompt, for the same reason the three buttons are
+   buttons: a JavaScript dialog blocks a WebView, and inside the wallet it can
+   stop the page answering at all. */
+
+.room__custom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.room__custom[hidden] {
+  display: none;
+}
+
+.room__customfield {
+  width: 92px;
+  font-family: var(--mono);
+  /* 16px, because anything smaller makes iOS zoom the page on focus and leave
+     the room scrolled somewhere nobody asked to be. */
+  font-size: 16px;
+  border: 2px solid var(--ink);
+  background: var(--canvas);
+  padding: 3px 6px;
+}
+
+.room__customsend {
+  appearance: none;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  border: 2px solid var(--ink);
+  background: var(--accent);
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+/* Said next to the box rather than in the room's notice line, so it is beside
+   the number it is about instead of at the bottom of the page. */
+.room__customproblem {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--danger);
+}
+
+.room__customproblem:empty {
+  display: none;
+}
+
 /* A run somebody posted ---------------------------------------------------
    The card is the reason anybody tips anybody here: a room of text gives you
    nothing to pay for. Every number on it came off the board, so it is drawn

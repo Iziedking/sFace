@@ -54,6 +54,56 @@ function classify(code: number): 'keep' | 'space' | 'drop' {
 }
 
 /**
+ * The biggest single tip, and the smallest.
+ *
+ * Here rather than in server/tips.ts for the same reason MAX_MESSAGE is: a
+ * limit the field enforces and a limit the service enforces have to be the same
+ * number, or somebody types an amount that is then refused. That file reaches
+ * for node:crypto, and importing it from the client pulls a Node builtin into
+ * the browser bundle.
+ *
+ * A tip is a thumbs up with money on it rather than a transfer, so the ceiling
+ * is low enough that a slipped decimal point is caught here instead of in a
+ * confirmation dialog. The floor is one Luna, which is the smallest amount the
+ * chain can carry at all: below it the transaction rounds to nothing.
+ */
+export const MAX_TIP_NIM = 1000;
+export const MIN_TIP_NIM = 0.00001;
+
+/**
+ * Read a typed tip amount, or say what is wrong with it.
+ *
+ * Returns a sentence rather than a boolean because every refusal here is
+ * something the person typing needs to read. An empty box is not a refusal:
+ * they have not finished, and shouting at a half-typed number is how a field
+ * becomes unusable.
+ */
+export function readTipAmount(raw: string): { nim: number } | { error: string } {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return { error: 'How much?' };
+
+  const nim = Number(trimmed);
+  if (!Number.isFinite(nim)) return { error: 'That is not a number.' };
+  if (nim <= 0) return { error: 'Tips have to be more than nothing.' };
+  if (nim < MIN_TIP_NIM) return { error: 'That is too small to send.' };
+  if (nim > MAX_TIP_NIM) return { error: `Tips are capped at ${MAX_TIP_NIM} NIM.` };
+
+  /*
+   * Five decimal places, because that is what a Luna is.
+   *
+   * Anything finer is rounded away when the amount is converted, so a sixth
+   * decimal is a number the sender typed and the chain will not carry. Saying
+   * so is better than quietly sending a different amount than was asked for.
+   */
+  const lunas = nim * 100_000;
+  if (Math.abs(lunas - Math.round(lunas)) > 1e-6) {
+    return { error: 'NIM only goes to five decimal places.' };
+  }
+
+  return { nim: Math.round(lunas) / 100_000 };
+}
+
+/**
  * An invite somebody pasted into the room.
  *
  * ## Why only our own links, and why nothing else is ever a link

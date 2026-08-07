@@ -2198,6 +2198,35 @@ class App {
     this.setRoomNotice(null);
 
     /*
+     * Your own wallet first, before anything is said about theirs.
+     *
+     * The order is the whole of it. Somebody with no wallet at all was being
+     * told that the other pilot had not connected one, which is a true sentence
+     * about the wrong person: it reads as their problem when it is yours, and
+     * it sends you looking at somebody else's setup for a reason you could not
+     * have paid anyone.
+     *
+     * It also closed a hole. The refusal below files a note on the other
+     * pilot's bell, and firing that for a tipper who could never have sent
+     * anything made it a notification anybody could put in front of anyone,
+     * free, from a browser with no wallet in it at all.
+     *
+     * Availability is asked before the address, because asking for an address
+     * is what raises the wallet's approval dialog, and there is no dialog worth
+     * raising where there is no wallet to raise it.
+     */
+    if (!this.session?.available) {
+      this.setRoomNotice('Open sFace in Nimiq Pay to send a tip.');
+      return;
+    }
+
+    const from = await this.requireAddress();
+    if (!from) {
+      this.setRoomNotice('Connect your wallet to send a tip.');
+      return;
+    }
+
+    /*
      * Nobody to pay.
      *
      * Nothing opens and nothing is spent. The attempt is still recorded, which
@@ -2210,11 +2239,6 @@ class App {
         `${target.name} has not connected a wallet yet. They have been told somebody tried.`,
       );
       void reportTip({ deviceId: this.pilot, to: target.pilotId, nim });
-      return;
-    }
-
-    if (!this.session?.available) {
-      this.setRoomNotice('Open sFace in Nimiq Pay to send a tip.');
       return;
     }
 

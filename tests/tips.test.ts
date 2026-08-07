@@ -15,6 +15,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import * as tips from '../server/tips';
+import { MAX_TIP_NIM, readTipAmount } from '../src/data/chat';
 
 const ME = 'a'.repeat(64);
 const THEM = 'b'.repeat(64);
@@ -60,7 +61,61 @@ describe('recording one', () => {
   it('refuses an amount that can only be a mistake', () => {
     expect(send(ME, THEM, 0).ok).toBe(false);
     expect(send(ME, THEM, -5).ok).toBe(false);
-    expect(send(ME, THEM, tips.MAX_TIP_NIM + 1).ok).toBe(false);
+    expect(send(ME, THEM, MAX_TIP_NIM + 1).ok).toBe(false);
+  });
+});
+
+describe('an amount somebody typed', () => {
+  it('takes a plain number', () => {
+    expect(readTipAmount('25')).toEqual({ nim: 25 });
+    expect(readTipAmount('  7 ')).toEqual({ nim: 7 });
+    expect(readTipAmount('0.5')).toEqual({ nim: 0.5 });
+  });
+
+  it('says nothing sharp about an empty box', () => {
+    // They have not finished. Shouting at a half-typed number is how a field
+    // becomes unusable.
+    expect(readTipAmount('')).toEqual({ error: 'How much?' });
+  });
+
+  it('refuses what is not a number', () => {
+    expect('error' in readTipAmount('lots')).toBe(true);
+    expect('error' in readTipAmount('5 NIM')).toBe(true);
+    expect('error' in readTipAmount('1e400')).toBe(true);
+  });
+
+  it('refuses nothing and less than nothing', () => {
+    expect('error' in readTipAmount('0')).toBe(true);
+    expect('error' in readTipAmount('-5')).toBe(true);
+  });
+
+  it('holds the same ceiling the service holds', () => {
+    /*
+     * The whole reason this rule is shared. A box that accepted more than the
+     * service does would send somebody to a wallet dialog to have the payment
+     * refused afterwards, having already approved it.
+     */
+    expect(readTipAmount(String(MAX_TIP_NIM))).toEqual({ nim: MAX_TIP_NIM });
+    expect('error' in readTipAmount(String(MAX_TIP_NIM + 1))).toBe(true);
+  });
+
+  it('refuses more precision than a Luna has', () => {
+    /*
+     * 1 NIM is 1e5 Lunas, so a sixth decimal is a number the sender typed and
+     * the chain will not carry. Saying so beats quietly sending a different
+     * amount than the one they asked for.
+     *
+     * Measured above the floor on purpose. A tiny over-precise number is
+     * refused by the minimum first, which is a true answer to a different
+     * question and would let this rule rot without the test noticing.
+     */
+    expect(readTipAmount('0.00001')).toEqual({ nim: 0.00001 });
+    expect(readTipAmount('1.000001')).toEqual({ error: 'NIM only goes to five decimal places.' });
+    expect(readTipAmount('12.5')).toEqual({ nim: 12.5 });
+  });
+
+  it('refuses one too small for the chain to carry', () => {
+    expect(readTipAmount('0.000001')).toEqual({ error: 'That is too small to send.' });
   });
 });
 

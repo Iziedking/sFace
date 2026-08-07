@@ -271,10 +271,22 @@ says its own sentence:
 
 | | |
 |---|---|
+| **You have no wallet** | Says to open sFace in Nimiq Pay, or to connect one |
 | They have a wallet | The sheet opens, and the room says it was sent |
 | **They have never connected one** | Nothing opens, nothing is spent, and **they get told somebody tried** |
 | Not enough NIM | The wallet's own refusal, in tip words |
-| You are in a plain browser | Says to open sFace in Nimiq Pay |
+
+Your own wallet is checked **first**, and the order is load bearing. Being told
+that the other pilot has not connected one is a true sentence about the wrong
+person when the missing wallet is yours. It also closed a hole: the refusal
+files a note on their bell, and firing that for somebody who could never have
+sent anything made it a notification anyone could put in front of anyone, free,
+from a browser with no wallet in it.
+
+Amounts are 1, 5 and 10, or anything you type up to 1000 NIM. The typed one is
+read against the same rule the service uses, so a number that cannot be sent is
+refused beside the box rather than after a wallet dialog has already been
+approved.
 
 That second row is the one worth explaining. This screen used to hide the tip
 button for anybody without a wallet, which was tidy and meant that person never
