@@ -14,6 +14,7 @@
 import { isRehearsal, networkOf, NETWORK_HEADER } from './network';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { z } from 'zod';
+import { corsDecision, parseAllowedOrigins } from './cors';
 
 import * as daily from './daily';
 import { getMission, startRefreshLoop, utcDate } from './daily';
@@ -28,7 +29,7 @@ import * as signals from './xsignals';
 import * as profiles from './profiles';
 import * as xauth from './xauth';
 import { attachLive } from './live';
-import { backupSnapshot, flush, loadSnapshot, saveNow, scheduleSave } from './store';
+import { backupSnapshot, flush, getPersistenceHealth, loadSnapshot, saveNow, scheduleSave } from './store';
 import { PlayerAuth } from './player-auth';
 import {
   mergeBodyDigest,
@@ -44,12 +45,8 @@ import { claimMessage, mergeClaimMessage, verifyClaim, verifyMessage } from './a
 import { levelFacts, refuse } from './verify';
 
 const PORT = Number(process.env.PORT ?? 8790);
-/** Comma-separated list. Empty means allow any origin, which is fine for a
- *  public read-mostly service but should be set in production. */
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? '')
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const ALLOWED_ORIGINS = parseAllowedOrigins(process.env.ALLOWED_ORIGINS ?? '', IS_PRODUCTION);
 /** Set this when running behind Caddy or any proxy, or rate limits key on it. */
 const TRUST_PROXY = process.env.TRUST_PROXY === 'true';
 
@@ -82,24 +79,16 @@ app.disable('x-powered-by');
 app.use(express.json({ limit: '16kb' }));
 
 app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (ALLOWED_ORIGINS.length === 0) {
-    res.setHeader('access-control-allow-origin', '*');
-  } else if (origin && ALLOWED_ORIGINS.includes(origin)) {
-    res.setHeader('access-control-allow-origin', origin);
-    res.setHeader('vary', 'Origin');
+  const cors = corsDecision(req.headers.origin, ALLOWED_ORIGINS, IS_PRODUCTION);
+  if (!cors.allowed) {
+    res.status(403).json({ error: 'Origin is not allowed.' });
+    return;
+  }
+  if (cors.header) {
+    res.setHeader('access-control-allow-origin', cors.header);
+    if (cors.header !== '*') res.setHeader('vary', 'Origin');
   }
   res.setHeader('access-control-allow-methods', 'GET,POST,OPTIONS');
-  /*
-   * Both headers the client actually sends, and no more.
-   *
-   * x-sface-network is a CUSTOM header, and a custom header is what turns a
-   * simple request into a preflighted one. Leaving it out of this list does not
-   * merely ignore it: the browser refuses the whole request, so every call fails
-   * with a CORS error while the same URL answers fine from curl. That is a
-   * confusing failure to debug and it would have taken the live site down the
-   * moment the client started sending it.
-   */
   res.setHeader('access-control-allow-headers', `content-type, ${NETWORK_HEADER}`);
 
   if (req.method === 'OPTIONS') {
@@ -461,7 +450,12 @@ const settleBody = z.object({
 // Routes -------------------------------------------------------------------
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, date: utcDate() });
+  const persistence = getPersistenceHealth();
+  res.status(persistence.status === 'healthy' ? 200 : 503).json({
+    ok: persistence.status === 'healthy',
+    date: utcDate(),
+    persistence,
+  });
 });
 
 app.post('/auth/player/register', limit(8, 2), async (req, res) => {
@@ -2102,7 +2096,11 @@ function snapshot() {
 }
 
 async function main(): Promise<void> {
-  const restored = await loadSnapshot();
+  const loaded = await loadSnapshot();
+  if (!loaded.ok) {
+    throw new Error(`Persistence startup failed: ${loaded.error}. Refusing to boot with empty state.`);
+  }
+  const restored = loaded.value;
   if (restored) {
     board.restore(restored.scores);
     challenges.restore(restored.challenges);
@@ -2188,8 +2186,8 @@ async function main(): Promise<void> {
   const server = app.listen(PORT, () => {
     console.log(`[sface] listening on :${PORT}`);
     console.log('[sface] live co-op relay on /live');
-    if (ALLOWED_ORIGINS.length === 0) {
-      console.warn('[sface] ALLOWED_ORIGINS is unset, so every origin is allowed.');
+    if (!IS_PRODUCTION && ALLOWED_ORIGINS.length === 0) {
+      console.warn('[sface] ALLOWED_ORIGINS is unset. Development CORS allows every origin.');
     }
     if (!TRUST_PROXY) {
       console.warn('[sface] TRUST_PROXY is not true. Set it when running behind Caddy.');
@@ -2226,4 +2224,8 @@ async function main(): Promise<void> {
   process.on('SIGINT', shutdown('SIGINT'));
 }
 
-void main();
+void main().catch((error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error('[sface] startup failed:', message);
+  process.exitCode = 1;
+});

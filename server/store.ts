@@ -1,15 +1,9 @@
 /**
- * Persistence, such as it is.
+ * Atomic snapshot persistence for the API process.
  *
- * A JSON snapshot on disk, written on a debounce. This is deliberately not a
- * database: the whole dataset is one day of scores and a handful of challenges,
- * it is rewritten nightly, and nothing here is money. A restart losing the
- * board would be embarrassing during judging, and that is the entire problem
- * this solves.
- *
- * The write is atomic. Writing in place means a process killed mid-write leaves
- * a truncated file that fails to parse on the next boot, which is the same as
- * having no persistence at all but harder to notice.
+ * A missing file is a fresh install. Corrupt, unsupported, or unreadable data
+ * is a startup failure because booting empty would overwrite the evidence on
+ * the next write and make player state loss look successful.
  */
 
 import { copyFile, readFile, writeFile, rename, mkdir } from 'node:fs/promises';
@@ -24,33 +18,68 @@ export interface Snapshot {
   version: 1;
   scores: unknown;
   challenges: unknown;
-  /**
-   * The day's frozen mission. Not a cache: challenges are bets on a specific
-   * seed, and recomposing after a restart would change it. See server/daily.ts.
-   */
   mission: unknown;
-  /** Public player credentials only. Challenges and signatures are never persisted. */
   playerAuth?: PlayerAuthSnapshot;
+  [key: string]: unknown;
 }
 
+export type SnapshotLoadResult =
+  | { ok: true; value: Snapshot | null }
+  | { ok: false; error: 'snapshot_corrupt' | 'snapshot_unsupported' | 'snapshot_unreadable' };
+
+export interface PersistenceHealth {
+  status: 'healthy' | 'degraded';
+  lastError: string | null;
+  lastSuccessfulWriteAt: number | null;
+}
+
+let health: PersistenceHealth = {
+  status: 'healthy',
+  lastError: null,
+  lastSuccessfulWriteAt: null,
+};
 let pending: NodeJS.Timeout | null = null;
 let latest: (() => Snapshot) | null = null;
 
-export async function loadSnapshot(): Promise<Snapshot | null> {
+export function getPersistenceHealth(): PersistenceHealth {
+  return { ...health };
+}
+
+export function parseSnapshot(raw: string): SnapshotLoadResult {
+  let parsed: unknown;
   try {
-    const raw = await readFile(SNAPSHOT, 'utf8');
-    const parsed = JSON.parse(raw) as Snapshot;
-    return parsed.version === 1 ? parsed : null;
+    parsed = JSON.parse(raw);
   } catch {
-    // No file yet, or it is unreadable. Either way we start empty.
-    return null;
+    return { ok: false, error: 'snapshot_corrupt' };
+  }
+  if (!parsed || typeof parsed !== 'object' || !('version' in parsed)) {
+    return { ok: false, error: 'snapshot_corrupt' };
+  }
+  if ((parsed as { version?: unknown }).version !== 1) {
+    return { ok: false, error: 'snapshot_unsupported' };
+  }
+  return { ok: true, value: parsed as Snapshot };
+}
+
+export function persistenceStatusFromError(error: unknown): SnapshotLoadResult {
+  if ((error as NodeJS.ErrnoException | null)?.code === 'ENOENT') {
+    return { ok: true, value: null };
+  }
+  return { ok: false, error: 'snapshot_unreadable' };
+}
+
+export async function loadSnapshot(): Promise<SnapshotLoadResult> {
+  try {
+    const result = parseSnapshot(await readFile(SNAPSHOT, 'utf8'));
+    if (!result.ok) markDegraded(result.error);
+    return result;
+  } catch (error) {
+    const result = persistenceStatusFromError(error);
+    if (!result.ok) markDegraded(result.error);
+    return result;
   }
 }
 
-/**
- * Ask for a save. Repeated calls inside the debounce window collapse into one
- * write, so a burst of score posts does not become a burst of disk writes.
- */
 export function scheduleSave(produce: () => Snapshot): void {
   latest = produce;
   if (pending) return;
@@ -59,51 +88,32 @@ export function scheduleSave(produce: () => Snapshot): void {
     pending = null;
     const producer = latest;
     latest = null;
-    if (producer) void save(producer());
+    if (producer) {
+      void save(producer()).catch((error: unknown) => {
+        console.error('[sface] snapshot write failed', error);
+      });
+    }
   }, DEBOUNCE_MS);
-  // Do not hold the process open just to flush a leaderboard.
   pending.unref?.();
 }
 
-/**
- * Copy the snapshot aside before something rewrites it in a new shape.
- *
- * ## Why a migration gets a backup and an ordinary write does not
- *
- * Every other write here replaces data with the same data plus a change. A
- * migration replaces it with data in a shape that has never been on this disk,
- * produced by code that has never run against this exact file. If the reading
- * half of that is wrong, the writing half destroys the evidence, and the
- * failure is silent: profiles do not crash when they load as zeroes, they just
- * quietly stop being worth anything.
- *
- * So the original is kept, named for the day it was set aside. Nothing deletes
- * these. They are small, they are rare, and the moment you want one is the
- * moment you cannot make another.
- *
- * A failed backup returns false and the caller must not proceed. Migrating
- * anyway because the safety net tore is how a safety net becomes decoration.
- */
 export async function backupSnapshot(label: string): Promise<string | null> {
   const target = `${SNAPSHOT}.${label}.bak`;
   try {
     await copyFile(SNAPSHOT, target);
     return target;
   } catch (error) {
-    // No file to copy is fine and not a failure: a fresh install has nothing
-    // to lose. Anything else is a real refusal to proceed.
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return target;
+    markDegraded('snapshot_backup_failed');
     console.error('[sface] snapshot backup failed', error);
     return null;
   }
 }
 
-/** Write now, skipping the debounce. Used once at boot by the migration. */
 export async function saveNow(snapshot: Snapshot): Promise<void> {
   await save(snapshot);
 }
 
-/** Flush immediately. Called on shutdown so the last writes are not lost. */
 export async function flush(): Promise<void> {
   if (pending) {
     clearTimeout(pending);
@@ -114,14 +124,19 @@ export async function flush(): Promise<void> {
   if (producer) await save(producer());
 }
 
+function markDegraded(error: string): void {
+  health = { ...health, status: 'degraded', lastError: error };
+}
+
 async function save(snapshot: Snapshot): Promise<void> {
   try {
     await mkdir(dirname(SNAPSHOT), { recursive: true });
     const temp = `${SNAPSHOT}.${process.pid}.tmp`;
     await writeFile(temp, JSON.stringify(snapshot), 'utf8');
     await rename(temp, SNAPSHOT);
+    health = { status: 'healthy', lastError: null, lastSuccessfulWriteAt: Date.now() };
   } catch (error) {
-    // Losing the snapshot must never take the service with it.
-    console.error('[sface] snapshot write failed', error);
+    markDegraded('snapshot_write_failed');
+    throw error;
   }
 }
