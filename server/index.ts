@@ -22,6 +22,7 @@ import { adminConfig, adminMiddleware } from './admin/auth';
 import { configInventory } from './admin/config';
 import { adminLogs, initialiseAdminLogs, recordAdminLog } from './admin/logs';
 import { OperationNonces } from './admin/nonces';
+import { buildDiagnosticBundle } from './admin/diagnostics';
 
 import * as daily from './daily';
 import { getMission, startRefreshLoop, utcDate } from './daily';
@@ -554,6 +555,26 @@ app.post('/admin/api/backups', limit(3, 1), requireAdmin, async (req, res) => {
   }
   recordAdminLog({ time: Date.now(), level: 'info', subsystem: 'persistence', event: 'backup_created', message: 'Admin backup created' });
   res.json({ ok: true });
+});
+app.post('/admin/api/diagnostics/export', limit(3, 1), requireAdmin, (req, res) => {
+  const nonce = typeof req.body?.nonce === 'string' ? req.body.nonce : '';
+  if (!ADMIN_NONCES.consume(nonce, 'diagnostics.export')) {
+    res.status(409).json({ error: 'Missing or expired operation nonce.' });
+    return;
+  }
+  const effective = effectiveCapabilities();
+  const bundle = buildDiagnosticBundle({
+    generatedAt: Date.now(),
+    commit: process.env.GIT_COMMIT ?? null,
+    persistence: effective.persistence,
+    capabilities: effective.capabilities,
+    config: configInventory(),
+    logs: adminLogs.list(Date.now(), 1_000),
+    rateLimitBuckets: buckets.size,
+  });
+  recordAdminLog({ time: Date.now(), level: 'info', subsystem: 'admin', event: 'diagnostics_exported', message: 'Redacted diagnostics exported', context: { ip: req.ip } });
+  res.setHeader('content-disposition', `attachment; filename="sface-diagnostics-${utcDate()}.json"`);
+  res.json(bundle);
 });
 app.get('/admin/api/overview', limit(30, 10), requireAdmin, (_req, res) => {
   res.json({
