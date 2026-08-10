@@ -23,6 +23,7 @@ import { configInventory } from './admin/config';
 import { adminLogs, initialiseAdminLogs, recordAdminLog } from './admin/logs';
 import { OperationNonces } from './admin/nonces';
 import { buildDiagnosticBundle } from './admin/diagnostics';
+import { adminRecord } from './admin/records';
 
 import * as daily from './daily';
 import { getMission, startRefreshLoop, utcDate } from './daily';
@@ -575,6 +576,25 @@ app.post('/admin/api/diagnostics/export', limit(3, 1), requireAdmin, (req, res) 
   recordAdminLog({ time: Date.now(), level: 'info', subsystem: 'admin', event: 'diagnostics_exported', message: 'Redacted diagnostics exported', context: { ip: req.ip } });
   res.setHeader('content-disposition', `attachment; filename="sface-diagnostics-${utcDate()}.json"`);
   res.json(bundle);
+});
+app.get('/admin/api/records/:kind', limit(30, 10), requireAdmin, (req, res) => {
+  const result = adminRecord(String(req.params.kind ?? ''), {
+    profiles: profiles.serialise,
+    scores: board.serialise,
+    clans: clans.serialise,
+    contests: contests.serialise,
+    challenges: challenges.serialise,
+    tips: tips.serialise,
+    ghosts: ghosts.serialise,
+    chat: chat.serialise,
+    signals: signals.serialise,
+  });
+  if (!result.ok) {
+    res.status(result.error === 'unknown_record_kind' ? 404 : 503).json({ error: result.error });
+    return;
+  }
+  recordAdminLog({ time: Date.now(), level: 'info', subsystem: 'admin', event: 'records_read', message: 'Admin records viewed', context: { kind: result.kind, ip: req.ip } });
+  res.json(result);
 });
 app.get('/admin/api/overview', limit(30, 10), requireAdmin, (_req, res) => {
   res.json({
