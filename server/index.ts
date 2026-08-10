@@ -21,6 +21,7 @@ import { apiSecurityHeaders } from './security-headers';
 import { adminConfig, adminMiddleware } from './admin/auth';
 import { configInventory } from './admin/config';
 import { adminLogs, initialiseAdminLogs, recordAdminLog } from './admin/logs';
+import { OperationNonces } from './admin/nonces';
 
 import * as daily from './daily';
 import { getMission, startRefreshLoop, utcDate } from './daily';
@@ -58,6 +59,7 @@ const ALLOWED_ORIGINS = parseAllowedOrigins(process.env.ALLOWED_ORIGINS ?? '', I
 /** Set this when running behind Caddy or any proxy, or rate limits key on it. */
 const TRUST_PROXY = process.env.TRUST_PROXY === 'true';
 const ADMIN_CONFIG = adminConfig();
+const ADMIN_NONCES = new OperationNonces(60_000);
 
 /**
  * Where anchored runs are sent, and which chain counts.
@@ -529,6 +531,30 @@ app.get('/admin/api/logs/stream', limit(12, 4), requireAdmin, (req, res) => {
   });
 });
 
+app.get('/admin/api/operations/nonce', limit(30, 10), requireAdmin, (req, res) => {
+  const operation = typeof req.query.operation === 'string' ? req.query.operation : '';
+  if (!['backup.create', 'diagnostics.export'].includes(operation)) {
+    res.status(400).json({ error: 'Unsupported operation.' });
+    return;
+  }
+  res.json({ ok: true, nonce: ADMIN_NONCES.issue(operation) });
+});
+
+app.post('/admin/api/backups', limit(3, 1), requireAdmin, async (req, res) => {
+  const nonce = typeof req.body?.nonce === 'string' ? req.body.nonce : '';
+  if (!ADMIN_NONCES.consume(nonce, 'backup.create')) {
+    res.status(409).json({ error: 'Missing or expired operation nonce.' });
+    return;
+  }
+  const backup = await backupSnapshot('admin-' + utcDate() + '-' + Date.now());
+  if (!backup) {
+    recordAdminLog({ time: Date.now(), level: 'error', subsystem: 'persistence', event: 'backup_failed', message: 'Admin backup failed' });
+    res.status(503).json({ error: 'Backup failed.' });
+    return;
+  }
+  recordAdminLog({ time: Date.now(), level: 'info', subsystem: 'persistence', event: 'backup_created', message: 'Admin backup created' });
+  res.json({ ok: true });
+});
 app.get('/admin/api/overview', limit(30, 10), requireAdmin, (_req, res) => {
   res.json({
     ok: true,

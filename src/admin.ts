@@ -75,11 +75,30 @@ async function overview(): Promise<void> {
       <article><span>${name}</span><strong class="${state.enabled ? 'on' : 'off'}">${state.enabled ? 'enabled' : 'disabled'}</strong><small>${state.required ? 'required' : 'optional'}</small></article>`).join('')}</div></section>
     <section><h2>Recent logs</h2><div class="ledger" id="live-logs">${logs.entries.slice(0, 20).map((entry) => `
       <article><span>${new Date(entry.time).toISOString()} | ${entry.level}</span><strong>${entry.event}</strong><small>${entry.message}</small></article>`).join('')}</div></section>
+    <section><h2>Operations</h2><div class="operations"><button id="backup">Create snapshot backup</button><p id="operation-status" role="status">No operation running.</p></div></section>
     <section><h2>Configuration</h2><div class="ledger">${data.config.map((entry) => `
       <article><span>${entry.key}</span><strong class="${entry.configured ? 'on' : 'off'}">${entry.configured ? 'configured' : 'missing'}</strong><small>${entry.secret ? 'secret, value hidden' : 'non-secret'}${entry.restartRequired ? ', restart required' : ', runtime metadata'}</small></article>`).join('')}</div></section>`;
   root.querySelector<HTMLButtonElement>('#lock')?.addEventListener('click', () => login());
+  root.querySelector<HTMLButtonElement>('#backup')?.addEventListener('click', () => void createBackup());
   for (const event of ['pointerdown', 'keydown']) window.addEventListener(event, resetIdleLock, { once: true });
   if (!streamController) void startLogStream();
+}
+
+async function createBackup(): Promise<void> {
+  const status = root.querySelector<HTMLElement>('#operation-status');
+  if (status) status.textContent = 'Creating backup...';
+  const nonceResponse = await adminFetch('/admin/api/operations/nonce?operation=backup.create', token);
+  if (!nonceResponse.ok) {
+    if (status) status.textContent = 'Could not authorize the operation.';
+    return;
+  }
+  const { nonce } = await nonceResponse.json() as { nonce: string };
+  const response = await adminFetch('/admin/api/backups', token, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ nonce }),
+  });
+  if (status) status.textContent = response.ok ? 'Backup created.' : 'Backup failed. Check the logs.';
 }
 
 async function startLogStream(): Promise<void> {
