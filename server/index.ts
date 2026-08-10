@@ -32,6 +32,8 @@ import { backupSnapshot, flush, loadSnapshot, saveNow, scheduleSave } from './st
 import { PlayerAuth } from './player-auth';
 import {
   mergeBodyDigest,
+  bodyDigest,
+  type AuthAction,
   type DeviceProof,
   type PublicKeyJwk,
 } from '../src/net/player-auth-protocol';
@@ -168,6 +170,11 @@ const publicKeyJwk = z.object({
   y: z.string().min(1).max(100),
   key_ops: z.array(z.string()).optional(),
   ext: z.boolean().optional(),
+});
+const deviceProof = z.object({
+  challengeId: z.string().min(1).max(128),
+  publicKeyJwk,
+  signature: z.string().regex(/^[0-9a-f]+$/i).max(1024),
 });
 const pilotName = z.string().min(1).max(32);
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD.');
@@ -461,23 +468,31 @@ app.post('/auth/player/register', limit(8, 2), async (req, res) => {
 });
 
 app.post('/auth/player/challenge', limit(24, 8), async (req, res) => {
-  const parsed = z
-    .object({
+  const parsed = z.discriminatedUnion('action', [
+    z.object({
       playerId: deviceId,
       action: z.literal('profile.merge'),
       claim: z.object({ from: deviceId, into: deviceId }),
-    })
-    .safeParse(req.body);
+    }),
+    z.object({
+      playerId: deviceId,
+      action: z.enum(['chat.say', 'chat.edit']),
+      bodyDigest: z.string().regex(/^[0-9a-f]{64}$/i),
+    }),
+  ]).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ ok: false, error: 'invalid_request' });
     return;
   }
   const network = networkOf(req);
-  const bodyDigest = await mergeBodyDigest({ ...parsed.data.claim, network });
+  const digest =
+    parsed.data.action === 'profile.merge'
+      ? await mergeBodyDigest({ ...parsed.data.claim, network })
+      : parsed.data.bodyDigest;
   const issued = playerAuth.issueChallenge({
     playerId: parsed.data.playerId,
-    action: parsed.data.action,
-    bodyDigest,
+    action: parsed.data.action as AuthAction,
+    bodyDigest: digest,
   });
   if (!issued.ok) {
     res.status(403).json({ ok: false, error: 'unauthorized' });
@@ -587,8 +602,8 @@ app.get('/chat', limit(240, 60), (req, res) => {
   res.json({ messages, people, you: { runDate: canShare ? today : null } });
 });
 
-app.post('/chat', limit(30, 10), (req, res) => {
-  const parsed = chatBody.safeParse(req.body);
+app.post('/chat', limit(30, 10), async (req, res) => {
+  const parsed = chatBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
     return;
@@ -596,6 +611,21 @@ app.post('/chat', limit(30, 10), (req, res) => {
 
   const body = parsed.data;
   const network = networkOf(req);
+  const signedBody = {
+    deviceId: body.deviceId,
+    text: body.text,
+    runDate: body.runDate ?? null,
+    replyTo: body.replyTo ?? null,
+  };
+  const actor = await playerAuth.verify({
+    proof: body.auth as DeviceProof,
+    action: 'chat.say',
+    bodyDigest: await bodyDigest(signedBody),
+  });
+  if (!actor.ok || actor.value.playerId !== body.deviceId) {
+    res.status(403).json({ error: 'unauthorized' });
+    return;
+  }
 
   /*
    * You have to have played to speak.
@@ -652,9 +682,9 @@ app.post('/chat', limit(30, 10), (req, res) => {
  * about ownership is taken from the request: the id on the stored message is
  * this service's own record of who said what.
  */
-app.post('/chat/:id', limit(30, 10), (req, res) => {
+app.post('/chat/:id', limit(30, 10), async (req, res) => {
   const parsed = z
-    .object({ deviceId, text: z.string().max(chat.MAX_MESSAGE) })
+    .object({ deviceId, text: z.string().max(chat.MAX_MESSAGE), auth: deviceProof })
     .safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
@@ -662,6 +692,19 @@ app.post('/chat/:id', limit(30, 10), (req, res) => {
   }
 
   const network = networkOf(req);
+  const actor = await playerAuth.verify({
+    proof: parsed.data.auth as DeviceProof,
+    action: 'chat.edit',
+    bodyDigest: await bodyDigest({
+      id: String(req.params.id ?? ''),
+      deviceId: parsed.data.deviceId,
+      text: parsed.data.text,
+    }),
+  });
+  if (!actor.ok || actor.value.playerId !== parsed.data.deviceId) {
+    res.status(403).json({ error: 'unauthorized' });
+    return;
+  }
   const result = chat.edit({
     network,
     pilotId: parsed.data.deviceId,

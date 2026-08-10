@@ -4,6 +4,7 @@ import {
   encodeChallenge,
   encodeMergeClaim,
   mergeBodyDigest,
+  bodyDigest,
   type Challenge,
   type MergeClaim,
 } from '../src/net/player-auth-protocol';
@@ -35,5 +36,10 @@ describe('player auth protocol', () => {
     expect(Array.from(encodeChallenge({ ...challenge, action: 'player.register' }))).not.toEqual(original);
     expect(Array.from(encodeChallenge({ ...challenge, nonce: 'e'.repeat(32) }))).not.toEqual(original);
     expect(Array.from(encodeChallenge({ ...challenge, expiresAt: challenge.expiresAt + 1 }))).not.toEqual(original);
+  });
+
+  it('hashes equivalent object bodies identically', async () => {
+    expect(await bodyDigest({ b: 2, a: 1 })).toBe(await bodyDigest({ a: 1, b: 2 }));
+    expect(await bodyDigest({ a: 1, b: 3 })).not.toBe(await bodyDigest({ a: 1, b: 2 }));
   });
 });

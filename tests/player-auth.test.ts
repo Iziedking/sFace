@@ -130,4 +130,35 @@ describe('player authentication authority', () => {
     });
     expect(issued.ok).toBe(true);
   });
+
+  it('binds a chat edit proof to the exact edited body', async () => {
+    const registered = await auth.register({ publicKeyJwk: jwk, now: 100 });
+    if (!registered.ok) throw new Error('registration failed');
+    const digest = await mergeBodyDigest({
+      from: registered.value.playerId,
+      into: 'b'.repeat(64),
+      network: 'main',
+    });
+    const issued = auth.issueChallenge({
+      playerId: registered.value.playerId,
+      action: 'chat.edit',
+      bodyDigest: digest,
+      now: 200,
+    });
+    if (!issued.ok) throw new Error('challenge failed');
+    const signature = await crypto.subtle.sign(
+      { name: 'ECDSA', hash: 'SHA-256' },
+      pair.privateKey,
+      Uint8Array.from(encodeChallenge(issued.value)).buffer,
+    );
+    const proof = { challengeId: issued.value.id, publicKeyJwk: jwk, signature: hex(signature) };
+    expect(
+      await auth.verify({
+        proof,
+        action: 'chat.edit',
+        bodyDigest: 'f'.repeat(64),
+        now: 201,
+      }),
+    ).toEqual({ ok: false, error: 'body_mismatch' });
+  });
 });

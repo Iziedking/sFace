@@ -12,19 +12,56 @@
  */
 
 import { networkHeaders } from '../core/network';
-import type { PublicKeyJwk } from './player-auth-protocol';
+import {
+  bodyDigest,
+  type AuthAction,
+  type Challenge as PlayerChallenge,
+  type PublicKeyJwk,
+} from './player-auth-protocol';
+import { deviceProof, getOrCreateCredential, signChallenge } from './player-credential';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
 const TIMEOUT_MS = 6000;
 
 export type ApiResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
+let registeredPlayerId: string | null = null;
+
 export async function registerPlayerCredential(
   publicKeyJwk: PublicKeyJwk,
 ): Promise<ApiResult<{ playerId: string }>> {
-  return request<{ playerId: string }>('/auth/player/register', {
+  if (registeredPlayerId) return { ok: true, value: { playerId: registeredPlayerId } };
+  const result = await request<{ playerId: string }>('/auth/player/register', {
     method: 'POST',
     body: JSON.stringify({ publicKeyJwk }),
+  });
+  if (result.ok) registeredPlayerId = result.value.playerId;
+  return result;
+}
+
+async function authenticatedRequest<T>(
+  path: string,
+  action: AuthAction,
+  actorId: string,
+  body: Record<string, unknown>,
+): Promise<ApiResult<T>> {
+  const credential = await getOrCreateCredential();
+  if (credential.playerId !== actorId) return { ok: false, error: 'Identity changed. Reload.' };
+  const registered = await registerPlayerCredential(credential.publicKeyJwk);
+  if (!registered.ok) return registered;
+  const digest = await bodyDigest(body);
+  const challenged = await request<{ challenge: PlayerChallenge }>('/auth/player/challenge', {
+    method: 'POST',
+    body: JSON.stringify({ playerId: actorId, action, bodyDigest: digest }),
+  });
+  if (!challenged.ok) return challenged;
+  const signature = await signChallenge(credential.pair, challenged.value.challenge);
+  return request<T>(path, {
+    method: 'POST',
+    body: JSON.stringify({
+      ...body,
+      auth: deviceProof(challenged.value.challenge, credential.publicKeyJwk, signature),
+    }),
   });
 }
 
@@ -739,7 +776,13 @@ export async function sendChat(body: {
   /** The message being answered, when this is a reply. */
   replyTo?: string | null;
 }): Promise<ApiResult<ChatMessage>> {
-  return request<ChatMessage>('/chat', { method: 'POST', body: JSON.stringify(body) });
+  const signedBody = {
+    deviceId: body.deviceId,
+    text: body.text,
+    runDate: body.runDate ?? null,
+    replyTo: body.replyTo ?? null,
+  };
+  return authenticatedRequest<ChatMessage>('/chat', 'chat.say', body.deviceId, signedBody);
 }
 
 /** Change one of your own, inside the window the service allows. */
@@ -748,10 +791,12 @@ export async function editChat(body: {
   deviceId: string;
   text: string;
 }): Promise<ApiResult<ChatMessage>> {
-  return request<ChatMessage>(`/chat/${encodeURIComponent(body.id)}`, {
-    method: 'POST',
-    body: JSON.stringify({ deviceId: body.deviceId, text: body.text }),
-  });
+  return authenticatedRequest<ChatMessage>(
+    `/chat/${encodeURIComponent(body.id)}`,
+    'chat.edit',
+    body.deviceId,
+    { id: body.id, deviceId: body.deviceId, text: body.text },
+  );
 }
 
 export type TipState = 'sent' | 'no-wallet';

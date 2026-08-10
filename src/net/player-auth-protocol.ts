@@ -1,4 +1,8 @@
-export type AuthAction = 'player.register' | 'profile.merge';
+export type AuthAction =
+  | 'player.register'
+  | 'profile.merge'
+  | 'chat.say'
+  | 'chat.edit';
 
 export interface MergeClaim {
   from: string;
@@ -101,4 +105,18 @@ export function publicKeyId(jwk: PublicKeyJwk): Promise<string> {
   return sha256Hex(
     encoder.encode(`kty:${jwk.kty}\ncrv:${jwk.crv}\nx:${jwk.x}\ny:${jwk.y}`),
   );
+}
+
+function stableJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`)
+    .join(',')}}`;
+}
+
+export function bodyDigest(value: unknown): Promise<string> {
+  return sha256Hex(encoder.encode(stableJson(value)));
 }
