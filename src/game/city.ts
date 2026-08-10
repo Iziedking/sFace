@@ -266,9 +266,10 @@ export function buildCity(rng: Rng, chart: number[]): City {
      * that is always correct, which is the corridor again in a wider building.
      */
     startX: Math.round(STREET / 2),
-    // Clear of the bottom-left minimap on the first camera-clamped frame. The
-    // old corner spawn put the player underneath the map before they moved.
-    startY: Math.round(height - STREET * 2),
+    // One full avenue above the bottom edge. This keeps the first camera frame
+    // clear of the bottom-left minimap while preserving a horizontal street for
+    // the player and the car parked just ahead of them.
+    startY: Math.round(height - (cell + STREET) - STREET / 2),
     exitX: Math.round(width - STREET / 2),
     exitY: Math.round(STREET / 2),
   };

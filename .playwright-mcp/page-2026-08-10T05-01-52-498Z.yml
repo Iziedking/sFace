@@ -1,0 +1,256 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - link "Skip to content" [ref=e4] [cursor=pointer]:
+      - /url: "#start-of-content"
+    - banner [ref=e8]:
+      - heading "Navigation Menu" [level=2] [ref=e9]
+      - generic [ref=e10]:
+        - link "Homepage" [ref=e12] [cursor=pointer]:
+          - /url: /
+        - generic [ref=e15]:
+          - navigation "Global" [ref=e16]:
+            - list [ref=e17]:
+              - listitem [ref=e18]:
+                - button "Platform" [ref=e20] [cursor=pointer]
+              - listitem [ref=e23]:
+                - button "Solutions" [ref=e25] [cursor=pointer]
+              - listitem [ref=e28]:
+                - button "Resources" [ref=e30] [cursor=pointer]
+              - listitem [ref=e33]:
+                - button "Open Source" [ref=e35] [cursor=pointer]
+              - listitem [ref=e38]:
+                - button "Enterprise" [ref=e40] [cursor=pointer]
+              - listitem [ref=e43]:
+                - link "Pricing" [ref=e44] [cursor=pointer]:
+                  - /url: https://github.com/pricing
+          - generic [ref=e46]:
+            - button "Search or jump to, type / to search" [ref=e48] [cursor=pointer]
+            - link "Sign in" [ref=e52] [cursor=pointer]:
+              - /url: /login?return_to=https%3A%2F%2Fgithub.com%2FIziedking%2FsFace%2Factions%2Fruns%2F31357084936
+            - link "Sign up" [ref=e53] [cursor=pointer]:
+              - /url: /signup?ref_cta=Sign+up&ref_loc=header+logged+out&ref_page=%2F%3Cuser-name%3E%2F%3Crepo-name%3E%2Factions%2Fworkflow_runs%2Fshow&source=header-repo&source_repo=Iziedking%2FsFace
+            - button "Appearance settings" [ref=e54] [cursor=pointer]
+  - main [ref=e60]:
+    - generic [ref=e61]:
+      - generic [ref=e62]:
+        - generic [ref=e63]:
+          - generic [ref=e65]:
+            - link "Iziedking" [ref=e69] [cursor=pointer]:
+              - /url: /Iziedking
+            - generic [ref=e70]: /
+            - strong [ref=e71]:
+              - link "sFace" [ref=e72] [cursor=pointer]:
+                - /url: /Iziedking/sFace
+            - generic [ref=e73]: Public
+          - generic [ref=e74]:
+            - list:
+              - listitem [ref=e75]:
+                - link "You must be signed in to change notification settings" [ref=e76] [cursor=pointer]:
+                  - /url: /login?return_to=%2FIziedking%2FsFace
+                  - text: Notifications
+              - listitem [ref=e79]:
+                - link "Fork 0" [ref=e80] [cursor=pointer]:
+                  - /url: /login?return_to=%2FIziedking%2FsFace
+                  - text: Fork
+                  - generic "0" [ref=e83]
+              - listitem [ref=e84]:
+                - link "You must be signed in to star a repository" [ref=e86] [cursor=pointer]:
+                  - /url: /login?return_to=%2FIziedking%2FsFace
+                  - text: Star
+                  - generic "1 user starred this repository" [ref=e89]: "1"
+        - navigation "Repository" [ref=e90]:
+          - list [ref=e91]:
+            - listitem [ref=e92]:
+              - link "Code" [ref=e93] [cursor=pointer]:
+                - /url: /Iziedking/sFace
+            - listitem [ref=e97]:
+              - link "Issues" [ref=e98] [cursor=pointer]:
+                - /url: /Iziedking/sFace/issues
+            - listitem [ref=e103]:
+              - link "Pull requests" [ref=e104] [cursor=pointer]:
+                - /url: /Iziedking/sFace/pulls
+            - listitem [ref=e108]:
+              - link "Actions" [ref=e109] [cursor=pointer]:
+                - /url: /Iziedking/sFace/actions
+            - listitem [ref=e113]:
+              - link "Projects" [ref=e114] [cursor=pointer]:
+                - /url: /Iziedking/sFace/projects
+            - listitem [ref=e118]:
+              - link "Security and quality" [ref=e119] [cursor=pointer]:
+                - /url: /Iziedking/sFace/security
+            - listitem [ref=e123]:
+              - link "Insights" [ref=e124] [cursor=pointer]:
+                - /url: /Iziedking/sFace/pulse
+      - generic [ref=e132]:
+        - generic [ref=e135]:
+          - link "Deploy API" [ref=e138] [cursor=pointer]:
+            - /url: /Iziedking/sFace/actions/workflows/deploy.yml
+          - generic [ref=e142]:
+            - generic [ref=e143]:
+              - img "failed:" [ref=e147]
+              - 'heading "fix mobile city controls and spawn visibility #50" [level=1] [ref=e149]'
+            - link "Sign in to view logs" [ref=e153] [cursor=pointer]:
+              - /url: /login?return_to=https%3A%2F%2Fgithub.com%2FIziedking%2FsFace%2Factions%2Fruns%2F31357084936
+        - generic [ref=e157]:
+          - region "Workflow run summary" [ref=e158]:
+            - generic [ref=e159]:
+              - generic [ref=e160]:
+                - generic [ref=e161]: Triggered via push August 10, 2026 04:574 minutes ago
+                - generic [ref=e162]:
+                  - link [ref=e163] [cursor=pointer]:
+                    - /url: /Iziedking
+                    - img "@Iziedking" [ref=e164]
+                    - text: Iziedking
+                  - generic [ref=e165]:
+                    - generic [ref=e166]: pushed
+                    - link "39e7534" [ref=e167] [cursor=pointer]:
+                      - /url: /Iziedking/sFace/commit/39e753427ec41cbf16a8201cf00306d169f3f1c0
+                  - link "main" [ref=e170] [cursor=pointer]:
+                    - /url: /Iziedking/sFace/tree/refs/heads/main
+              - generic [ref=e171]:
+                - generic [ref=e172]: Status
+                - text: Failure
+              - generic [ref=e173]:
+                - generic [ref=e174]: Total duration
+                - link "33s" [ref=e175] [cursor=pointer]:
+                  - /url: /Iziedking/sFace/actions/runs/31357084936/usage
+              - generic [ref=e176]:
+                - generic [ref=e177]: Artifacts
+                - text: –
+          - region "Workflow run graph" [ref=e178]:
+            - generic [ref=e180]:
+              - generic [ref=e182]:
+                - heading [level=2] [ref=e183]:
+                  - link "deploy.yml" [ref=e184] [cursor=pointer]:
+                    - /url: /Iziedking/sFace/actions/runs/31357084936/workflow
+                - generic [ref=e185]: "on: push"
+              - generic [ref=e187]:
+                - generic [ref=e188]:
+                  - 'link "failed: Typecheck and tests 30s" [ref=e192] [cursor=pointer]':
+                    - /url: /Iziedking/sFace/actions/runs/31357084936/job/93358679550
+                    - generic [ref=e194]:
+                      - img "failed:" [ref=e196]
+                      - generic [ref=e198]: Typecheck and tests
+                      - generic [ref=e200]: 30s
+                  - 'link "skipped: Publish to GHCR 0s" [ref=e205] [cursor=pointer]':
+                    - /url: /Iziedking/sFace/actions/runs/31357084936/job/93358749335
+                    - generic [ref=e207]:
+                      - img "skipped:" [ref=e209]
+                      - generic [ref=e211]: Publish to GHCR
+                      - generic [ref=e213]: 0s
+                  - 'link "skipped: Roll out on the VPS 0s" [ref=e219] [cursor=pointer]':
+                    - /url: /Iziedking/sFace/actions/runs/31357084936/job/93358749588
+                    - generic [ref=e221]:
+                      - img "skipped:" [ref=e223]
+                      - generic [ref=e225]: Roll out on the VPS
+                      - generic [ref=e227]: 0s
+                - generic [ref=e229]:
+                  - paragraph [ref=e230]: Oh hello! Nice to see you.
+                  - paragraph [ref=e231]:
+                    - text: Made with ❤️ by
+                    - link [ref=e232] [cursor=pointer]:
+                      - /url: https://actions.github.io/humans.txt
+                      - text: humans.txt
+              - generic [ref=e233]:
+                - button "Fit to window" [disabled] [ref=e234]
+                - generic [ref=e235]:
+                  - button "Zoom out" [disabled] [ref=e237]
+                  - button "Zoom in" [ref=e239] [cursor=pointer]
+          - region "Annotations" [ref=e240]:
+            - generic [ref=e241]:
+              - generic [ref=e243]:
+                - heading "Annotations" [level=2] [ref=e244]
+                - generic [ref=e245]: 9 errors and 1 warning
+              - table [ref=e246]:
+                - rowgroup [ref=e247]:
+                  - row [ref=e248]:
+                    - cell "Typecheck and tests Process completed with exit code 1." [ref=e249]:
+                      - generic [ref=e254]:
+                        - link [ref=e255] [cursor=pointer]:
+                          - /url: /Iziedking/sFace/actions/runs/31357084936/job/93358679550#step:5:323
+                          - strong [ref=e256]: Typecheck and tests
+                        - generic [ref=e257]: Process completed with exit code 1.
+                  - row [ref=e260]:
+                    - 'cell "tests/patrol.test.ts > they come now > shoots once engaged: tests/patrol.test.ts#L88 AssertionError: expected 0 to be greater than 0 ❯ tests/patrol.test.ts:88:21" [ref=e261]':
+                      - generic [ref=e266]:
+                        - link [ref=e267] [cursor=pointer]:
+                          - /url: /Iziedking/sFace/commit/39e753427ec41cbf16a8201cf00306d169f3f1c0#annotation_69022978784
+                          - strong [ref=e268]: "tests/patrol.test.ts > they come now > shoots once engaged:"
+                          - text: tests/patrol.test.ts#L88
+                        - generic [ref=e269]: "AssertionError: expected 0 to be greater than 0 ❯ tests/patrol.test.ts:88:21"
+                  - row [ref=e272]:
+                    - 'cell "tests/patrol.test.ts > they come now > closes the distance once it has noticed: tests/patrol.test.ts#L76 AssertionError: expected 519.067201814932 to be less than 300 ❯ tests/patrol.test.ts:76:16 Show more" [ref=e273]':
+                      - generic [ref=e278]:
+                        - link [ref=e279] [cursor=pointer]:
+                          - /url: /Iziedking/sFace/commit/39e753427ec41cbf16a8201cf00306d169f3f1c0#annotation_69022978802
+                          - strong [ref=e280]: "tests/patrol.test.ts > they come now > closes the distance once it has noticed:"
+                          - text: tests/patrol.test.ts#L76
+                        - generic [ref=e281]:
+                          - generic [ref=e282]: "AssertionError: expected 519.067201814932 to be less than 300 ❯ tests/patrol.test.ts:76:16"
+                          - button "Show more" [ref=e284] [cursor=pointer]
+                  - row [ref=e285]:
+                    - 'cell "tests/car.test.ts > the car as a weapon > takes more than one pass to kill: tests/car.test.ts#L258 AssertionError: expected 40 to be less than 40 ❯ tests/car.test.ts:258:26" [ref=e286]':
+                      - generic [ref=e291]:
+                        - link [ref=e292] [cursor=pointer]:
+                          - /url: /Iziedking/sFace/commit/39e753427ec41cbf16a8201cf00306d169f3f1c0#annotation_69022978816
+                          - strong [ref=e293]: "tests/car.test.ts > the car as a weapon > takes more than one pass to kill:"
+                          - text: tests/car.test.ts#L258
+                        - generic [ref=e294]: "AssertionError: expected 40 to be less than 40 ❯ tests/car.test.ts:258:26"
+                  - row [ref=e297]:
+                    - 'cell "tests/car.test.ts > the car as a weapon > hurts an attacker it hits at speed: tests/car.test.ts#L222 AssertionError: expected 40 to be less than 40 ❯ tests/car.test.ts:222:26" [ref=e298]':
+                      - generic [ref=e303]:
+                        - link [ref=e304] [cursor=pointer]:
+                          - /url: /Iziedking/sFace/commit/39e753427ec41cbf16a8201cf00306d169f3f1c0#annotation_69022978832
+                          - strong [ref=e305]: "tests/car.test.ts > the car as a weapon > hurts an attacker it hits at speed:"
+                          - text: tests/car.test.ts#L222
+                        - generic [ref=e306]: "AssertionError: expected 40 to be less than 40 ❯ tests/car.test.ts:222:26"
+                  - row [ref=e309]:
+                    - 'cell "tests/car.test.ts > driving it > never drives through a building: tests/car.test.ts#L128 AssertionError: expected true to be false // Object.is equality - Expected + Received - false + true ❯ tests/car.test.ts:128:66 Show more" [ref=e310]':
+                      - generic [ref=e315]:
+                        - link [ref=e316] [cursor=pointer]:
+                          - /url: /Iziedking/sFace/commit/39e753427ec41cbf16a8201cf00306d169f3f1c0#annotation_69022978845
+                          - strong [ref=e317]: "tests/car.test.ts > driving it > never drives through a building:"
+                          - text: tests/car.test.ts#L128
+                        - generic [ref=e318]:
+                          - generic [ref=e319]: "AssertionError: expected true to be false // Object.is equality - Expected + Received - false + true ❯ tests/car.test.ts:128:66"
+                          - button "Show more" [ref=e321] [cursor=pointer]
+                  - row [ref=e322]:
+                    - 'cell "tests/car.test.ts > driving it > moves the car and carries the driver: tests/car.test.ts#L117 AssertionError: expected 0 to be greater than 100 ❯ tests/car.test.ts:117:56" [ref=e323]':
+                      - generic [ref=e328]:
+                        - link [ref=e329] [cursor=pointer]:
+                          - /url: /Iziedking/sFace/commit/39e753427ec41cbf16a8201cf00306d169f3f1c0#annotation_69022978857
+                          - strong [ref=e330]: "tests/car.test.ts > driving it > moves the car and carries the driver:"
+                          - text: tests/car.test.ts#L117
+                        - generic [ref=e331]: "AssertionError: expected 0 to be greater than 100 ❯ tests/car.test.ts:117:56"
+                  - row [ref=e334]:
+                    - 'cell "tests/car.test.ts > you have to ask > gets in when asked, from close enough: tests/car.test.ts#L71 AssertionError: expected false to be true // Object.is equality - Expected + Received - true + false ❯ tests/car.test.ts:71:27 Show more" [ref=e335]':
+                      - generic [ref=e340]:
+                        - link [ref=e341] [cursor=pointer]:
+                          - /url: /Iziedking/sFace/commit/39e753427ec41cbf16a8201cf00306d169f3f1c0#annotation_69022978873
+                          - strong [ref=e342]: "tests/car.test.ts > you have to ask > gets in when asked, from close enough:"
+                          - text: tests/car.test.ts#L71
+                        - generic [ref=e343]:
+                          - generic [ref=e344]: "AssertionError: expected false to be true // Object.is equality - Expected + Received - true + false ❯ tests/car.test.ts:71:27"
+                          - button "Show more" [ref=e346] [cursor=pointer]
+                  - row [ref=e347]:
+                    - 'cell "tests/car.test.ts > a city has a car and a chart run does not > is not parked inside a building: tests/car.test.ts#L53 AssertionError: expected true to be false // Object.is equality - Expected + Received - false + true ❯ tests/car.test.ts:53:78 Show more" [ref=e348]':
+                      - generic [ref=e353]:
+                        - link [ref=e354] [cursor=pointer]:
+                          - /url: /Iziedking/sFace/commit/39e753427ec41cbf16a8201cf00306d169f3f1c0#annotation_69022978888
+                          - strong [ref=e355]: "tests/car.test.ts > a city has a car and a chart run does not > is not parked inside a building:"
+                          - text: tests/car.test.ts#L53
+                        - generic [ref=e356]:
+                          - generic [ref=e357]: "AssertionError: expected true to be false // Object.is equality - Expected + Received - false + true ❯ tests/car.test.ts:53:78"
+                          - button "Show more" [ref=e359] [cursor=pointer]
+                  - row [ref=e360]:
+                    - cell [ref=e361]:
+                      - generic [ref=e366]:
+                        - link [ref=e367] [cursor=pointer]:
+                          - /url: /Iziedking/sFace/actions/runs/31357084936/job/93358679550#step:11:2
+                          - strong [ref=e368]: Typecheck and tests
+                        - generic [ref=e369]:
+                          - generic [ref=e371]:
+                            - text: "Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-node@v4. For more information see:"
+                            - link "https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/" [ref=e372] [cursor=pointer]:
+                              - /url: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+                          - button "Show more" [ref=e373] [cursor=pointer]
