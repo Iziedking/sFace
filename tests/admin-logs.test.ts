@@ -21,4 +21,15 @@ describe('admin diagnostic logs', () => {
     const entries = parseLogLines('{"time":1,"level":"info","subsystem":"admin","event":"ok","message":"ready"}\nnot-json\n');
     expect(entries.map((entry) => entry.event)).toEqual(['ok']);
   });
+  it('filters entries and publishes new ones to subscribers', () => {
+    const logs = new AdminLogBuffer(1_000);
+    const seen: string[] = [];
+    const unsubscribe = logs.subscribe((entry) => seen.push(entry.event));
+    logs.add({ time: 10, level: 'warn', subsystem: 'oracle', event: 'slow', message: 'slow' });
+    logs.add({ time: 11, level: 'info', subsystem: 'admin', event: 'login', message: 'login' });
+    unsubscribe();
+
+    expect(logs.list(11, 20, { level: 'warn', subsystem: 'oracle' }).map((entry) => entry.event)).toEqual(['slow']);
+    expect(seen).toEqual(['slow', 'login']);
+  });
 });

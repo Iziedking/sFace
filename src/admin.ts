@@ -5,10 +5,16 @@ const root = adminRoot;
 
 let token = '';
 let idleTimer: number | null = null;
+let streamController: AbortController | null = null;
+let pollTimer: number | null = null;
 
 function login(message = 'Enter the admin token. It is kept in memory until this tab locks.'): void {
   token = '';
   if (idleTimer !== null) window.clearTimeout(idleTimer);
+  streamController?.abort();
+  streamController = null;
+  if (pollTimer !== null) window.clearInterval(pollTimer);
+  pollTimer = null;
   root.innerHTML = `
     <section class="login">
       <p class="eyebrow">SFACEE control plane</p>
@@ -67,12 +73,56 @@ async function overview(): Promise<void> {
     </section>
     <section><h2>Capabilities</h2><div class="ledger">${Object.entries(data.capabilities).map(([name, state]) => `
       <article><span>${name}</span><strong class="${state.enabled ? 'on' : 'off'}">${state.enabled ? 'enabled' : 'disabled'}</strong><small>${state.required ? 'required' : 'optional'}</small></article>`).join('')}</div></section>
-    <section><h2>Recent logs</h2><div class="ledger">${logs.entries.slice(0, 20).map((entry) => `
+    <section><h2>Recent logs</h2><div class="ledger" id="live-logs">${logs.entries.slice(0, 20).map((entry) => `
       <article><span>${new Date(entry.time).toISOString()} | ${entry.level}</span><strong>${entry.event}</strong><small>${entry.message}</small></article>`).join('')}</div></section>
     <section><h2>Configuration</h2><div class="ledger">${data.config.map((entry) => `
       <article><span>${entry.key}</span><strong class="${entry.configured ? 'on' : 'off'}">${entry.configured ? 'configured' : 'missing'}</strong><small>${entry.secret ? 'secret, value hidden' : 'non-secret'}${entry.restartRequired ? ', restart required' : ', runtime metadata'}</small></article>`).join('')}</div></section>`;
   root.querySelector<HTMLButtonElement>('#lock')?.addEventListener('click', () => login());
   for (const event of ['pointerdown', 'keydown']) window.addEventListener(event, resetIdleLock, { once: true });
+  if (!streamController) void startLogStream();
+}
+
+async function startLogStream(): Promise<void> {
+  streamController = new AbortController();
+  try {
+    const response = await adminFetch('/admin/api/logs/stream', token, { signal: streamController.signal });
+    if (!response.ok || !response.body) throw new Error('stream unavailable');
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (token) {
+      const chunk = await reader.read();
+      if (chunk.done) throw new Error('stream ended');
+      buffer += decoder.decode(chunk.value, { stream: true });
+      const events = buffer.split('\n\n');
+      buffer = events.pop() ?? '';
+      for (const event of events) {
+        const data = event.split('\n').find((line) => line.startsWith('data: '))?.slice(6);
+        if (!data) continue;
+        const entry = JSON.parse(data) as { time: number; level: string; event: string; message: string };
+        prependLog(entry);
+      }
+    }
+  } catch {
+    if (!token) return;
+    streamController = null;
+    if (pollTimer === null) pollTimer = window.setInterval(() => void overview(), 30_000);
+  }
+}
+
+function prependLog(entry: { time: number; level: string; event: string; message: string }): void {
+  const ledger = root.querySelector<HTMLElement>('#live-logs');
+  if (!ledger) return;
+  const article = document.createElement('article');
+  const meta = document.createElement('span');
+  const eventName = document.createElement('strong');
+  const message = document.createElement('small');
+  meta.textContent = `${new Date(entry.time).toISOString()} | ${entry.level}`;
+  eventName.textContent = entry.event;
+  message.textContent = entry.message;
+  article.append(meta, eventName, message);
+  ledger.prepend(article);
+  while (ledger.children.length > 20) ledger.lastElementChild?.remove();
 }
 
 function resetIdleLock(): void {

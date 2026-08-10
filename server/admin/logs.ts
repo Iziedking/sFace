@@ -45,8 +45,11 @@ export function parseLogLines(raw: string): AdminLogEntry[] {
   return entries;
 }
 
+export interface AdminLogFilter { level?: AdminLogLevel; subsystem?: string; event?: string; }
+
 export class AdminLogBuffer {
   private readonly entries: AdminLogEntry[] = [];
+  private readonly listeners = new Set<(entry: AdminLogEntry) => void>();
 
   constructor(private readonly retentionMs: number, private readonly maxEntries = 5_000) {}
 
@@ -57,13 +60,23 @@ export class AdminLogBuffer {
     };
     this.entries.push(safe);
     this.prune(entry.time);
+    for (const listener of this.listeners) listener(safe);
     if (this.entries.length > this.maxEntries) this.entries.splice(0, this.entries.length - this.maxEntries);
     return safe;
   }
 
-  list(now = Date.now(), limit = 200): AdminLogEntry[] {
+  list(now = Date.now(), limit = 200, filter: AdminLogFilter = {}): AdminLogEntry[] {
     this.prune(now);
-    return this.entries.slice(-Math.max(1, Math.min(limit, 1_000))).reverse();
+    return this.entries.filter((entry) =>
+      (!filter.level || entry.level === filter.level) &&
+      (!filter.subsystem || entry.subsystem === filter.subsystem) &&
+      (!filter.event || entry.event === filter.event),
+    ).slice(-Math.max(1, Math.min(limit, 1_000))).reverse();
+  }
+
+  subscribe(listener: (entry: AdminLogEntry) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
   }
 
   chronological(now = Date.now()): AdminLogEntry[] {

@@ -499,7 +499,34 @@ app.post('/admin/api/login/check', limit(5, 3), requireAdmin, (req, res) => {
 
 app.get('/admin/api/logs', limit(30, 10), requireAdmin, (req, res) => {
   const limitValue = Number(req.query.limit ?? 200);
-  res.json({ ok: true, entries: adminLogs.list(Date.now(), Number.isFinite(limitValue) ? limitValue : 200) });
+  const level = ['info', 'warn', 'error'].includes(String(req.query.level ?? ''))
+    ? String(req.query.level) as 'info' | 'warn' | 'error'
+    : undefined;
+  res.json({
+    ok: true,
+    entries: adminLogs.list(Date.now(), Number.isFinite(limitValue) ? limitValue : 200, {
+      level,
+      subsystem: typeof req.query.subsystem === 'string' ? req.query.subsystem : undefined,
+      event: typeof req.query.event === 'string' ? req.query.event : undefined,
+    }),
+  });
+});
+
+app.get('/admin/api/logs/stream', limit(12, 4), requireAdmin, (req, res) => {
+  res.setHeader('content-type', 'text/event-stream');
+  res.setHeader('cache-control', 'no-store');
+  res.setHeader('connection', 'keep-alive');
+  res.flushHeaders();
+  res.write(': connected\n\n');
+  const unsubscribe = adminLogs.subscribe((entry) => {
+    res.write('event: log\\ndata: ' + JSON.stringify(entry) + '\\n\\n');
+  });
+  const heartbeat = setInterval(() => res.write(': heartbeat\n\n'), 20_000);
+  heartbeat.unref?.();
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    unsubscribe();
+  });
 });
 
 app.get('/admin/api/overview', limit(30, 10), requireAdmin, (_req, res) => {
