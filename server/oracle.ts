@@ -24,6 +24,11 @@ import {
 } from './xsense';
 import { lookupAvatars } from './xusers';
 import { recentFrom } from './xposts';
+import { ResilientFetch } from './resilient-fetch';
+
+// Native Node fetch, verified against the provider URLs listed above on
+// 2026-08-10. One shared instance keeps circuit state per upstream origin.
+const oracleFetch = new ResilientFetch();
 
 export interface MissionStory {
   headline: string;
@@ -279,7 +284,7 @@ export async function composeMission(): Promise<MissionPayload> {
  */
 async function fetchMarketSize(): Promise<MarketSize | null> {
   try {
-    const res = await fetch('https://api.coingecko.com/api/v3/global');
+    const res = await oracleFetch.get('https://api.coingecko.com/api/v3/global');
     if (!res.ok) return null;
 
     const body = (await res.json()) as {
@@ -365,7 +370,7 @@ async function fetchMarket(): Promise<{ worst: Performer; survivors: Survivor[] 
     'https://api.coingecko.com/api/v3/coins/markets' +
     '?vs_currency=usd&order=market_cap_desc&per_page=100&page=1&sparkline=false';
 
-  const res = await fetch(url);
+  const res = await oracleFetch.get(url);
   if (!res.ok) throw new Error(`CoinGecko markets failed: ${res.status}`);
 
   const rows = (await res.json()) as Array<{
@@ -429,7 +434,7 @@ async function fetchTerrain(coinId: string): Promise<number[]> {
     `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(coinId)}` +
     '/market_chart?vs_currency=usd&days=1';
 
-  const res = await fetch(url);
+  const res = await oracleFetch.get(url);
   if (!res.ok) throw new Error(`CoinGecko chart failed: ${res.status}`);
 
   const body = (await res.json()) as { prices: Array<[number, number]> };
@@ -465,7 +470,7 @@ interface FearGreed {
 }
 
 async function fetchFearGreed(): Promise<FearGreed> {
-  const res = await fetch('https://api.alternative.me/fng/?limit=1');
+  const res = await oracleFetch.get('https://api.alternative.me/fng/?limit=1');
   if (!res.ok) throw new Error(`Fear and Greed failed: ${res.status}`);
 
   const body = (await res.json()) as {
