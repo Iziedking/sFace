@@ -1271,7 +1271,7 @@ private drawExtraction(state: RunState, camera: Camera): void {
         this.drawTag(
           car.x,
           car.y - CAR_RADIUS - 16,
-          touchCapable() ? 'TAP E TO DRIVE' : 'PRESS E TO DRIVE',
+          touchCapable() ? 'TAP DRIVE' : 'PRESS E TO DRIVE',
           true,
         );
       }
@@ -1935,4 +1935,3 @@ function clampTilt(value: number): number {
 }
 
 export { DISPLAY };
-

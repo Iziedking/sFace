@@ -496,10 +496,10 @@ export class Input {
     if (hit(pads.fire, point.x, point.y)) {
       this.padGrab.set(event.pointerId, 'fire');
       this.firing = true;
-      // Anchor the aim drag at the pad's centre rather than at the touch point,
-      // so the direction the thumb pushes is the direction the gun points no
-      // matter where on the button it landed.
-      this.aimOrigin = { x: pads.fire.x, y: pads.fire.y };
+      // Aim from where the thumb landed. Measuring from the pad centre turned
+      // an ordinary left-of-centre landing into a strong backward aim on the
+      // first tiny pointer move, before the player had chosen a direction.
+      this.aimOrigin = point;
       return true;
     }
 

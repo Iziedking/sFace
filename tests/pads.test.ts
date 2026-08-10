@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { hit, padLayout, padVector, slotStrip } from '../src/core/pads';
+import { hit, padLayout, padVector, slotStrip, useRegion } from '../src/core/pads';
 import { Input } from '../src/core/input';
 import { setScheme } from '../src/core/scheme';
 
@@ -58,6 +58,16 @@ describe('the layout keeps controls reachable and apart', () => {
     const pads = padLayout(PHONE.w, PHONE.h, 4);
     const gap = Math.hypot(pads.move.x - pads.fire.x, pads.move.y - pads.fire.y);
     expect(gap).toBeGreaterThan(pads.move.r + pads.fire.r);
+  });
+
+  it('keeps the mobile use button visible on a short wallet viewport', () => {
+    const short = { w: 662, h: 240 };
+    const use = useRegion(short.w, short.h);
+    const fire = padLayout(short.w, short.h, 4).fire;
+
+    expect(use.y - use.r).toBeGreaterThanOrEqual(46);
+    expect(use.y + use.r).toBeLessThanOrEqual(short.h);
+    expect(Math.hypot(use.x - fire.x, use.y - fire.y)).toBeGreaterThan(use.r + fire.r);
   });
 });
 
@@ -188,6 +198,23 @@ describe('aiming with a thumb', () => {
       // And now up: the gun has to follow, not hold the old heading.
       send('pointermove', 1, pads.fire.x, pads.fire.y - 60);
       expect(input.aimVector!.y).toBeLessThan(-0.9);
+    } finally {
+      restore();
+    }
+  });
+
+  it('does not turn backwards just because the thumb landed left of centre', () => {
+    const { input, send, restore, pads } = harness();
+    try {
+      const landedX = pads.fire.x - pads.fire.r * 0.45;
+      send('pointerdown', 1, landedX, pads.fire.y);
+      send('pointermove', 1, landedX - 2, pads.fire.y);
+
+      expect(input.firing).toBe(true);
+      expect(input.aimVector).toBeNull();
+
+      send('pointermove', 1, landedX - 40, pads.fire.y);
+      expect(input.aimVector?.x).toBeLessThan(-0.9);
     } finally {
       restore();
     }

@@ -24,7 +24,7 @@ import type { Input, StickView } from '../core/input';
 import type { RunState } from '../game/state';
 import { PLAYER_MAX_HEALTH } from '../game/state';
 import { CONSUMABLES } from '../data/consumables';
-import { padLayout, type PadRegion, slotStrip} from '../core/pads';
+import { padLayout, type PadRegion, slotStrip, useRegion } from '../core/pads';
 import { alerted } from '../game/sight';
 import { assistTier } from '../game/assist';
 import { gateQuestion, READ_COST } from '../game/ally';
@@ -198,6 +198,7 @@ export class Hud {
     this.drawStick(ctx, input);
     this.drawPads(ctx, state, input, width, height);
     this.drawSlotStrip(ctx, state, input, width, height);
+    this.drawUse(ctx, state, input, width, height);
 
     ctx.restore();
   }
@@ -1141,6 +1142,38 @@ export class Hud {
     if (usingPads()) return;
     if (input.stick) drawPuck(ctx, input.stick, theme.ink, false);
     if (input.aimStick) drawPuck(ctx, input.aimStick, theme.accent, true);
+  }
+
+  /** The phone's equivalent of E, drawn from the same region input hit-tests. */
+  private drawUse(
+    ctx: CanvasRenderingContext2D,
+    state: RunState,
+    input: Input,
+    width: number,
+    height: number,
+  ): void {
+    if (!touchCapable() || !input.useVisible) return;
+
+    const region = useRegion(width, height);
+    const label = state.driving ? 'EXIT' : state.city ? 'DRIVE' : 'READ';
+
+    ctx.save();
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = theme.accent;
+    ctx.beginPath();
+    ctx.arc(region.x, region.y, region.r, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = theme.ink;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = theme.ink;
+    ctx.textAlign = 'center';
+    ctx.font = `800 11px ${MONO}`;
+    ctx.fillText(label, region.x, region.y + 1);
+    ctx.restore();
   }
 
   /**

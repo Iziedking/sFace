@@ -98,6 +98,16 @@ describe('it is a place, not a corridor', () => {
     expect(Math.abs(city.exitX - city.startX)).toBeGreaterThan(city.width * 0.5);
     expect(Math.abs(city.exitY - city.startY)).toBeGreaterThan(city.height * 0.5);
   });
+
+  it('does not start in the bottom-left minimap corner', () => {
+    const city = run().city!;
+
+    // The camera clamps a corner spawn to the matching screen corner. The
+    // minimap owns bottom-left, so the city starts clear of that corner
+    // instead of putting the player underneath it on the first frame.
+    expect(city.startX).toBeLessThan(city.width * 0.2);
+    expect(city.height - city.startY).toBeGreaterThanOrEqual(380);
+  });
 });
 
 describe('you cannot walk through a building', () => {

@@ -124,10 +124,13 @@ export function padLayout(width: number, height: number, slotCount: number): Pad
  * something for it to do, so it is never a mystery control.
  */
 export function useRegion(width: number, height: number): PadRegion {
+  const radius = 30;
   return {
-    x: width - EDGE - FIRE_RADIUS,
-    y: height - EDGE - MOVE_RADIUS - FIRE_RADIUS - 74,
-    r: 30,
+    // Inward from the fire-pad arc, where it stays visible even in the wallet's
+    // very short landscape viewport and remains separate from every pad.
+    x: Math.max(radius + 12, width - 190),
+    y: Math.max(46 + radius + 12, Math.min(height - radius - 12, height * 0.3)),
+    r: radius,
   };
 }
 
