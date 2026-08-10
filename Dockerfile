@@ -37,4 +37,4 @@ EXPOSE 8790
 
 # No shell form: with exec form the process is PID 1 and gets SIGTERM directly,
 # so a restart is a clean shutdown rather than a ten second kill.
-CMD ["npx", "tsx", "server/index.ts"]
+CMD ["npx", "tsx", "server/start.ts"]
