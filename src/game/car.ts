@@ -149,15 +149,22 @@ export function driveCar(state: RunState, dt: number, moveX: number, moveY: numb
     car.vy = (car.vy / speed) * CAR_MAX_SPEED;
   }
 
-  car.x += car.vx * dt;
-  car.y += car.vy * dt;
+  // Resolve each axis separately. A diagonal correction can otherwise push the
+  // car out of one building and into an adjacent one at a corner.
+  const pushedX = resolve(city, car.x + car.vx * dt, car.y, CAR_RADIUS);
+  if (pushedX.hit) {
+    if (Math.abs(pushedX.x - (car.x + car.vx * dt)) > 0.01) car.vx = 0;
+    car.x = pushedX.x;
+  } else {
+    car.x += car.vx * dt;
+  }
 
-  const pushed = resolve(city, car.x, car.y, CAR_RADIUS);
-  if (pushed.hit) {
-    if (Math.abs(pushed.x - car.x) > 0.01) car.vx = 0;
-    if (Math.abs(pushed.y - car.y) > 0.01) car.vy = 0;
-    car.x = pushed.x;
-    car.y = pushed.y;
+  const pushedY = resolve(city, car.x, car.y + car.vy * dt, CAR_RADIUS);
+  if (pushedY.hit) {
+    if (Math.abs(pushedY.y - (car.y + car.vy * dt)) > 0.01) car.vy = 0;
+    car.y = pushedY.y;
+  } else {
+    car.y += car.vy * dt;
   }
 
   car.x = Math.max(CAR_RADIUS, Math.min(city.width - CAR_RADIUS, car.x));
