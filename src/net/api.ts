@@ -43,7 +43,7 @@ async function authenticatedRequest<T>(
   path: string,
   action: AuthAction,
   actorId: string,
-  body: Record<string, unknown>,
+  body: object,
 ): Promise<ApiResult<T>> {
   const credential = await getOrCreateCredential();
   if (credential.playerId !== actorId) return { ok: false, error: 'Identity changed. Reload.' };
@@ -244,10 +244,7 @@ export interface ScorePosted {
 export async function postScore(
   submission: ScoreSubmission,
 ): Promise<ApiResult<ScorePosted>> {
-  return request<ScorePosted>('/board', {
-    method: 'POST',
-    body: JSON.stringify(submission),
-  });
+  return authenticatedRequest<ScorePosted>('/board', 'score.post', submission.deviceId, submission);
 }
 
 // Clans --------------------------------------------------------------------
@@ -319,10 +316,7 @@ export async function joinClan(body: {
   name: string;
   tag: string | null;
 }): Promise<ApiResult<JoinResponse>> {
-  return request<JoinResponse>('/clans/join', {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
+  return authenticatedRequest<JoinResponse>('/clans/join', 'clan.join', body.deviceId, body);
 }
 
 /** The owner lets someone in or turns them away. The service checks who asked. */
@@ -330,10 +324,12 @@ export async function decideClanRequest(
   tag: string,
   body: { deviceId: string; memberId: string; approve: boolean },
 ): Promise<ApiResult<ClanDetail>> {
-  return request<ClanDetail>(`/clans/${encodeURIComponent(tag)}/decide`, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
+  return authenticatedRequest<ClanDetail>(
+    `/clans/${encodeURIComponent(tag)}/decide`,
+    'clan.decide',
+    body.deviceId,
+    { tag, ...body },
+  );
 }
 
 // CT Signals ---------------------------------------------------------------
@@ -374,10 +370,9 @@ export async function unlockSignals(body: {
   deviceId: string;
   serializedTx: string;
 }): Promise<ApiResult<{ unlocked: boolean }>> {
-  return request<{ unlocked: boolean }>('/signals/unlock', {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
+  return authenticatedRequest<{ unlocked: boolean }>(
+    '/signals/unlock', 'signals.unlock', body.deviceId, body,
+  );
 }
 
 export interface GhostRecord {
@@ -411,10 +406,7 @@ export async function postGhost(body: {
   facesExtracted: number;
   trace: string;
 }): Promise<ApiResult<{ stored: boolean }>> {
-  return request<{ stored: boolean }>('/ghosts', {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
+  return authenticatedRequest<{ stored: boolean }>('/ghosts', 'ghost.post', body.deviceId, body);
 }
 
 export async function createChallenge(body: {
@@ -426,10 +418,7 @@ export async function createChallenge(body: {
   stakeNim: number;
   score: number;
 }): Promise<ApiResult<Challenge>> {
-  return request<Challenge>('/challenges', {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
+  return authenticatedRequest<Challenge>('/challenges', 'challenge.create', body.deviceId, body);
 }
 
 export async function fetchChallenge(id: string): Promise<ApiResult<Challenge>> {
@@ -447,10 +436,12 @@ export async function acceptChallenge(
     seed: string;
   },
 ): Promise<ApiResult<Challenge>> {
-  return request<Challenge>(`/challenges/${encodeURIComponent(id)}/accept`, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
+  return authenticatedRequest<Challenge>(
+    `/challenges/${encodeURIComponent(id)}/accept`,
+    'challenge.accept',
+    body.deviceId,
+    { id, ...body },
+  );
 }
 
 /**
@@ -465,10 +456,12 @@ export async function reportSettlement(
   id: string,
   body: { deviceId: string; serializedTx: string },
 ): Promise<ApiResult<Challenge>> {
-  return request<Challenge>(`/challenges/${encodeURIComponent(id)}/settled`, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
+  return authenticatedRequest<Challenge>(
+    `/challenges/${encodeURIComponent(id)}/settled`,
+    'challenge.settle',
+    body.deviceId,
+    { id, ...body },
+  );
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<ApiResult<T>> {
@@ -536,7 +529,7 @@ export async function signPostedScore(body: {
   publicKey: string;
   signature: string;
 }): Promise<ApiResult<{ ok: boolean; recorded: boolean; address?: string }>> {
-  return request('/board/sign', { method: 'POST', body: JSON.stringify(body) });
+  return authenticatedRequest('/board/sign', 'score.sign', body.deviceId, body);
 }
 
 /**
@@ -562,7 +555,7 @@ export async function anchorPostedScore(body: {
   hash?: string;
   strength?: 'verified' | 'reported';
 }>> {
-  return request('/board/anchor', { method: 'POST', body: JSON.stringify(body) });
+  return authenticatedRequest('/board/anchor', 'score.anchor', body.deviceId, body);
 }
 
 // Contests -----------------------------------------------------------------
@@ -596,7 +589,7 @@ export async function createContest(body: {
   /** Minutes it stays open, or null for the rest of the UTC day. */
   openMinutes: number | null;
 }): Promise<ApiResult<Contest>> {
-  return request<Contest>('/contests', { method: 'POST', body: JSON.stringify(body) });
+  return authenticatedRequest<Contest>('/contests', 'contest.create', body.deviceId, body);
 }
 
 export async function joinContest(
@@ -609,10 +602,12 @@ export async function joinContest(
     address: string | null;
   },
 ): Promise<ApiResult<Contest>> {
-  return request<Contest>(`/contests/${encodeURIComponent(id)}/join`, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
+  return authenticatedRequest<Contest>(
+    `/contests/${encodeURIComponent(id)}/join`,
+    'contest.join',
+    body.deviceId,
+    { id, ...body },
+  );
 }
 
 /**
@@ -626,10 +621,12 @@ export async function reportContestPayment(
   id: string,
   body: { deviceId: string; txHash: string },
 ): Promise<ApiResult<Contest>> {
-  return request<Contest>(`/contests/${encodeURIComponent(id)}/settled`, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
+  return authenticatedRequest<Contest>(
+    `/contests/${encodeURIComponent(id)}/settled`,
+    'contest.settle',
+    body.deviceId,
+    { id, ...body },
+  );
 }
 
 /**
@@ -859,9 +856,9 @@ export async function reportTip(body: {
   nim: number;
   tx?: string | null;
 }): Promise<ApiResult<TipRecord>> {
-  return request<TipRecord>('/tips', { method: 'POST', body: JSON.stringify(body) });
+  return authenticatedRequest<TipRecord>('/tips', 'tips.report', body.deviceId, body);
 }
 
 export async function markTipsSeen(deviceId: string): Promise<ApiResult<unknown>> {
-  return request('/tips/seen', { method: 'POST', body: JSON.stringify({ deviceId }) });
+  return authenticatedRequest('/tips/seen', 'tips.seen', deviceId, { deviceId });
 }

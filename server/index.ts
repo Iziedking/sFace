@@ -160,6 +160,20 @@ function clientIp(req: Request): string {
   return req.ip ?? req.socket.remoteAddress ?? 'unknown';
 }
 
+async function provesActor(
+  proof: DeviceProof,
+  action: AuthAction,
+  actorId: string,
+  signedBody: unknown,
+): Promise<boolean> {
+  const verified = await playerAuth.verify({
+    proof,
+    action,
+    bodyDigest: await bodyDigest(signedBody),
+  });
+  return verified.ok && verified.value.playerId === actorId;
+}
+
 // Schemas ------------------------------------------------------------------
 
 const deviceId = z.string().regex(/^[0-9a-f]{16,64}$/i, 'Device id must be hex.');
@@ -476,7 +490,13 @@ app.post('/auth/player/challenge', limit(24, 8), async (req, res) => {
     }),
     z.object({
       playerId: deviceId,
-      action: z.enum(['chat.say', 'chat.edit']),
+      action: z.enum([
+        'chat.say', 'chat.edit', 'tips.report', 'tips.seen',
+        'clan.join', 'clan.decide', 'contest.create', 'contest.join',
+        'contest.settle', 'challenge.create', 'challenge.accept',
+        'challenge.settle', 'signals.unlock', 'score.post', 'score.sign',
+        'score.anchor', 'ghost.post',
+      ]),
       bodyDigest: z.string().regex(/^[0-9a-f]{64}$/i),
     }),
   ]).safeParse(req.body);
@@ -767,8 +787,8 @@ app.get('/tips', limit(120, 60), (req, res) => {
   res.json({ tips: waiting, people });
 });
 
-app.post('/tips', limit(60, 60), (req, res) => {
-  const parsed = tipBody.safeParse(req.body);
+app.post('/tips', limit(60, 60), async (req, res) => {
+  const parsed = tipBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
     return;
@@ -776,6 +796,12 @@ app.post('/tips', limit(60, 60), (req, res) => {
 
   const body = parsed.data;
   const network = networkOf(req);
+  if (!(await provesActor(body.auth as DeviceProof, 'tips.report', body.deviceId, {
+    deviceId: body.deviceId, to: body.to, nim: body.nim, tx: body.tx ?? null,
+  }))) {
+    res.status(403).json({ error: 'unauthorized' });
+    return;
+  }
 
   const recipient = profiles.get(body.to, network);
   if (!recipient) {
@@ -803,13 +829,19 @@ app.post('/tips', limit(60, 60), (req, res) => {
 });
 
 /** Everything waiting has been seen. A watermark, so nothing half-marks. */
-app.post('/tips/seen', limit(60, 60), (req, res) => {
-  const parsed = z.object({ deviceId }).safeParse(req.body);
+app.post('/tips/seen', limit(60, 60), async (req, res) => {
+  const parsed = z.object({ deviceId, auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
     return;
   }
 
+  if (!(await provesActor(parsed.data.auth as DeviceProof, 'tips.seen', parsed.data.deviceId, {
+    deviceId: parsed.data.deviceId,
+  }))) {
+    res.status(403).json({ error: 'unauthorized' });
+    return;
+  }
   tips.markSeen(networkOf(req), parsed.data.deviceId, Date.now());
   res.json({ ok: true });
 });
@@ -850,13 +882,18 @@ app.get('/board/:date', limit(120, 40), (req, res) => {
 });
 
 app.post('/board', limit(20, 10), async (req, res) => {
-  const parsed = scoreBody.safeParse(req.body);
+  const parsed = scoreBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
     return;
   }
 
   const body = parsed.data;
+  const { auth: _auth, ...submitted } = body;
+  if (!(await provesActor(body.auth as DeviceProof, 'score.post', body.deviceId, submitted))) {
+    res.status(403).json({ error: 'unauthorized' });
+    return;
+  }
 
   /*
    * Verify the signature, if there is one, and derive who signed.
@@ -1156,8 +1193,8 @@ app.post('/board', limit(20, 10), async (req, res) => {
  * a recipient against, so every transaction would either be accepted blindly or
  * rejected confusingly. Saying so plainly is better than either.
  */
-app.post('/board/anchor', limit(20, 10), (req, res) => {
-  const parsed = anchorBody.safeParse(req.body);
+app.post('/board/anchor', limit(20, 10), async (req, res) => {
+  const parsed = anchorBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
     return;
@@ -1170,6 +1207,11 @@ app.post('/board/anchor', limit(20, 10), (req, res) => {
 
   const body = parsed.data;
   const network = networkOf(req);
+  const { auth: _auth, ...anchored } = body;
+  if (!(await provesActor(body.auth as DeviceProof, 'score.anchor', body.deviceId, anchored))) {
+    res.status(403).json({ error: 'unauthorized' });
+    return;
+  }
 
   // Testnet runs are verified and never written down, so there is no row to
   // anchor. Said plainly rather than returning a success nothing came of.
@@ -1256,14 +1298,19 @@ app.post('/board/anchor', limit(20, 10), (req, res) => {
   });
 });
 
-app.post('/board/sign', limit(20, 10), (req, res) => {
-  const parsed = signBody.safeParse(req.body);
+app.post('/board/sign', limit(20, 10), async (req, res) => {
+  const parsed = signBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
     return;
   }
 
   const body = parsed.data;
+  const { auth: _auth, ...signed } = body;
+  if (!(await provesActor(body.auth as DeviceProof, 'score.sign', body.deviceId, signed))) {
+    res.status(403).json({ error: 'unauthorized' });
+    return;
+  }
 
   // Testnet runs are verified and never written down, so there is no row to
   // sign. Said plainly rather than returning a success nothing came of.
@@ -1367,7 +1414,7 @@ app.get('/contests/:id', limit(120, 40), (req, res) => {
 });
 
 app.post('/contests', limit(12, 6), async (req, res) => {
-  const parsed = contestBody.safeParse(req.body);
+  const parsed = contestBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
     return;
@@ -1375,6 +1422,15 @@ app.post('/contests', limit(12, 6), async (req, res) => {
 
   const body = parsed.data;
   const network = networkOf(req);
+  if (!(await provesActor(body.auth as DeviceProof, 'contest.create', body.deviceId, {
+    deviceId: body.deviceId, name: body.name, avatarUrl: body.avatarUrl ?? null,
+    address: body.address ?? null, kind: body.kind, stages: body.stages,
+    stakeNim: body.stakeNim, seats: body.seats, visibility: body.visibility,
+    openMinutes: body.openMinutes ?? null,
+  }))) {
+    res.status(403).json({ error: 'unauthorized' });
+    return;
+  }
 
   /*
    * Pinned to the service's own mission, never to anything the client sent.
@@ -1423,9 +1479,9 @@ app.post('/contests', limit(12, 6), async (req, res) => {
   res.json(contests.toPublic(result.value));
 });
 
-app.post('/contests/:id/join', limit(20, 10), (req, res) => {
+app.post('/contests/:id/join', limit(20, 10), async (req, res) => {
   sweepContests(networkOf(req));
-  const parsed = joinContestBody.safeParse(req.body);
+  const parsed = joinContestBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
     return;
@@ -1433,6 +1489,13 @@ app.post('/contests/:id/join', limit(20, 10), (req, res) => {
 
   const network = networkOf(req);
   const body = parsed.data;
+  if (!(await provesActor(body.auth as DeviceProof, 'contest.join', body.deviceId, {
+    id: String(req.params.id ?? ''), deviceId: body.deviceId, name: body.name,
+    avatarUrl: body.avatarUrl ?? null, address: body.address ?? null,
+  }))) {
+    res.status(403).json({ error: 'unauthorized' });
+    return;
+  }
   // Ensured, because taking a seat is a perfectly reasonable first thing to do
   // and refusing somebody until they have posted a run would make an invite
   // look broken to exactly the person it was meant to bring in.
@@ -1465,13 +1528,19 @@ app.post('/contests/:id/join', limit(20, 10), (req, res) => {
  * debt so the person who is owed can check it themselves, which is witnessing
  * rather than enforcement, and the screen says so in those words.
  */
-app.post('/contests/:id/settled', limit(20, 10), (req, res) => {
-  const parsed = contestPaidBody.safeParse(req.body);
+app.post('/contests/:id/settled', limit(20, 10), async (req, res) => {
+  const parsed = contestPaidBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
     return;
   }
 
+  if (!(await provesActor(parsed.data.auth as DeviceProof, 'contest.settle', parsed.data.deviceId, {
+    id: String(req.params.id ?? ''), deviceId: parsed.data.deviceId, txHash: parsed.data.txHash,
+  }))) {
+    res.status(403).json({ error: 'unauthorized' });
+    return;
+  }
   const result = contests.markPaid({
     id: String(req.params.id ?? ''),
     network: networkOf(req),
@@ -1513,10 +1582,16 @@ app.get('/clans/:tag', limit(120, 40), (req, res) => {
   res.json(found);
 });
 
-app.post('/clans/join', limit(12, 6), (req, res) => {
-  const parsed = joinClanBody.safeParse(req.body);
+app.post('/clans/join', limit(12, 6), async (req, res) => {
+  const parsed = joinClanBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
+    return;
+  }
+  if (!(await provesActor(parsed.data.auth as DeviceProof, 'clan.join', parsed.data.deviceId, {
+    deviceId: parsed.data.deviceId, name: parsed.data.name, tag: parsed.data.tag,
+  }))) {
+    res.status(403).json({ error: 'unauthorized' });
     return;
   }
 
@@ -1550,8 +1625,8 @@ app.post('/clans/join', limit(12, 6), (req, res) => {
   });
 });
 
-app.post('/clans/:tag/decide', limit(30, 15), (req, res) => {
-  const parsed = decideClanBody.safeParse(req.body);
+app.post('/clans/:tag/decide', limit(30, 15), async (req, res) => {
+  const parsed = decideClanBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
     return;
@@ -1560,6 +1635,15 @@ app.post('/clans/:tag/decide', limit(30, 15), (req, res) => {
   const tag = clans.normaliseTag(req.params.tag);
   if (!tag) {
     res.status(400).json({ error: 'A clan tag is two to four letters or digits.' });
+    return;
+  }
+  if (!(await provesActor(parsed.data.auth as DeviceProof, 'clan.decide', parsed.data.deviceId, {
+    tag: String(req.params.tag ?? ''),
+    deviceId: parsed.data.deviceId,
+    memberId: parsed.data.memberId,
+    approve: parsed.data.approve,
+  }))) {
+    res.status(403).json({ error: 'unauthorized' });
     return;
   }
 
@@ -1630,13 +1714,19 @@ app.get('/signals/:handle', limit(20, 8), async (req, res) => {
   });
 });
 
-app.post('/signals/unlock', limit(12, 6), (req, res) => {
-  const parsed = unlockBody.safeParse(req.body);
+app.post('/signals/unlock', limit(12, 6), async (req, res) => {
+  const parsed = unlockBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
     return;
   }
 
+  if (!(await provesActor(parsed.data.auth as DeviceProof, 'signals.unlock', parsed.data.deviceId, {
+    deviceId: parsed.data.deviceId, serializedTx: parsed.data.serializedTx,
+  }))) {
+    res.status(403).json({ error: 'unauthorized' });
+    return;
+  }
   signals.grant(parsed.data.deviceId, parsed.data.serializedTx);
   res.json({ unlocked: true });
 });
@@ -1880,14 +1970,19 @@ app.get('/ghosts', limit(60, 20), (req, res) => {
 });
 
 // Traces are the largest thing anyone posts, so this gets the tightest bucket.
-app.post('/ghosts', limit(8, 4), (req, res) => {
-  const parsed = ghostBody.safeParse(req.body);
+app.post('/ghosts', limit(8, 4), async (req, res) => {
+  const parsed = ghostBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
     return;
   }
 
-  const result = ghosts.submit(parsed.data);
+  const { auth: _auth, ...ghost } = parsed.data;
+  if (!(await provesActor(parsed.data.auth as DeviceProof, 'ghost.post', parsed.data.deviceId, ghost))) {
+    res.status(403).json({ error: 'unauthorized' });
+    return;
+  }
+  const result = ghosts.submit(ghost);
   if (!result.ok) {
     res.status(result.code).json({ error: result.reason });
     return;
@@ -1896,14 +1991,19 @@ app.post('/ghosts', limit(8, 4), (req, res) => {
   res.json(result.value);
 });
 
-app.post('/challenges', limit(12, 6), (req, res) => {
-  const parsed = createBody.safeParse(req.body);
+app.post('/challenges', limit(12, 6), async (req, res) => {
+  const parsed = createBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
     return;
   }
 
-  const result = challenges.create(parsed.data);
+  const { auth: _auth, ...created } = parsed.data;
+  if (!(await provesActor(parsed.data.auth as DeviceProof, 'challenge.create', parsed.data.deviceId, created))) {
+    res.status(403).json({ error: 'unauthorized' });
+    return;
+  }
+  const result = challenges.create(created);
   if (!result.ok) {
     res.status(result.code).json({ error: result.reason });
     return;
@@ -1921,14 +2021,21 @@ app.get('/challenges/:id', limit(120, 40), (req, res) => {
   res.json(challenges.toPublic(result.value));
 });
 
-app.post('/challenges/:id/accept', limit(20, 10), (req, res) => {
-  const parsed = acceptBody.safeParse(req.body);
+app.post('/challenges/:id/accept', limit(20, 10), async (req, res) => {
+  const parsed = acceptBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
     return;
   }
 
-  const result = challenges.accept(String(req.params.id), parsed.data);
+  const { auth: _auth, ...accepted } = parsed.data;
+  if (!(await provesActor(parsed.data.auth as DeviceProof, 'challenge.accept', parsed.data.deviceId, {
+    id: String(req.params.id ?? ''), ...accepted,
+  }))) {
+    res.status(403).json({ error: 'unauthorized' });
+    return;
+  }
+  const result = challenges.accept(String(req.params.id), accepted);
   if (!result.ok) {
     res.status(result.code).json({ error: result.reason });
     return;
@@ -1936,14 +2043,24 @@ app.post('/challenges/:id/accept', limit(20, 10), (req, res) => {
   res.json(challenges.toPublic(result.value));
 });
 
-app.post('/challenges/:id/settled', limit(20, 10), (req, res) => {
-  const parsed = settleBody.safeParse(req.body);
+app.post('/challenges/:id/settled', limit(20, 10), async (req, res) => {
+  const parsed = settleBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
     return;
   }
 
-  const result = challenges.reportSettlement(String(req.params.id), parsed.data);
+  if (!(await provesActor(parsed.data.auth as DeviceProof, 'challenge.settle', parsed.data.deviceId, {
+    id: String(req.params.id ?? ''), deviceId: parsed.data.deviceId,
+    serializedTx: parsed.data.serializedTx,
+  }))) {
+    res.status(403).json({ error: 'unauthorized' });
+    return;
+  }
+  const result = challenges.reportSettlement(String(req.params.id), {
+    deviceId: parsed.data.deviceId,
+    serializedTx: parsed.data.serializedTx,
+  });
   if (!result.ok) {
     res.status(result.code).json({ error: result.reason });
     return;

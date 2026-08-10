@@ -2,7 +2,22 @@ export type AuthAction =
   | 'player.register'
   | 'profile.merge'
   | 'chat.say'
-  | 'chat.edit';
+  | 'chat.edit'
+  | 'tips.report'
+  | 'tips.seen'
+  | 'clan.join'
+  | 'clan.decide'
+  | 'contest.create'
+  | 'contest.join'
+  | 'contest.settle'
+  | 'challenge.create'
+  | 'challenge.accept'
+  | 'challenge.settle'
+  | 'signals.unlock'
+  | 'score.post'
+  | 'score.sign'
+  | 'score.anchor'
+  | 'ghost.post';
 
 export interface MergeClaim {
   from: string;
