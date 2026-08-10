@@ -15,6 +15,7 @@ import { isRehearsal, networkOf, NETWORK_HEADER } from './network';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { corsDecision, parseAllowedOrigins } from './cors';
+import { pruneRateLimitBuckets, type RateLimitBucket } from './rate-limit';
 
 import * as daily from './daily';
 import { getMission, startRefreshLoop, utcDate } from './daily';
@@ -100,12 +101,10 @@ app.use((req, res, next) => {
 
 // Rate limiting ------------------------------------------------------------
 
-interface Bucket {
-  tokens: number;
-  updatedAt: number;
-}
-
-const buckets = new Map<string, Bucket>();
+const RATE_LIMIT_BUCKET_IDLE_MS = 10 * 60_000;
+const RATE_LIMIT_SWEEP_MS = 60_000;
+const buckets = new Map<string, RateLimitBucket>();
+let lastBucketSweep = 0;
 
 /** Token bucket, in memory. One box, one process, no need for anything more. */
 function limit(perMinute: number, burst: number) {
@@ -123,6 +122,10 @@ function limit(perMinute: number, burst: number) {
      */
     const key = `${req.method}:${req.path}:${clientIp(req)}`;
     const now = Date.now();
+    if (now - lastBucketSweep >= RATE_LIMIT_SWEEP_MS) {
+      pruneRateLimitBuckets(buckets, now, RATE_LIMIT_BUCKET_IDLE_MS);
+      lastBucketSweep = now;
+    }
     const bucket = buckets.get(key) ?? { tokens: burst, updatedAt: now };
 
     bucket.tokens = Math.min(burst, bucket.tokens + (now - bucket.updatedAt) * refillPerMs);

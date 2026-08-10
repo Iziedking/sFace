@@ -23,20 +23,20 @@
   },
   "//": "express, zod and tsx are runtime dependencies of the service, not build tools. They were in devDependencies, which meant an npm ci --omit=dev on the VPS produced a server that could not start. The SDK is pinned rather than tracking latest, because its published surface is what src/nimiq is written against.",
   "dependencies": {
-    "@nimiq/core": "^2.7.2",
-    "@nimiq/mini-app-sdk": "^0.1.0",
-    "express": "^4.22.2",
-    "qrcode-generator": "^2.0.4",
-    "tsx": "^4.16.0",
-    "ws": "^8.21.1",
-    "zod": "^4.4.3"
+    "@nimiq/core": "2.7.2",
+    "@nimiq/mini-app-sdk": "0.1.0",
+    "express": "4.22.2",
+    "qrcode-generator": "2.0.4",
+    "tsx": "4.23.1",
+    "ws": "8.21.1",
+    "zod": "4.4.3"
   },
   "devDependencies": {
-    "@types/express": "^4.17.21",
-    "@types/node": "^26.1.2",
-    "@types/ws": "^8.18.1",
-    "typescript": "^5.5.0",
-    "vite": "^7.3.6",
-    "vitest": "^4.1.10"
+    "@types/express": "4.17.25",
+    "@types/node": "26.1.2",
+    "@types/ws": "8.18.1",
+    "typescript": "5.9.3",
+    "vite": "7.3.6",
+    "vitest": "4.1.10"
   }
 }
