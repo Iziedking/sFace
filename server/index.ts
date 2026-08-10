@@ -20,6 +20,7 @@ import { buildCapabilities } from './capabilities';
 import { apiSecurityHeaders } from './security-headers';
 import { adminConfig, adminMiddleware } from './admin/auth';
 import { configInventory } from './admin/config';
+import { readPendingConfig, validateConfigChange, writePendingConfig } from './admin/config-store';
 import { adminLogs, initialiseAdminLogs, recordAdminLog } from './admin/logs';
 import { OperationNonces } from './admin/nonces';
 import { buildDiagnosticBundle } from './admin/diagnostics';
@@ -599,6 +600,24 @@ app.get('/admin/api/records/:kind', limit(30, 10), requireAdmin, (req, res) => {
   }
   recordAdminLog({ time: Date.now(), level: 'info', subsystem: 'admin', event: 'records_read', message: 'Admin records viewed', context: { kind: result.kind, ip: req.ip } });
   res.json(result);
+});
+app.get('/admin/api/config', limit(30, 10), requireAdmin, async (_req, res) => {
+  res.json({ ok: true, entries: configInventory(), pending: await readPendingConfig() });
+});
+
+app.patch('/admin/api/config', limit(6, 2), requireAdmin, async (req, res) => {
+  const key = typeof req.body?.key === 'string' ? req.body.key : '';
+  const value = typeof req.body?.value === 'string' ? req.body.value : '';
+  const change = validateConfigChange(key, value);
+  if (!change.ok) {
+    res.status(400).json({ error: change.error });
+    return;
+  }
+  const pending = await readPendingConfig();
+  pending[change.key] = change.value;
+  await writePendingConfig(pending);
+  recordAdminLog({ time: Date.now(), level: 'info', subsystem: 'admin', event: 'config_changed', message: 'Configuration change staged for restart', context: { key: change.key, restartRequired: change.restartRequired, ip: req.ip } });
+  res.json({ ok: true, key: change.key, pendingRestart: change.restartRequired });
 });
 app.get('/admin/api/overview', limit(30, 10), requireAdmin, (_req, res) => {
   res.json({
