@@ -16,6 +16,8 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import { z } from 'zod';
 import { corsDecision, parseAllowedOrigins } from './cors';
 import { pruneRateLimitBuckets, type RateLimitBucket } from './rate-limit';
+import { buildCapabilities } from './capabilities';
+import { apiSecurityHeaders } from './security-headers';
 
 import * as daily from './daily';
 import { getMission, startRefreshLoop, utcDate } from './daily';
@@ -23,12 +25,14 @@ import * as board from './leaderboard';
 import * as challenges from './challenges';
 import * as clans from './clans';
 import * as contests from './contests';
-import { ROSTER_SIZE } from './xsense';
+import { ROSTER_SIZE, xsenseConfigured } from './xsense';
 import * as contestRules from '../src/data/contests';
 import * as ghosts from './ghosts';
 import * as signals from './xsignals';
 import * as profiles from './profiles';
 import * as xauth from './xauth';
+import { xpostsConfigured } from './xposts';
+import { xusersConfigured } from './xusers';
 import { attachLive } from './live';
 import { backupSnapshot, flush, getPersistenceHealth, loadSnapshot, saveNow, scheduleSave } from './store';
 import { PlayerAuth } from './player-auth';
@@ -74,6 +78,10 @@ const playerAuth = new PlayerAuth();
 
 if (TRUST_PROXY) app.set('trust proxy', 1);
 app.disable('x-powered-by');
+app.use((_req, res, next) => {
+  for (const [name, value] of Object.entries(apiSecurityHeaders())) res.setHeader(name, value);
+  next();
+});
 
 // A mission payload is about 4KB. Nothing posted here is larger than a few
 // hundred bytes, so the cap is generous and still refuses anything strange.
@@ -454,10 +462,21 @@ const settleBody = z.object({
 
 app.get('/health', (_req, res) => {
   const persistence = getPersistenceHealth();
+  const capabilities = buildCapabilities({
+    persistence: persistence.status === 'healthy',
+    anchor: anchor.isAnchorAddress(ANCHOR_ADDRESS),
+    xOAuth: xauth.xauthConfigured(),
+    xRead: xpostsConfigured() && xusersConfigured(),
+    xSense: xsenseConfigured(),
+    signals: signals.xsignalsConfigured(),
+    corsRestricted: ALLOWED_ORIGINS.length > 0,
+    trustedProxy: TRUST_PROXY,
+  });
   res.status(persistence.status === 'healthy' ? 200 : 503).json({
     ok: persistence.status === 'healthy',
     date: utcDate(),
     persistence,
+    capabilities,
   });
 });
 
