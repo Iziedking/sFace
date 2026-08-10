@@ -24,6 +24,7 @@ import { adminLogs, initialiseAdminLogs, recordAdminLog } from './admin/logs';
 import { OperationNonces } from './admin/nonces';
 import { buildDiagnosticBundle } from './admin/diagnostics';
 import { adminRecord } from './admin/records';
+import { isAuditEvent } from './admin/audit';
 
 import * as daily from './daily';
 import { getMission, startRefreshLoop, utcDate } from './daily';
@@ -576,6 +577,9 @@ app.post('/admin/api/diagnostics/export', limit(3, 1), requireAdmin, (req, res) 
   recordAdminLog({ time: Date.now(), level: 'info', subsystem: 'admin', event: 'diagnostics_exported', message: 'Redacted diagnostics exported', context: { ip: req.ip } });
   res.setHeader('content-disposition', `attachment; filename="sface-diagnostics-${utcDate()}.json"`);
   res.json(bundle);
+});
+app.get('/admin/api/audit', limit(30, 10), requireAdmin, (_req, res) => {
+  res.json({ ok: true, entries: adminLogs.list(Date.now(), 1_000).filter((entry) => isAuditEvent(entry.event)) });
 });
 app.get('/admin/api/records/:kind', limit(30, 10), requireAdmin, (req, res) => {
   const result = adminRecord(String(req.params.kind ?? ''), {

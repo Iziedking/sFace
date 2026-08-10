@@ -75,6 +75,7 @@ async function overview(): Promise<void> {
       <article><span>${name}</span><strong class="${state.enabled ? 'on' : 'off'}">${state.enabled ? 'enabled' : 'disabled'}</strong><small>${state.required ? 'required' : 'optional'}</small></article>`).join('')}</div></section>
     <section><h2>Recent logs</h2><div class="ledger" id="live-logs">${logs.entries.slice(0, 20).map((entry) => `
       <article><span>${new Date(entry.time).toISOString()} | ${entry.level}</span><strong>${entry.event}</strong><small>${entry.message}</small></article>`).join('')}</div></section>
+    <section><h2>Audit history</h2><div class="records-controls"><button id="load-audit">Load audit history</button></div><pre id="audit-output">Operator actions are loaded on demand.</pre></section>
     <section><h2>Read-only game records</h2><div class="records-controls"><select id="record-kind"><option>profiles</option><option>scores</option><option>clans</option><option>contests</option><option>challenges</option><option>tips</option><option>ghosts</option><option>chat</option><option>signals</option></select><button id="load-records">Load records</button></div><pre id="records-output">Choose a record set.</pre></section>
     <section><h2>Operations</h2><div class="operations"><button id="backup">Create snapshot backup</button><button id="export-diagnostics">Export diagnostics</button><p id="operation-status" role="status">No operation running.</p></div></section>
     <section><h2>Configuration</h2><div class="ledger">${data.config.map((entry) => `
@@ -83,8 +84,20 @@ async function overview(): Promise<void> {
   root.querySelector<HTMLButtonElement>('#backup')?.addEventListener('click', () => void createBackup());
   root.querySelector<HTMLButtonElement>('#export-diagnostics')?.addEventListener('click', () => void exportDiagnostics());
   root.querySelector<HTMLButtonElement>('#load-records')?.addEventListener('click', () => void loadRecords());
+  root.querySelector<HTMLButtonElement>('#load-audit')?.addEventListener('click', () => void loadAudit());
   for (const event of ['pointerdown', 'keydown']) window.addEventListener(event, resetIdleLock, { once: true });
   if (!streamController) void startLogStream();
+}
+
+async function loadAudit(): Promise<void> {
+  const output = root.querySelector<HTMLElement>('#audit-output');
+  const response = await adminFetch('/admin/api/audit', token);
+  if (!response.ok) {
+    if (output) output.textContent = 'Could not load audit history.';
+    return;
+  }
+  const body = await response.json() as { entries: unknown[] };
+  if (output) output.textContent = JSON.stringify(body.entries, null, 2);
 }
 
 async function loadRecords(): Promise<void> {
