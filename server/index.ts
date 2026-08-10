@@ -26,6 +26,7 @@ import { OperationNonces } from './admin/nonces';
 import { buildDiagnosticBundle } from './admin/diagnostics';
 import { adminRecord } from './admin/records';
 import { isAuditEvent } from './admin/audit';
+import { secretFingerprint, validateSecretReplacement, writePendingSecret } from './admin/secrets';
 
 import * as daily from './daily';
 import { getMission, startRefreshLoop, utcDate } from './daily';
@@ -537,7 +538,7 @@ app.get('/admin/api/logs/stream', limit(12, 4), requireAdmin, (req, res) => {
 
 app.get('/admin/api/operations/nonce', limit(30, 10), requireAdmin, (req, res) => {
   const operation = typeof req.query.operation === 'string' ? req.query.operation : '';
-  if (!['backup.create', 'diagnostics.export'].includes(operation)) {
+  if (!['backup.create', 'diagnostics.export'].includes(operation) && !operation.startsWith('secret.replace:')) {
     res.status(400).json({ error: 'Unsupported operation.' });
     return;
   }
@@ -618,6 +619,23 @@ app.patch('/admin/api/config', limit(6, 2), requireAdmin, async (req, res) => {
   await writePendingConfig(pending);
   recordAdminLog({ time: Date.now(), level: 'info', subsystem: 'admin', event: 'config_changed', message: 'Configuration change staged for restart', context: { key: change.key, restartRequired: change.restartRequired, ip: req.ip } });
   res.json({ ok: true, key: change.key, pendingRestart: change.restartRequired });
+});
+app.post('/admin/api/secrets/:key/replace', limit(3, 1), requireAdmin, async (req, res) => {
+  const key = String(req.params.key ?? '');
+  const value = typeof req.body?.value === 'string' ? req.body.value : '';
+  const nonce = typeof req.body?.nonce === 'string' ? req.body.nonce : '';
+  if (!ADMIN_NONCES.consume(nonce, `secret.replace:${key}`)) {
+    res.status(409).json({ error: 'Missing or expired operation nonce.' });
+    return;
+  }
+  const replacement = validateSecretReplacement(key, value);
+  if (!replacement.ok) {
+    res.status(400).json({ error: replacement.error });
+    return;
+  }
+  await writePendingSecret(replacement.key, value);
+  recordAdminLog({ time: Date.now(), level: 'info', subsystem: 'admin', event: 'secret_replaced', message: 'Secret replacement staged for restart', context: { key: replacement.key, newHash: secretFingerprint(value), ip: req.ip } });
+  res.json({ ok: true, key: replacement.key, pendingRestart: true });
 });
 app.get('/admin/api/overview', limit(30, 10), requireAdmin, (_req, res) => {
   res.json({
