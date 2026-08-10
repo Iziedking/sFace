@@ -19,6 +19,7 @@ import { pruneRateLimitBuckets, type RateLimitBucket } from './rate-limit';
 import { buildCapabilities } from './capabilities';
 import { apiSecurityHeaders } from './security-headers';
 import { adminConfig, adminMiddleware } from './admin/auth';
+import { configInventory } from './admin/config';
 
 import * as daily from './daily';
 import { getMission, startRefreshLoop, utcDate } from './daily';
@@ -501,6 +502,7 @@ app.get('/admin/api/overview', limit(30, 10), requireAdmin, (_req, res) => {
     commit: process.env.GIT_COMMIT ?? null,
     date: utcDate(),
     ...effectiveCapabilities(),
+    config: configInventory(),
   });
 });
 

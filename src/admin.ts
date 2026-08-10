@@ -50,6 +50,7 @@ async function overview(): Promise<void> {
     date: string;
     persistence: { status: string; lastError: string | null };
     capabilities: Record<string, { enabled: boolean; required: boolean }>;
+    config: Array<{ key: string; configured: boolean; secret: boolean; restartRequired: boolean }>;
   };
   root.innerHTML = `
     <header><div><p class="eyebrow">SFACEE control plane</p><h1>Live diagnostics</h1></div><button id="lock">Lock</button></header>
@@ -59,7 +60,9 @@ async function overview(): Promise<void> {
       <article><span>UTC mission day</span><strong>${data.date}</strong><small>Public health contract</small></article>
     </section>
     <section><h2>Capabilities</h2><div class="ledger">${Object.entries(data.capabilities).map(([name, state]) => `
-      <article><span>${name}</span><strong class="${state.enabled ? 'on' : 'off'}">${state.enabled ? 'enabled' : 'disabled'}</strong><small>${state.required ? 'required' : 'optional'}</small></article>`).join('')}</div></section>`;
+      <article><span>${name}</span><strong class="${state.enabled ? 'on' : 'off'}">${state.enabled ? 'enabled' : 'disabled'}</strong><small>${state.required ? 'required' : 'optional'}</small></article>`).join('')}</div></section>
+    <section><h2>Configuration</h2><div class="ledger">${data.config.map((entry) => `
+      <article><span>${entry.key}</span><strong class="${entry.configured ? 'on' : 'off'}">${entry.configured ? 'configured' : 'missing'}</strong><small>${entry.secret ? 'secret, value hidden' : 'non-secret'}${entry.restartRequired ? ', restart required' : ', runtime metadata'}</small></article>`).join('')}</div></section>`;
   root.querySelector<HTMLButtonElement>('#lock')?.addEventListener('click', () => login());
   for (const event of ['pointerdown', 'keydown']) window.addEventListener(event, resetIdleLock, { once: true });
 }
