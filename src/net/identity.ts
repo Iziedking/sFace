@@ -25,6 +25,9 @@
  * own screen.
  */
 
+import { getOrCreateCredential } from './player-credential';
+import type { PublicKeyJwk } from './player-auth-protocol';
+
 const STORAGE_KEY = 'sface.pilot';
 const SOURCE_KEY = 'sface.pilot.source';
 
@@ -48,6 +51,21 @@ export type IdentitySource = 'local' | 'nimiq';
 
 let cached: string | null = null;
 let source: IdentitySource = 'local';
+
+export async function initialiseIdentity(): Promise<{
+  playerId: string;
+  publicKeyJwk: PublicKeyJwk;
+}> {
+  const credential = await getOrCreateCredential();
+  cached = credential.playerId;
+  source = 'local';
+  return { playerId: cached, publicKeyJwk: credential.publicKeyJwk };
+}
+
+export function legacyPilotId(): string | null {
+  const stored = read(STORAGE_KEY);
+  return stored && isWellFormed(stored) && stored !== cached ? stored : null;
+}
 
 /**
  * The current pilot identifier. Synchronous, always returns something, and
@@ -80,13 +98,11 @@ export function pilotId(): string {
  */
 export function upgradeTo(deviceId: string): boolean {
   if (!isWellFormed(deviceId)) return false;
-  if (source === 'nimiq' && cached === deviceId) return false;
-
-  cached = deviceId;
-  source = 'nimiq';
+  // A host device id is public account metadata, not a signing credential.
+  // Keep it only as legacy migration evidence and never replace the actor key.
   write(STORAGE_KEY, deviceId);
   write(SOURCE_KEY, 'nimiq');
-  return true;
+  return false;
 }
 
 export function identitySource(): IdentitySource {

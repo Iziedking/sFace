@@ -29,10 +29,16 @@ import * as profiles from './profiles';
 import * as xauth from './xauth';
 import { attachLive } from './live';
 import { backupSnapshot, flush, loadSnapshot, saveNow, scheduleSave } from './store';
+import { PlayerAuth } from './player-auth';
+import {
+  mergeBodyDigest,
+  type DeviceProof,
+  type PublicKeyJwk,
+} from '../src/net/player-auth-protocol';
 import * as anchor from './anchor';
 import * as chat from './chat';
 import * as tips from './tips';
-import { claimMessage, verifyClaim } from './attest';
+import { claimMessage, mergeClaimMessage, verifyClaim, verifyMessage } from './attest';
 import { levelFacts, refuse } from './verify';
 
 const PORT = Number(process.env.PORT ?? 8790);
@@ -64,6 +70,7 @@ const ANCHOR_ADDRESS = process.env.ANCHOR_ADDRESS ?? '';
 const ANCHOR_NETWORK_ID = Number(process.env.ANCHOR_NETWORK_ID ?? 5);
 
 const app = express();
+const playerAuth = new PlayerAuth();
 
 if (TRUST_PROXY) app.set('trust proxy', 1);
 app.disable('x-powered-by');
@@ -154,6 +161,14 @@ function clientIp(req: Request): string {
 // Schemas ------------------------------------------------------------------
 
 const deviceId = z.string().regex(/^[0-9a-f]{16,64}$/i, 'Device id must be hex.');
+const publicKeyJwk = z.object({
+  kty: z.literal('EC'),
+  crv: z.literal('P-256'),
+  x: z.string().min(1).max(100),
+  y: z.string().min(1).max(100),
+  key_ops: z.array(z.string()).optional(),
+  ext: z.boolean().optional(),
+});
 const pilotName = z.string().min(1).max(32);
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD.');
 const seed = z.string().min(1).max(120);
@@ -390,6 +405,24 @@ const mergeBody = z.object({
   from: deviceId,
   /** The account record it becomes part of. */
   into: deviceId,
+  sourceProof: z
+    .object({
+      challengeId: z.string().min(1).max(128),
+      publicKeyJwk,
+      signature: z.string().regex(/^[0-9a-f]+$/i).max(1024),
+    })
+    .optional(),
+  destinationProof: z.object({
+    challengeId: z.string().min(1).max(128),
+    publicKeyJwk,
+    signature: z.string().regex(/^[0-9a-f]+$/i).max(1024),
+  }),
+  walletProof: z
+    .object({
+      publicKey: z.string().regex(/^[0-9a-f]+$/i).max(256),
+      signature: z.string().regex(/^[0-9a-f]+$/i).max(512),
+    })
+    .optional(),
 });
 
 const unlockBody = z.object({
@@ -408,6 +441,49 @@ const settleBody = z.object({
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true, date: utcDate() });
+});
+
+app.post('/auth/player/register', limit(8, 2), async (req, res) => {
+  const parsed = z.object({ publicKeyJwk }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ ok: false, error: 'invalid_request' });
+    return;
+  }
+  const registered = await playerAuth.register({
+    publicKeyJwk: parsed.data.publicKeyJwk as PublicKeyJwk,
+  });
+  if (!registered.ok) {
+    res.status(400).json({ ok: false, error: 'invalid_request' });
+    return;
+  }
+  scheduleSave(snapshot);
+  res.json({ ok: true, playerId: registered.value.playerId });
+});
+
+app.post('/auth/player/challenge', limit(24, 8), async (req, res) => {
+  const parsed = z
+    .object({
+      playerId: deviceId,
+      action: z.literal('profile.merge'),
+      claim: z.object({ from: deviceId, into: deviceId }),
+    })
+    .safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ ok: false, error: 'invalid_request' });
+    return;
+  }
+  const network = networkOf(req);
+  const bodyDigest = await mergeBodyDigest({ ...parsed.data.claim, network });
+  const issued = playerAuth.issueChallenge({
+    playerId: parsed.data.playerId,
+    action: parsed.data.action,
+    bodyDigest,
+  });
+  if (!issued.ok) {
+    res.status(403).json({ ok: false, error: 'unauthorized' });
+    return;
+  }
+  res.json({ ok: true, challenge: issued.value });
 });
 
 app.get('/mission/today', limit(120, 40), async (req, res) => {
@@ -1523,26 +1599,64 @@ app.post('/signals/unlock', limit(12, 6), (req, res) => {
 });
 
 /**
- * Fold a device's record into an account's, on sign-in.
+ * Fold one proved identity into another.
  *
- * Deliberately unauthenticated, and safe because of what it can and cannot do.
- * Both ids are opaque 64-character keys: one is a device identifier the caller
- * already holds, the other is derived from the handle they just proved they own
- * by completing the X sign-in. A caller can only ever merge a record they are
- * holding the key to, and merging is additive, so the worst outcome of a
- * dishonest call is that somebody donates their own runs to an account.
- *
- * It cannot be used to READ anything: the response is the merged profile, which
- * the caller now owns either way.
+ * Public pilot ids are references, never bearer secrets. New identities prove
+ * both keys. A wallet-bound legacy profile proves the source with the wallet
+ * and the destination with its device key. Unbound legacy records stay
+ * read-only because no secret exists that could establish ownership.
  */
-app.post('/profile/merge', limit(12, 6), (req, res) => {
+app.post('/profile/merge', limit(12, 6), async (req, res) => {
   const parsed = mergeBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
     return;
   }
 
-  const merged = profiles.merge(parsed.data.from, parsed.data.into, networkOf(req));
+  const network = networkOf(req);
+  const claim = { from: parsed.data.from, into: parsed.data.into, network };
+  const bodyDigest = await mergeBodyDigest(claim);
+  const destination = await playerAuth.verify({
+    proof: parsed.data.destinationProof as DeviceProof,
+    action: 'profile.merge',
+    bodyDigest,
+  });
+  if (!destination.ok || destination.value.playerId !== parsed.data.into) {
+    res.status(403).json({ error: 'unauthorized' });
+    return;
+  }
+
+  if (playerAuth.hasCredential(parsed.data.from)) {
+    if (!parsed.data.sourceProof) {
+      res.status(403).json({ error: 'unauthorized' });
+      return;
+    }
+    const source = await playerAuth.verify({
+      proof: parsed.data.sourceProof as DeviceProof,
+      action: 'profile.merge',
+      bodyDigest,
+    });
+    if (!source.ok || source.value.playerId !== parsed.data.from) {
+      res.status(403).json({ error: 'unauthorized' });
+      return;
+    }
+  } else {
+    const sourceProfile = profiles.get(parsed.data.from, network);
+    if (!sourceProfile?.address || !parsed.data.walletProof) {
+      res.status(409).json({ error: 'legacy_profile_read_only' });
+      return;
+    }
+    const verified = verifyMessage({
+      message: mergeClaimMessage(claim),
+      ...parsed.data.walletProof,
+    });
+    if (!verified || verified.address !== sourceProfile.address) {
+      res.status(403).json({ error: 'unauthorized' });
+      return;
+    }
+  }
+
+  const merged = profiles.merge(parsed.data.from, parsed.data.into, network);
   if (!merged) {
     // Neither side has ever finished a run. Nothing to do, and not a failure.
     res.json({ merged: false });
@@ -1823,6 +1937,7 @@ function snapshot() {
     chat: chat.serialise(),
     tips: tips.serialise(),
     signals: signals.serialise(),
+    playerAuth: playerAuth.serialise(),
   };
 }
 
@@ -1841,6 +1956,7 @@ async function main(): Promise<void> {
     chat.restore((restored as { chat?: unknown }).chat);
     tips.restore((restored as { tips?: unknown }).tips);
     signals.restore((restored as { signals?: unknown }).signals);
+    playerAuth.restore(restored.playerAuth);
     console.log('[sface] restored snapshot');
 
     /*

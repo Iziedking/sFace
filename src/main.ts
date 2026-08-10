@@ -37,8 +37,6 @@ import { initialSteps, renderLoading, type LoadStep } from './ui/loading';
 import { renderChallenge } from './ui/challenge';
 import { introSeen, renderIntro } from './ui/intro';
 import { takeInAppReload, setPractising } from './core/network';
-import { accountKey } from './net/identity';
-import { mergeProfile } from './net/profile';
 import { renderControls } from './ui/controls';
 import { renderGate } from './ui/gate';
 import { renderPause, renderRunOverlay } from './ui/pause';
@@ -87,13 +85,14 @@ import {
   markTipsSeen,
   signPostedScore,
   reportSettlement,
+  registerPlayerCredential,
   type BoardEntry,
   type Challenge,
   type ClanDetail,
   type ClanRow,
   type Signals,
 } from './net/api';
-import { pilotId, pilotName, upgradeTo } from './net/identity';
+import { initialiseIdentity, pilotId, pilotName, upgradeTo } from './net/identity';
 import {
   cacheProfile,
   fetchProfile,
@@ -1073,28 +1072,10 @@ class App {
    * unlocks would blur it. The behaviour is simply correct.
    */
   private async adoptAccount(): Promise<void> {
-    const handle = this.me?.handle;
-    if (!handle) return;
-
-    const key = await accountKey(handle);
-    // No SubtleCrypto here, so the device id stands. Same behaviour as before
-    // accounts carried progress, which is a fine floor.
-    if (!key || key === this.pilot) return;
-
-    const device = this.pilot;
-    this.pilot = key;
-
-    /*
-     * Merge is fire and forget, and idempotent on the service.
-     *
-     * Waiting on it would put a network round trip in front of the loading
-     * screen for something the player never sees, and the service deletes the
-     * source once folded in, so a retry or a second sign-in cannot double count.
-     */
-    void mergeProfile(device, key).then((merged) => {
-      // Repaint the rank chip if the totals just changed under it.
-      if (merged) void this.refreshProfile();
-    });
+    // X changes the public name and picture, not the authenticated player key.
+    // Legacy progress needs device or wallet proof and cannot be merged from a
+    // public handle-derived id.
+    await this.refreshProfile();
   }
 
   private async loadGhosts(): Promise<void> {
@@ -4894,17 +4875,14 @@ function winnerAddressOf(challenge: Challenge, meId: string): string | null {
  */
 trackViewport();
 
-const app = new App();
-
-// Development only, and stripped from the production bundle by the constant
-// folding on import.meta.env.DEV. Being able to jump the ship down the level
-// or read the live run state is the difference between testing the last third
-// of a ninety second level once a minute and testing it whenever you like.
-if (import.meta.env.DEV) {
-  (window as unknown as { sface: unknown }).sface = app;
-}
-
-void app.boot().catch((error) => {
+void initialiseIdentity().then(async (identity) => {
+  void registerPlayerCredential(identity.publicKeyJwk);
+  const app = new App();
+  if (import.meta.env.DEV) {
+    (window as unknown as { sface: unknown }).sface = app;
+  }
+  await app.boot();
+}).catch((error) => {
   // Nothing below this line is recoverable, so say something honest rather
   // than leaving a black rectangle on screen.
   const ui = document.querySelector<HTMLElement>('#ui');

@@ -12,11 +12,21 @@
  */
 
 import { networkHeaders } from '../core/network';
+import type { PublicKeyJwk } from './player-auth-protocol';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
 const TIMEOUT_MS = 6000;
 
 export type ApiResult<T> = { ok: true; value: T } | { ok: false; error: string };
+
+export async function registerPlayerCredential(
+  publicKeyJwk: PublicKeyJwk,
+): Promise<ApiResult<{ playerId: string }>> {
+  return request<{ playerId: string }>('/auth/player/register', {
+    method: 'POST',
+    body: JSON.stringify({ publicKeyJwk }),
+  });
+}
 
 /**
  * The working behind a signed row, so anybody can check it without trusting us.

@@ -14,6 +14,7 @@
 
 import { copyFile, readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import type { PlayerAuthSnapshot } from './player-auth';
 
 const DATA_DIR = process.env.DATA_DIR ?? join(process.cwd(), '.data');
 const SNAPSHOT = join(DATA_DIR, 'sface.json');
@@ -28,6 +29,8 @@ export interface Snapshot {
    * seed, and recomposing after a restart would change it. See server/daily.ts.
    */
   mission: unknown;
+  /** Public player credentials only. Challenges and signatures are never persisted. */
+  playerAuth?: PlayerAuthSnapshot;
 }
 
 let pending: NodeJS.Timeout | null = null;

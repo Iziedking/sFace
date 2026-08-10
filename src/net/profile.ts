@@ -14,6 +14,8 @@
 import { rankFor, type RankProgress } from '../data/story';
 
 import { networkHeaders } from '../core/network';
+import { deviceProof, getOrCreateCredential, signChallenge } from './player-credential';
+import type { Challenge } from './player-auth-protocol';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
 const STORAGE_KEY = 'sface.profile';
@@ -209,14 +211,47 @@ function count(value: unknown): number {
  * Never rejects and never blocks anything: a failed merge leaves both records
  * where they were, which is exactly the state before accounts carried progress.
  */
-export async function mergeProfile(from: string, into: string): Promise<boolean> {
-  if (!API_BASE || from === into) return false;
+export async function mergeProfile(
+  from: string,
+  walletProof: { publicKey: string; signature: string },
+): Promise<boolean> {
+  if (!API_BASE) return false;
 
   try {
+    const credential = await getOrCreateCredential();
+    if (from === credential.playerId) return false;
+    const registered = await fetch(`${API_BASE}/auth/player/register`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...networkHeaders() },
+      body: JSON.stringify({ publicKeyJwk: credential.publicKeyJwk }),
+    });
+    if (!registered.ok) return false;
+    const challenged = await fetch(`${API_BASE}/auth/player/challenge`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...networkHeaders() },
+      body: JSON.stringify({
+        playerId: credential.playerId,
+        action: 'profile.merge',
+        claim: { from, into: credential.playerId },
+      }),
+    });
+    if (!challenged.ok) return false;
+    const challengeBody = (await challenged.json()) as { challenge?: Challenge };
+    if (!challengeBody.challenge) return false;
+    const signature = await signChallenge(credential.pair, challengeBody.challenge);
     const response = await fetch(`${API_BASE}/profile/merge`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...networkHeaders() },
-      body: JSON.stringify({ from, into }),
+      body: JSON.stringify({
+        from,
+        into: credential.playerId,
+        destinationProof: deviceProof(
+          challengeBody.challenge,
+          credential.publicKeyJwk,
+          signature,
+        ),
+        walletProof,
+      }),
     });
     if (!response.ok) return false;
 

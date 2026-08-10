@@ -100,3 +100,6 @@ id_rsa*
 
 # Playwright MCP inspection artifacts are local browser state, not source.
 .playwright-mcp/
+
+# Brainstorming visual companion session files are local design tooling output.
+.superpowers/

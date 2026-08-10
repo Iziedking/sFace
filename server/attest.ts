@@ -35,7 +35,7 @@
  * raw bytes does not.
  */
 
-import { Address, PublicKey, Signature } from '@nimiq/core';
+import { PublicKey, Signature } from '@nimiq/core';
 
 const encoder = new TextEncoder();
 
@@ -124,6 +124,35 @@ export interface Attestation {
   claim: ScoreClaim;
 }
 
+export function mergeClaimMessage(claim: {
+  from: string;
+  into: string;
+  network: string;
+}): string {
+  return `sface:profile-merge:${claim.from}:${claim.into}:${claim.network}`;
+}
+
+export function verifyMessage(input: {
+  message: string;
+  publicKey: string;
+  signature: string;
+}): { address: string } | null {
+  try {
+    const publicKey = PublicKey.fromHex(input.publicKey);
+    const signature = Signature.fromHex(input.signature);
+    const matched = envelopes(input.message).find((candidate) =>
+      publicKey.verify(signature, candidate.bytes),
+    );
+    if (!matched) return null;
+    if (matched.name !== 'nimiq-byte-length') {
+      console.warn(`[sface] signature verified with fallback envelope: ${matched.name}`);
+    }
+    return { address: publicKey.toAddress().toUserFriendlyAddress() };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Verify a signed claim and return who signed it, or null.
  *
@@ -137,38 +166,10 @@ export function verifyClaim(input: {
   publicKey: string;
   signature: string;
 }): Attestation | null {
-  try {
-    const text = claimMessage(input.claim);
-
-    const publicKey = PublicKey.fromHex(input.publicKey);
-    const signature = Signature.fromHex(input.signature);
-
-    const matched = envelopes(text).find((candidate) =>
-      publicKey.verify(signature, candidate.bytes),
-    );
-
-    if (!matched) return null;
-
-    /*
-     * Say so when it was not the documented one.
-     *
-     * Loud, once per accepted signature, because it means every wallet is
-     * signing something other than what Nimiq documents and this file should
-     * eventually just build that instead. Silence here would leave the fallback
-     * carrying production forever with nobody knowing.
-     */
-    if (matched.name !== 'nimiq-byte-length') {
-      console.warn(`[sface] signature verified with fallback envelope: ${matched.name}`);
-    }
-
-    // Derived, never accepted from the client. An address supplied alongside a
-    // signature is a claim about the signature; an address derived from the
-    // public key IS the signature's author.
-    const address: Address = publicKey.toAddress();
-
-    return { address: address.toUserFriendlyAddress(), claim: input.claim };
-  } catch {
-    // Bad hex, wrong length, anything at all: the claim simply does not stand.
-    return null;
-  }
+  const verified = verifyMessage({
+    message: claimMessage(input.claim),
+    publicKey: input.publicKey,
+    signature: input.signature,
+  });
+  return verified ? { address: verified.address, claim: input.claim } : null;
 }
