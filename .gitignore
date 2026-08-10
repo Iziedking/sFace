@@ -97,3 +97,6 @@ id_rsa*
 # are all rebuildable from scripts/record.mjs, build-video.mjs and
 # finish-video.mjs, so the recipe is tracked and the output is not.
 .video/
+
+# Playwright MCP inspection artifacts are local browser state, not source.
+.playwright-mcp/

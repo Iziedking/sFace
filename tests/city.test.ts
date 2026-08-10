@@ -13,6 +13,7 @@ import { practiceMission } from '../src/game/mission';
 import { RunState } from '../src/game/state';
 import { step } from '../src/game/update';
 import { lineBlocked, resolve, solidAt, WALL } from '../src/game/city';
+import type { City } from '../src/game/city';
 import { PLAYER_RADIUS } from '../src/game/player';
 import { CAR_RADIUS } from '../src/game/car';
 import { STAGES, stageAt } from '../src/data/campaign';
@@ -118,6 +119,26 @@ describe('you cannot walk through a building', () => {
 
     expect(pushed.hit).toBe(true);
     expect(solidAt(city, pushed.x, pushed.y)).toBe(false);
+  });
+
+  it('rechecks earlier blocks after a corner correction', () => {
+    const city: City = {
+      blocks: [
+        { x: 100, y: 0, w: 100, h: 40 },
+        { x: 0, y: 0, w: 100, h: 100 },
+      ],
+      rooms: [],
+      width: 200,
+      height: 100,
+      startX: 0,
+      startY: 0,
+      exitX: 200,
+      exitY: 100,
+    };
+    const pushed = resolve(city, 90, 30, 16);
+
+    expect(pushed.hit).toBe(true);
+    expect(resolve(city, pushed.x, pushed.y, 16).hit).toBe(false);
   });
 
   it('leaves a point in the street alone', () => {

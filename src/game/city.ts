@@ -300,26 +300,36 @@ export function resolve(
   let py = y;
   let hit = false;
 
-  for (const b of city.blocks) {
-    const nearestX = Math.max(b.x, Math.min(px, b.x + b.w));
-    const nearestY = Math.max(b.y, Math.min(py, b.y + b.h));
-    const dx = px - nearestX;
-    const dy = py - nearestY;
+  // A correction near a corner can move the circle into a block that appeared
+  // earlier in the array. Repeat bounded passes so block order cannot leave a
+  // resolved actor inside a wall.
+  for (let pass = 0; pass <= city.blocks.length; pass++) {
+    let corrected = false;
 
-    if (dx * dx + dy * dy >= r * r) continue;
-    hit = true;
+    for (const b of city.blocks) {
+      const nearestX = Math.max(b.x, Math.min(px, b.x + b.w));
+      const nearestY = Math.max(b.y, Math.min(py, b.y + b.h));
+      const dx = px - nearestX;
+      const dy = py - nearestY;
 
-    // Inside, or touching. Work out the cheapest way back out.
-    const left = px - (b.x - r);
-    const right = b.x + b.w + r - px;
-    const up = py - (b.y - r);
-    const down = b.y + b.h + r - py;
+      if (dx * dx + dy * dy >= r * r) continue;
+      hit = true;
+      corrected = true;
 
-    const smallest = Math.min(left, right, up, down);
-    if (smallest === left) px = b.x - r;
-    else if (smallest === right) px = b.x + b.w + r;
-    else if (smallest === up) py = b.y - r;
-    else py = b.y + b.h + r;
+      // Inside, or touching. Work out the cheapest way back out.
+      const left = px - (b.x - r);
+      const right = b.x + b.w + r - px;
+      const up = py - (b.y - r);
+      const down = b.y + b.h + r - py;
+
+      const smallest = Math.min(left, right, up, down);
+      if (smallest === left) px = b.x - r;
+      else if (smallest === right) px = b.x + b.w + r;
+      else if (smallest === up) py = b.y - r;
+      else py = b.y + b.h + r;
+    }
+
+    if (!corrected) break;
   }
 
   return { x: px, y: py, hit };
