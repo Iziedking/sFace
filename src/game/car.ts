@@ -135,6 +135,8 @@ export function driveCar(state: RunState, dt: number, moveX: number, moveY: numb
   const car = state.car;
   const city = state.city;
   if (!car || !city) return;
+  const safeX = car.x;
+  const safeY = car.y;
 
   car.vx += moveX * CAR_THRUST * dt;
   car.vy += moveY * CAR_THRUST * dt;
@@ -154,14 +156,18 @@ export function driveCar(state: RunState, dt: number, moveX: number, moveY: numb
   const pushedX = resolve(city, car.x + car.vx * dt, car.y, CAR_RADIUS);
   if (pushedX.hit) {
     if (Math.abs(pushedX.x - (car.x + car.vx * dt)) > 0.01) car.vx = 0;
+    if (Math.abs(pushedX.y - car.y) > 0.01) car.vy = 0;
     car.x = pushedX.x;
+    car.y = pushedX.y;
   } else {
     car.x += car.vx * dt;
   }
 
   const pushedY = resolve(city, car.x, car.y + car.vy * dt, CAR_RADIUS);
   if (pushedY.hit) {
+    if (Math.abs(pushedY.x - car.x) > 0.01) car.vx = 0;
     if (Math.abs(pushedY.y - (car.y + car.vy * dt)) > 0.01) car.vy = 0;
+    car.x = pushedY.x;
     car.y = pushedY.y;
   } else {
     car.y += car.vy * dt;
@@ -169,6 +175,16 @@ export function driveCar(state: RunState, dt: number, moveX: number, moveY: numb
 
   car.x = Math.max(CAR_RADIUS, Math.min(city.width - CAR_RADIUS, car.x));
   car.y = Math.max(CAR_RADIUS, Math.min(city.height - CAR_RADIUS, car.y));
+
+  // Generated corners can form a pocket where local corrections disagree.
+  // The previous frame is known to be valid, so stop there instead of ever
+  // committing a position inside a building.
+  if (resolve(city, car.x, car.y, CAR_RADIUS).hit) {
+    car.x = safeX;
+    car.y = safeY;
+    car.vx = 0;
+    car.vy = 0;
+  }
 
   // Only turn while actually moving, or a stationary car spins to face whatever
   // the stick was last touching, which reads as broken.
