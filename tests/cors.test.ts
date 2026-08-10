@@ -9,7 +9,7 @@ describe('production CORS policy', () => {
 
   it('keeps local development usable when the allowlist is empty', () => {
     expect(parseAllowedOrigins('', false)).toEqual([]);
-    expect(corsDecision(undefined, [], false)).toEqual({ allowed: true, header: '*' });
+    expect(corsDecision('http://localhost:5173', [], false)).toEqual({ allowed: true, header: '*' });
   });
 
   it('refuses an unknown browser origin', () => {
