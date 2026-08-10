@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { AdminLogBuffer, redactContext } from '../server/admin/logs';
+import { AdminLogBuffer, parseLogLines, redactContext } from '../server/admin/logs';
 
 describe('admin diagnostic logs', () => {
   it('redacts secret-shaped fields recursively', () => {
@@ -16,5 +16,9 @@ describe('admin diagnostic logs', () => {
     logs.add({ time: 15 * 86_400_000, level: 'info', subsystem: 'admin', event: 'new', message: 'new' });
 
     expect(logs.list(15 * 86_400_000).map((entry) => entry.event)).toEqual(['new']);
+  });
+  it('restores valid JSONL entries and skips malformed lines', () => {
+    const entries = parseLogLines('{"time":1,"level":"info","subsystem":"admin","event":"ok","message":"ready"}\nnot-json\n');
+    expect(entries.map((entry) => entry.event)).toEqual(['ok']);
   });
 });

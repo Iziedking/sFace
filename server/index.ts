@@ -20,7 +20,7 @@ import { buildCapabilities } from './capabilities';
 import { apiSecurityHeaders } from './security-headers';
 import { adminConfig, adminMiddleware } from './admin/auth';
 import { configInventory } from './admin/config';
-import { adminLogs } from './admin/logs';
+import { adminLogs, initialiseAdminLogs, recordAdminLog } from './admin/logs';
 
 import * as daily from './daily';
 import { getMission, startRefreshLoop, utcDate } from './daily';
@@ -493,7 +493,7 @@ app.get('/health', (_req, res) => {
 });
 
 app.post('/admin/api/login/check', limit(5, 3), requireAdmin, (req, res) => {
-  adminLogs.add({ time: Date.now(), level: 'info', subsystem: 'admin', event: 'login_success', message: 'Admin login accepted', context: { ip: req.ip } });
+  recordAdminLog({ time: Date.now(), level: 'info', subsystem: 'admin', event: 'login_success', message: 'Admin login accepted', context: { ip: req.ip } });
   res.json({ ok: true });
 });
 
@@ -2151,6 +2151,7 @@ function snapshot() {
 }
 
 async function main(): Promise<void> {
+  await initialiseAdminLogs();
   const loaded = await loadSnapshot();
   if (!loaded.ok) {
     throw new Error(`Persistence startup failed: ${loaded.error}. Refusing to boot with empty state.`);
