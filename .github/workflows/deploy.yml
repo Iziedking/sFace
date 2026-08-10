@@ -41,7 +41,7 @@ permissions:
 
 jobs:
   check:
-    name: Typecheck and tests
+    name: Format, typecheck and tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -55,7 +55,7 @@ jobs:
 
       - run: npm ci
 
-      # Three tsconfigs and the whole suite. This is the gate; everything below
+      # Formatting hygiene, three tsconfigs and the whole suite. This is the gate; everything below
       # depends on it.
       - run: npm run check
 

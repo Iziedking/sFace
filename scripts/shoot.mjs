@@ -139,7 +139,7 @@ const SHOTS = [
   {
     name: 'home-wallet',
     view: 'wallet',
-    caption: 'Inside Nimiq Pay, landscape, with the wallet’s own header above.',
+    caption: 'Inside Nimiq Pay, landscape, with the walletâ€™s own header above.',
     async setup(cdp) {
       await cdp.eval(`window.sface.showBrief()`);
     },
@@ -147,7 +147,7 @@ const SHOTS = [
   {
     name: 'home',
     view: 'wide',
-    caption: 'The front door: today’s coin, its move, and the ways in.',
+    caption: 'The front door: todayâ€™s coin, its move, and the ways in.',
     async setup(cdp) {
       await cdp.eval(`window.sface.showBrief()`);
     },
@@ -164,7 +164,7 @@ const SHOTS = [
     name: 'chart-run',
     guide: 'chart',
     view: 'wide',
-    caption: 'Stage one. The ground is today’s real 24 hour chart.',
+    caption: 'Stage one. The ground is todayâ€™s real 24 hour chart.',
     async setup(cdp) {
       await cdp.eval(`(() => {
         const a = window.sface;
@@ -180,7 +180,7 @@ const SHOTS = [
     name: 'city',
     guide: 'city',
     view: 'wide',
-    caption: 'Stage five leaves the chart for streets built from the day’s bars.',
+    caption: 'Stage five leaves the chart for streets built from the dayâ€™s bars.',
     async setup(cdp) {
       await cdp.eval(`(async () => {
         const a = window.sface;
