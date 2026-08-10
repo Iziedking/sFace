@@ -18,6 +18,7 @@ import { corsDecision, parseAllowedOrigins } from './cors';
 import { pruneRateLimitBuckets, type RateLimitBucket } from './rate-limit';
 import { buildCapabilities } from './capabilities';
 import { apiSecurityHeaders } from './security-headers';
+import { adminConfig, adminMiddleware } from './admin/auth';
 
 import * as daily from './daily';
 import { getMission, startRefreshLoop, utcDate } from './daily';
@@ -54,6 +55,7 @@ const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const ALLOWED_ORIGINS = parseAllowedOrigins(process.env.ALLOWED_ORIGINS ?? '', IS_PRODUCTION);
 /** Set this when running behind Caddy or any proxy, or rate limits key on it. */
 const TRUST_PROXY = process.env.TRUST_PROXY === 'true';
+const ADMIN_CONFIG = adminConfig();
 
 /**
  * Where anchored runs are sent, and which chain counts.
@@ -458,25 +460,47 @@ const settleBody = z.object({
   serializedTx: z.string().regex(/^[0-9a-f]+$/i).min(32).max(4096),
 });
 
+function effectiveCapabilities() {
+  const persistence = getPersistenceHealth();
+  return {
+    persistence,
+    capabilities: buildCapabilities({
+      persistence: persistence.status === 'healthy',
+      anchor: anchor.isAnchorAddress(ANCHOR_ADDRESS),
+      xOAuth: xauth.xauthConfigured(),
+      xRead: xpostsConfigured() && xusersConfigured(),
+      xSense: xsenseConfigured(),
+      signals: signals.xsignalsConfigured(),
+      corsRestricted: ALLOWED_ORIGINS.length > 0,
+      trustedProxy: TRUST_PROXY,
+    }),
+  };
+}
+
+const requireAdmin = adminMiddleware(ADMIN_CONFIG);
+
 // Routes -------------------------------------------------------------------
 
 app.get('/health', (_req, res) => {
-  const persistence = getPersistenceHealth();
-  const capabilities = buildCapabilities({
-    persistence: persistence.status === 'healthy',
-    anchor: anchor.isAnchorAddress(ANCHOR_ADDRESS),
-    xOAuth: xauth.xauthConfigured(),
-    xRead: xpostsConfigured() && xusersConfigured(),
-    xSense: xsenseConfigured(),
-    signals: signals.xsignalsConfigured(),
-    corsRestricted: ALLOWED_ORIGINS.length > 0,
-    trustedProxy: TRUST_PROXY,
-  });
-  res.status(persistence.status === 'healthy' ? 200 : 503).json({
-    ok: persistence.status === 'healthy',
+  const effective = effectiveCapabilities();
+  res.status(effective.persistence.status === 'healthy' ? 200 : 503).json({
+    ok: effective.persistence.status === 'healthy',
     date: utcDate(),
-    persistence,
-    capabilities,
+    ...effective,
+  });
+});
+
+app.post('/admin/api/login/check', limit(5, 3), requireAdmin, (_req, res) => {
+  res.json({ ok: true });
+});
+
+app.get('/admin/api/overview', limit(30, 10), requireAdmin, (_req, res) => {
+  res.json({
+    ok: true,
+    uptimeSeconds: Math.floor(process.uptime()),
+    commit: process.env.GIT_COMMIT ?? null,
+    date: utcDate(),
+    ...effectiveCapabilities(),
   });
 });
 
