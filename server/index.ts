@@ -15,8 +15,8 @@ import { isRehearsal, networkOf, NETWORK_HEADER } from './network';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { corsDecision, parseAllowedOrigins } from './cors';
-import { pruneRateLimitBuckets, type RateLimitBucket } from './rate-limit';
-import { buildCapabilities } from './capabilities';
+import { createRateLimiter } from './rate-limit';
+import { effectiveHealth } from './admin/health';
 import { apiSecurityHeaders } from './security-headers';
 import { adminConfig, adminMiddleware } from './admin/auth';
 import { configInventory } from './admin/config';
@@ -118,59 +118,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Rate limiting ------------------------------------------------------------
-
-const RATE_LIMIT_BUCKET_IDLE_MS = 10 * 60_000;
-const RATE_LIMIT_SWEEP_MS = 60_000;
-const buckets = new Map<string, RateLimitBucket>();
-let lastBucketSweep = 0;
-
-/** Token bucket, in memory. One box, one process, no need for anything more. */
-function limit(perMinute: number, burst: number) {
-  const refillPerMs = perMinute / 60_000;
-
-  return (req: Request, res: Response, next: NextFunction): void => {
-    /*
-     * Keyed on the method as well as the path.
-     *
-     * GET /contests and POST /contests are the same path and wildly different
-     * costs: reading the list is cheap and generous, opening one is neither.
-     * Sharing a bucket meant a client that polled the list could exhaust its own
-     * ability to create, and the tighter of the two limits silently governed
-     * both. Reading something must never spend the budget for writing it.
-     */
-    const key = `${req.method}:${req.path}:${clientIp(req)}`;
-    const now = Date.now();
-    if (now - lastBucketSweep >= RATE_LIMIT_SWEEP_MS) {
-      pruneRateLimitBuckets(buckets, now, RATE_LIMIT_BUCKET_IDLE_MS);
-      lastBucketSweep = now;
-    }
-    const bucket = buckets.get(key) ?? { tokens: burst, updatedAt: now };
-
-    bucket.tokens = Math.min(burst, bucket.tokens + (now - bucket.updatedAt) * refillPerMs);
-    bucket.updatedAt = now;
-
-    if (bucket.tokens < 1) {
-      buckets.set(key, bucket);
-      res.status(429).json({ error: 'Too many requests. Slow down.' });
-      return;
-    }
-
-    bucket.tokens -= 1;
-    buckets.set(key, bucket);
-    next();
-  };
-}
-
-/**
- * The client address. Behind a proxy this must come from the trusted hop that
- * express resolves, never from a raw header, or anyone can spoof their way
- * past the limiter by setting x-forwarded-for themselves.
- */
-function clientIp(req: Request): string {
-  return req.ip ?? req.socket.remoteAddress ?? 'unknown';
-}
-
+const rateLimiter = createRateLimiter();
 async function provesActor(
   proof: DeviceProof,
   action: AuthAction,
@@ -469,29 +417,26 @@ const settleBody = z.object({
   serializedTx: z.string().regex(/^[0-9a-f]+$/i).min(32).max(4096),
 });
 
-function effectiveCapabilities() {
-  const persistence = getPersistenceHealth();
-  return {
-    persistence,
-    capabilities: buildCapabilities({
-      persistence: persistence.status === 'healthy',
-      anchor: anchor.isAnchorAddress(ANCHOR_ADDRESS),
-      xOAuth: xauth.xauthConfigured(),
-      xRead: xpostsConfigured() && xusersConfigured(),
-      xSense: xsenseConfigured(),
-      signals: signals.xsignalsConfigured(),
-      corsRestricted: ALLOWED_ORIGINS.length > 0,
-      trustedProxy: TRUST_PROXY,
-    }),
-  };
+function currentHealth() {
+  return effectiveHealth({
+    persistence: getPersistenceHealth(),
+    anchor: anchor.isAnchorAddress(ANCHOR_ADDRESS),
+    xOAuth: xauth.xauthConfigured(),
+    xRead: xpostsConfigured() && xusersConfigured(),
+    xSense: xsenseConfigured(),
+    signals: signals.xsignalsConfigured(),
+    corsRestricted: ALLOWED_ORIGINS.length > 0,
+    trustedProxy: TRUST_PROXY,
+  });
 }
+
 
 const requireAdmin = adminMiddleware(ADMIN_CONFIG);
 
 // Routes -------------------------------------------------------------------
 
 app.get('/health', (_req, res) => {
-  const effective = effectiveCapabilities();
+  const effective = currentHealth();
   res.status(effective.persistence.status === 'healthy' ? 200 : 503).json({
     ok: effective.persistence.status === 'healthy',
     date: utcDate(),
@@ -499,12 +444,12 @@ app.get('/health', (_req, res) => {
   });
 });
 
-app.post('/admin/api/login/check', limit(5, 3), requireAdmin, (req, res) => {
+app.post('/admin/api/login/check', rateLimiter.limit(5, 3), requireAdmin, (req, res) => {
   recordAdminLog({ time: Date.now(), level: 'info', subsystem: 'admin', event: 'login_success', message: 'Admin login accepted', context: { ip: req.ip } });
   res.json({ ok: true });
 });
 
-app.get('/admin/api/logs', limit(30, 10), requireAdmin, (req, res) => {
+app.get('/admin/api/logs', rateLimiter.limit(30, 10), requireAdmin, (req, res) => {
   const limitValue = Number(req.query.limit ?? 200);
   const level = ['info', 'warn', 'error'].includes(String(req.query.level ?? ''))
     ? String(req.query.level) as 'info' | 'warn' | 'error'
@@ -519,7 +464,7 @@ app.get('/admin/api/logs', limit(30, 10), requireAdmin, (req, res) => {
   });
 });
 
-app.get('/admin/api/logs/stream', limit(12, 4), requireAdmin, (req, res) => {
+app.get('/admin/api/logs/stream', rateLimiter.limit(12, 4), requireAdmin, (req, res) => {
   res.setHeader('content-type', 'text/event-stream');
   res.setHeader('cache-control', 'no-store');
   res.setHeader('connection', 'keep-alive');
@@ -536,7 +481,7 @@ app.get('/admin/api/logs/stream', limit(12, 4), requireAdmin, (req, res) => {
   });
 });
 
-app.get('/admin/api/operations/nonce', limit(30, 10), requireAdmin, (req, res) => {
+app.get('/admin/api/operations/nonce', rateLimiter.limit(30, 10), requireAdmin, (req, res) => {
   const operation = typeof req.query.operation === 'string' ? req.query.operation : '';
   if (!['backup.create', 'diagnostics.export'].includes(operation) && !operation.startsWith('secret.replace:')) {
     res.status(400).json({ error: 'Unsupported operation.' });
@@ -545,7 +490,7 @@ app.get('/admin/api/operations/nonce', limit(30, 10), requireAdmin, (req, res) =
   res.json({ ok: true, nonce: ADMIN_NONCES.issue(operation) });
 });
 
-app.post('/admin/api/backups', limit(3, 1), requireAdmin, async (req, res) => {
+app.post('/admin/api/backups', rateLimiter.limit(3, 1), requireAdmin, async (req, res) => {
   const nonce = typeof req.body?.nonce === 'string' ? req.body.nonce : '';
   if (!ADMIN_NONCES.consume(nonce, 'backup.create')) {
     res.status(409).json({ error: 'Missing or expired operation nonce.' });
@@ -560,13 +505,13 @@ app.post('/admin/api/backups', limit(3, 1), requireAdmin, async (req, res) => {
   recordAdminLog({ time: Date.now(), level: 'info', subsystem: 'persistence', event: 'backup_created', message: 'Admin backup created' });
   res.json({ ok: true });
 });
-app.post('/admin/api/diagnostics/export', limit(3, 1), requireAdmin, (req, res) => {
+app.post('/admin/api/diagnostics/export', rateLimiter.limit(3, 1), requireAdmin, (req, res) => {
   const nonce = typeof req.body?.nonce === 'string' ? req.body.nonce : '';
   if (!ADMIN_NONCES.consume(nonce, 'diagnostics.export')) {
     res.status(409).json({ error: 'Missing or expired operation nonce.' });
     return;
   }
-  const effective = effectiveCapabilities();
+  const effective = currentHealth();
   const bundle = buildDiagnosticBundle({
     generatedAt: Date.now(),
     commit: process.env.GIT_COMMIT ?? null,
@@ -574,16 +519,16 @@ app.post('/admin/api/diagnostics/export', limit(3, 1), requireAdmin, (req, res) 
     capabilities: effective.capabilities,
     config: configInventory(),
     logs: adminLogs.list(Date.now(), 1_000),
-    rateLimitBuckets: buckets.size,
+    rateLimitBuckets: rateLimiter.count(),
   });
   recordAdminLog({ time: Date.now(), level: 'info', subsystem: 'admin', event: 'diagnostics_exported', message: 'Redacted diagnostics exported', context: { ip: req.ip } });
   res.setHeader('content-disposition', `attachment; filename="sface-diagnostics-${utcDate()}.json"`);
   res.json(bundle);
 });
-app.get('/admin/api/audit', limit(30, 10), requireAdmin, (_req, res) => {
+app.get('/admin/api/audit', rateLimiter.limit(30, 10), requireAdmin, (_req, res) => {
   res.json({ ok: true, entries: adminLogs.list(Date.now(), 1_000).filter((entry) => isAuditEvent(entry.event)) });
 });
-app.get('/admin/api/records/:kind', limit(30, 10), requireAdmin, (req, res) => {
+app.get('/admin/api/records/:kind', rateLimiter.limit(30, 10), requireAdmin, (req, res) => {
   const result = adminRecord(String(req.params.kind ?? ''), {
     profiles: profiles.serialise,
     scores: board.serialise,
@@ -602,11 +547,11 @@ app.get('/admin/api/records/:kind', limit(30, 10), requireAdmin, (req, res) => {
   recordAdminLog({ time: Date.now(), level: 'info', subsystem: 'admin', event: 'records_read', message: 'Admin records viewed', context: { kind: result.kind, ip: req.ip } });
   res.json(result);
 });
-app.get('/admin/api/config', limit(30, 10), requireAdmin, async (_req, res) => {
+app.get('/admin/api/config', rateLimiter.limit(30, 10), requireAdmin, async (_req, res) => {
   res.json({ ok: true, entries: configInventory(), pending: await readPendingConfig() });
 });
 
-app.patch('/admin/api/config', limit(6, 2), requireAdmin, async (req, res) => {
+app.patch('/admin/api/config', rateLimiter.limit(6, 2), requireAdmin, async (req, res) => {
   const key = typeof req.body?.key === 'string' ? req.body.key : '';
   const value = typeof req.body?.value === 'string' ? req.body.value : '';
   const change = validateConfigChange(key, value);
@@ -620,7 +565,7 @@ app.patch('/admin/api/config', limit(6, 2), requireAdmin, async (req, res) => {
   recordAdminLog({ time: Date.now(), level: 'info', subsystem: 'admin', event: 'config_changed', message: 'Configuration change staged for restart', context: { key: change.key, restartRequired: change.restartRequired, ip: req.ip } });
   res.json({ ok: true, key: change.key, pendingRestart: change.restartRequired });
 });
-app.post('/admin/api/secrets/:key/replace', limit(3, 1), requireAdmin, async (req, res) => {
+app.post('/admin/api/secrets/:key/replace', rateLimiter.limit(3, 1), requireAdmin, async (req, res) => {
   const key = String(req.params.key ?? '');
   const value = typeof req.body?.value === 'string' ? req.body.value : '';
   const nonce = typeof req.body?.nonce === 'string' ? req.body.nonce : '';
@@ -637,18 +582,18 @@ app.post('/admin/api/secrets/:key/replace', limit(3, 1), requireAdmin, async (re
   recordAdminLog({ time: Date.now(), level: 'info', subsystem: 'admin', event: 'secret_replaced', message: 'Secret replacement staged for restart', context: { key: replacement.key, newHash: secretFingerprint(value), ip: req.ip } });
   res.json({ ok: true, key: replacement.key, pendingRestart: true });
 });
-app.get('/admin/api/overview', limit(30, 10), requireAdmin, (_req, res) => {
+app.get('/admin/api/overview', rateLimiter.limit(30, 10), requireAdmin, (_req, res) => {
   res.json({
     ok: true,
     uptimeSeconds: Math.floor(process.uptime()),
     commit: process.env.GIT_COMMIT ?? null,
     date: utcDate(),
-    ...effectiveCapabilities(),
+    ...currentHealth(),
     config: configInventory(),
   });
 });
 
-app.post('/auth/player/register', limit(8, 2), async (req, res) => {
+app.post('/auth/player/register', rateLimiter.limit(8, 2), async (req, res) => {
   const parsed = z.object({ publicKeyJwk }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ ok: false, error: 'invalid_request' });
@@ -665,7 +610,7 @@ app.post('/auth/player/register', limit(8, 2), async (req, res) => {
   res.json({ ok: true, playerId: registered.value.playerId });
 });
 
-app.post('/auth/player/challenge', limit(24, 8), async (req, res) => {
+app.post('/auth/player/challenge', rateLimiter.limit(24, 8), async (req, res) => {
   const parsed = z.discriminatedUnion('action', [
     z.object({
       playerId: deviceId,
@@ -705,7 +650,7 @@ app.post('/auth/player/challenge', limit(24, 8), async (req, res) => {
   res.json({ ok: true, challenge: issued.value });
 });
 
-app.get('/mission/today', limit(120, 40), async (req, res) => {
+app.get('/mission/today', rateLimiter.limit(120, 40), async (req, res) => {
   const mission = await getMission({ rehearsal: isRehearsal(req) });
 
   if (!mission) {
@@ -748,7 +693,7 @@ app.get('/mission/today', limit(120, 40), async (req, res) => {
  * service proved from a signature, never one that arrived attached to a
  * message.
  */
-app.get('/chat', limit(240, 60), (req, res) => {
+app.get('/chat', rateLimiter.limit(240, 60), (req, res) => {
   const network = networkOf(req);
   const stored = chat.recent(network);
 
@@ -806,7 +751,7 @@ app.get('/chat', limit(240, 60), (req, res) => {
   res.json({ messages, people, you: { runDate: canShare ? today : null } });
 });
 
-app.post('/chat', limit(30, 10), async (req, res) => {
+app.post('/chat', rateLimiter.limit(30, 10), async (req, res) => {
   const parsed = chatBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
@@ -886,7 +831,7 @@ app.post('/chat', limit(30, 10), async (req, res) => {
  * about ownership is taken from the request: the id on the stored message is
  * this service's own record of who said what.
  */
-app.post('/chat/:id', limit(30, 10), async (req, res) => {
+app.post('/chat/:id', rateLimiter.limit(30, 10), async (req, res) => {
   const parsed = z
     .object({ deviceId, text: z.string().max(chat.MAX_MESSAGE), auth: deviceProof })
     .safeParse(req.body);
@@ -949,7 +894,7 @@ app.post('/chat/:id', limit(30, 10), async (req, res) => {
  * proved a wallet, and that is this service's own record. Taking the client's
  * word for it would let a message claim money was sent that never could be.
  */
-app.get('/tips', limit(120, 60), (req, res) => {
+app.get('/tips', rateLimiter.limit(120, 60), (req, res) => {
   const who = String(req.query.deviceId ?? '');
   if (who.length === 0) {
     res.status(400).json({ error: 'Who is asking?' });
@@ -971,7 +916,7 @@ app.get('/tips', limit(120, 60), (req, res) => {
   res.json({ tips: waiting, people });
 });
 
-app.post('/tips', limit(60, 60), async (req, res) => {
+app.post('/tips', rateLimiter.limit(60, 60), async (req, res) => {
   const parsed = tipBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
@@ -1013,7 +958,7 @@ app.post('/tips', limit(60, 60), async (req, res) => {
 });
 
 /** Everything waiting has been seen. A watermark, so nothing half-marks. */
-app.post('/tips/seen', limit(60, 60), async (req, res) => {
+app.post('/tips/seen', rateLimiter.limit(60, 60), async (req, res) => {
   const parsed = z.object({ deviceId, auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
@@ -1030,15 +975,15 @@ app.post('/tips/seen', limit(60, 60), async (req, res) => {
   res.json({ ok: true });
 });
 
-app.get('/stats', limit(60, 20), (req, res) => {
+app.get('/stats', rateLimiter.limit(60, 20), (req, res) => {
   res.json(profiles.usage(networkOf(req)));
 });
 
-app.get('/board/all-time', limit(120, 40), (req, res) => {
+app.get('/board/all-time', rateLimiter.limit(120, 40), (req, res) => {
   res.json(profiles.allTime(50, networkOf(req)));
 });
 
-app.get('/board/:date', limit(120, 40), (req, res) => {
+app.get('/board/:date', rateLimiter.limit(120, 40), (req, res) => {
   const date = isoDate.safeParse(req.params.date);
   if (!date.success) {
     res.status(400).json({ error: 'Bad date.' });
@@ -1065,7 +1010,7 @@ app.get('/board/:date', limit(120, 40), (req, res) => {
   res.json(rows);
 });
 
-app.post('/board', limit(20, 10), async (req, res) => {
+app.post('/board', rateLimiter.limit(20, 10), async (req, res) => {
   const parsed = scoreBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
@@ -1377,7 +1322,7 @@ app.post('/board', limit(20, 10), async (req, res) => {
  * a recipient against, so every transaction would either be accepted blindly or
  * rejected confusingly. Saying so plainly is better than either.
  */
-app.post('/board/anchor', limit(20, 10), async (req, res) => {
+app.post('/board/anchor', rateLimiter.limit(20, 10), async (req, res) => {
   const parsed = anchorBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
@@ -1482,7 +1427,7 @@ app.post('/board/anchor', limit(20, 10), async (req, res) => {
   });
 });
 
-app.post('/board/sign', limit(20, 10), async (req, res) => {
+app.post('/board/sign', rateLimiter.limit(20, 10), async (req, res) => {
   const parsed = signBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
@@ -1582,12 +1527,12 @@ function sweepContests(network: string): void {
   }
 }
 
-app.get('/contests', limit(120, 40), (req, res) => {
+app.get('/contests', rateLimiter.limit(120, 40), (req, res) => {
   sweepContests(networkOf(req));
   res.json(contests.list(networkOf(req)));
 });
 
-app.get('/contests/:id', limit(120, 40), (req, res) => {
+app.get('/contests/:id', rateLimiter.limit(120, 40), (req, res) => {
   sweepContests(networkOf(req));
   const found = contests.get(String(req.params.id ?? ''), networkOf(req));
   if (!found.ok) {
@@ -1597,7 +1542,7 @@ app.get('/contests/:id', limit(120, 40), (req, res) => {
   res.json(contests.toPublic(found.value));
 });
 
-app.post('/contests', limit(12, 6), async (req, res) => {
+app.post('/contests', rateLimiter.limit(12, 6), async (req, res) => {
   const parsed = contestBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
@@ -1663,7 +1608,7 @@ app.post('/contests', limit(12, 6), async (req, res) => {
   res.json(contests.toPublic(result.value));
 });
 
-app.post('/contests/:id/join', limit(20, 10), async (req, res) => {
+app.post('/contests/:id/join', rateLimiter.limit(20, 10), async (req, res) => {
   sweepContests(networkOf(req));
   const parsed = joinContestBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
@@ -1712,7 +1657,7 @@ app.post('/contests/:id/join', limit(20, 10), async (req, res) => {
  * debt so the person who is owed can check it themselves, which is witnessing
  * rather than enforcement, and the screen says so in those words.
  */
-app.post('/contests/:id/settled', limit(20, 10), async (req, res) => {
+app.post('/contests/:id/settled', rateLimiter.limit(20, 10), async (req, res) => {
   const parsed = contestPaidBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
@@ -1744,11 +1689,11 @@ app.post('/contests/:id/settled', limit(20, 10), async (req, res) => {
   res.json(contests.toPublic(result.value));
 });
 
-app.get('/clans', limit(120, 40), (req, res) => {
+app.get('/clans', rateLimiter.limit(120, 40), (req, res) => {
   res.json(clans.table(50, networkOf(req)));
 });
 
-app.get('/clans/:tag', limit(120, 40), (req, res) => {
+app.get('/clans/:tag', rateLimiter.limit(120, 40), (req, res) => {
   const tag = clans.normaliseTag(req.params.tag);
   if (!tag) {
     res.status(400).json({ error: 'A clan tag is two to four letters or digits.' });
@@ -1766,7 +1711,7 @@ app.get('/clans/:tag', limit(120, 40), (req, res) => {
   res.json(found);
 });
 
-app.post('/clans/join', limit(12, 6), async (req, res) => {
+app.post('/clans/join', rateLimiter.limit(12, 6), async (req, res) => {
   const parsed = joinClanBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
@@ -1809,7 +1754,7 @@ app.post('/clans/join', limit(12, 6), async (req, res) => {
   });
 });
 
-app.post('/clans/:tag/decide', limit(30, 15), async (req, res) => {
+app.post('/clans/:tag/decide', rateLimiter.limit(30, 15), async (req, res) => {
   const parsed = decideClanBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
@@ -1852,7 +1797,7 @@ app.post('/clans/:tag/decide', limit(30, 15), async (req, res) => {
  * server/xsignals.ts for why that posture matters and for the honest note on
  * what the payment does and does not buy.
  */
-app.get('/signals/:handle', limit(20, 8), async (req, res) => {
+app.get('/signals/:handle', rateLimiter.limit(20, 8), async (req, res) => {
   const handle = String(req.params.handle ?? '').replace(/^@/, '').toLowerCase();
   if (!/^[a-z0-9_]{1,15}$/.test(handle)) {
     res.status(400).json({ error: 'Not an X handle.' });
@@ -1898,7 +1843,7 @@ app.get('/signals/:handle', limit(20, 8), async (req, res) => {
   });
 });
 
-app.post('/signals/unlock', limit(12, 6), async (req, res) => {
+app.post('/signals/unlock', rateLimiter.limit(12, 6), async (req, res) => {
   const parsed = unlockBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
@@ -1923,7 +1868,7 @@ app.post('/signals/unlock', limit(12, 6), async (req, res) => {
  * and the destination with its device key. Unbound legacy records stay
  * read-only because no secret exists that could establish ownership.
  */
-app.post('/profile/merge', limit(12, 6), async (req, res) => {
+app.post('/profile/merge', rateLimiter.limit(12, 6), async (req, res) => {
   const parsed = mergeBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
@@ -1983,7 +1928,7 @@ app.post('/profile/merge', limit(12, 6), async (req, res) => {
   res.json({ merged: true, profile: merged });
 });
 
-app.get('/profile/:id', limit(60, 20), (req, res) => {
+app.get('/profile/:id', rateLimiter.limit(60, 20), (req, res) => {
   const id = deviceId.safeParse(req.params.id);
   if (!id.success) {
     res.status(400).json({ error: 'Bad pilot id.' });
@@ -2033,7 +1978,7 @@ app.get('/x/config', (_req, res) => {
   res.json({ enabled: xauth.xauthConfigured() });
 });
 
-app.post('/x/start', limit(20, 8), (req, res) => {
+app.post('/x/start', rateLimiter.limit(20, 8), (req, res) => {
   /*
    * Where to send them back to, checked against the allow list.
    *
@@ -2058,7 +2003,7 @@ app.post('/x/start', limit(20, 8), (req, res) => {
   res.json(result.value);
 });
 
-app.get('/x/callback', limit(30, 12), async (req, res) => {
+app.get('/x/callback', rateLimiter.limit(30, 12), async (req, res) => {
   const state = typeof req.query.state === 'string' ? req.query.state : '';
   const code = typeof req.query.code === 'string' ? req.query.code : '';
 
@@ -2139,7 +2084,7 @@ function closingPage(payload: unknown): string {
 </script>`;
 }
 
-app.get('/ghosts', limit(60, 20), (req, res) => {
+app.get('/ghosts', rateLimiter.limit(60, 20), (req, res) => {
   const parsed = seed.safeParse(req.query.seed);
   if (!parsed.success) {
     res.status(400).json({ error: 'Bad seed.' });
@@ -2154,7 +2099,7 @@ app.get('/ghosts', limit(60, 20), (req, res) => {
 });
 
 // Traces are the largest thing anyone posts, so this gets the tightest bucket.
-app.post('/ghosts', limit(8, 4), async (req, res) => {
+app.post('/ghosts', rateLimiter.limit(8, 4), async (req, res) => {
   const parsed = ghostBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
@@ -2175,7 +2120,7 @@ app.post('/ghosts', limit(8, 4), async (req, res) => {
   res.json(result.value);
 });
 
-app.post('/challenges', limit(12, 6), async (req, res) => {
+app.post('/challenges', rateLimiter.limit(12, 6), async (req, res) => {
   const parsed = createBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
@@ -2196,7 +2141,7 @@ app.post('/challenges', limit(12, 6), async (req, res) => {
   res.status(201).json(challenges.toPublic(result.value));
 });
 
-app.get('/challenges/:id', limit(120, 40), (req, res) => {
+app.get('/challenges/:id', rateLimiter.limit(120, 40), (req, res) => {
   const result = challenges.get(String(req.params.id));
   if (!result.ok) {
     res.status(result.code).json({ error: result.reason });
@@ -2205,7 +2150,7 @@ app.get('/challenges/:id', limit(120, 40), (req, res) => {
   res.json(challenges.toPublic(result.value));
 });
 
-app.post('/challenges/:id/accept', limit(20, 10), async (req, res) => {
+app.post('/challenges/:id/accept', rateLimiter.limit(20, 10), async (req, res) => {
   const parsed = acceptBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
@@ -2227,7 +2172,7 @@ app.post('/challenges/:id/accept', limit(20, 10), async (req, res) => {
   res.json(challenges.toPublic(result.value));
 });
 
-app.post('/challenges/:id/settled', limit(20, 10), async (req, res) => {
+app.post('/challenges/:id/settled', rateLimiter.limit(20, 10), async (req, res) => {
   const parsed = settleBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: firstIssue(parsed.error) });
