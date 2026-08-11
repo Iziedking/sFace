@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Boot, screen routing, and the one loop that drives everything.
  *
  * Design decisions worth knowing before you edit this file:
@@ -139,40 +139,21 @@ import {
   rememberChallenge,
   rememberedChallenge,
 } from './nimiq/deeplink';
-import { capture, matches, restore, type RunSnapshot } from './game/snapshot';
+import { capture, matches, restore } from './game/snapshot';
+import { clearSnapshot, readCleared, readRoomSeen, readSnapshot, readStage, writeCleared, writeRoomSeen, writeSnapshot, writeStage } from './browser-state';
 import { breachButtonAt } from './core/breachbutton';
 import { cellInReach } from './game/cell';
 import { buy } from './game/consume';
 import { slotIntent } from './game/intent';
 import { CONSUMABLES } from './data/consumables';
 import { ANCHOR_ADDRESS, anchorRun, signClaim } from './nimiq/wallet';
+import { scoreClaimMessage } from './data/score-claim';
+import { poseOf, shortAddress, winnerAddressOf } from './ui/app-helpers';
 
-/**
- * The exact string a score is signed over.
- *
- * One definition, because a second copy that drifts produces a signature the
- * service verifies against a different message and rejects as tampering. That
- * was written when there were two callers and there were quietly three: signing
- * an old run from the profile built the string by hand, inline, and agreed with
- * this one only by luck. It takes the same fields now.
- */
-function claimFor(claim: {
-  date: string;
-  seed: string;
-  stage: number;
-  score: number;
-}): string {
-  return `sface:${claim.date}:${claim.seed}:s${claim.stage}:${claim.score}`;
+function scoreClaimForRun(run: RunState): string {
+  return scoreClaimMessage({ date: run.mission.date, seed: run.mission.seed, stage: run.stage.n, score: run.score });
 }
 
-function claimMessage(run: RunState): string {
-  return claimFor({
-    date: run.mission.date,
-    seed: run.mission.seed,
-    stage: run.stage.n,
-    score: run.score,
-  });
-}
 import { renderSettings } from './ui/settings';
 import { renderChat } from './ui/chat';
 import type { ChatMessage, ChatPerson, TipRecord } from './net/api';
@@ -220,122 +201,6 @@ type Screen = RouteScreen;
  * a few hundred milliseconds and without this the screen is a flicker.
  */
 const MIN_LOADING_MS = 3200;
-
-const STAGE_KEY = 'sface.stage';
-
-/** The stage last selected, or one. Clamped, because storage is editable. */
-function readStage(): number {
-  try {
-    const raw = Number(localStorage.getItem(STAGE_KEY));
-    if (!Number.isFinite(raw)) return 1;
-    return Math.max(1, Math.min(STAGES.length, Math.floor(raw)));
-  } catch {
-    return 1;
-  }
-}
-
-/**
- * The run in progress, kept for exactly as long as the tab is.
- *
- * sessionStorage rather than localStorage on purpose. A half-finished run is
- * something you came back to, not something you keep: closing the tab and
- * opening the game tomorrow should start tomorrow's mission, not resume a
- * stage from a coin that is no longer the worst performer. A refresh, a
- * reclaimed background tab and a WebView reload all keep the session, which is
- * every case this exists for.
- */
-/**
- * How far the campaign has been taken, on this device.
- *
- * Progression used to be read only from the server profile, which meant a
- * cleared stage that failed to post left the player on Run it again with no
- * way forward: they had beaten the stage, the game had judged it beaten, and
- * the button still would not appear because a leaderboard had not confirmed it.
- * A campaign is single player. It has no business waiting on a network.
- *
- * The board is still the authority on Face and rank, which are competitive and
- * verified. This is only the answer to which stages are open, and the two are
- * reconciled by taking whichever has seen more.
- */
-const CLEARED_KEY = 'sface.cleared';
-
-function readCleared(): number {
-  try {
-    const raw = Number(localStorage.getItem(CLEARED_KEY));
-    return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0;
-  } catch {
-    return 0;
-  }
-}
-
-function writeCleared(stage: number): void {
-  try {
-    // Never downward. Re-running an early stage is not losing the later ones.
-    if (stage > readCleared()) localStorage.setItem(CLEARED_KEY, String(stage));
-  } catch {
-    // Blocked storage. The server profile still carries it when it can.
-  }
-}
-
-const RUN_KEY = 'sface.run';
-
-function readSnapshot(): RunSnapshot | null {
-  try {
-    const raw = sessionStorage.getItem(RUN_KEY);
-    return raw ? (JSON.parse(raw) as RunSnapshot) : null;
-  } catch {
-    // Blocked storage, or a blob written by an older build. Either way there is
-    // no run to come back to, which is exactly where we were before this.
-    return null;
-  }
-}
-
-function writeSnapshot(snapshot: RunSnapshot): void {
-  try {
-    sessionStorage.setItem(RUN_KEY, JSON.stringify(snapshot));
-  } catch {
-    // Quota, or private mode. Losing the resume is not worth losing the run.
-  }
-}
-
-function clearSnapshot(): void {
-  try {
-    sessionStorage.removeItem(RUN_KEY);
-  } catch {
-    // As above.
-  }
-}
-
-/** When the room was last open on this device. Zero if it never has been. */
-const ROOM_SEEN_KEY = 'sface.room.seen';
-
-function readRoomSeen(): number {
-  try {
-    const raw = Number(localStorage.getItem(ROOM_SEEN_KEY));
-    return Number.isFinite(raw) ? raw : 0;
-  } catch {
-    // Private mode. Everything unread, every session, which is the safe way to
-    // be wrong: it over-announces rather than swallowing a reply.
-    return 0;
-  }
-}
-
-function writeRoomSeen(at: number): void {
-  try {
-    localStorage.setItem(ROOM_SEEN_KEY, String(at));
-  } catch {
-    // As above.
-  }
-}
-
-function writeStage(stage: number): void {
-  try {
-    localStorage.setItem(STAGE_KEY, String(stage));
-  } catch {
-    // Private mode. The choice simply does not survive the session.
-  }
-}
-
 
 class App {
   private readonly ui: HTMLElement;
@@ -2853,7 +2718,7 @@ class App {
         return;
       }
 
-      const claim = await signClaim(claimFor(run));
+      const claim = await signClaim(scoreClaimMessage(run));
       if (!claim) {
         this.oldRunNotice = 'The wallet did not sign. Your score is still on the board.';
         return;
@@ -3995,7 +3860,7 @@ class App {
         return;
       }
 
-      const data = claimMessage(run);
+      const data = scoreClaimForRun(run);
       const reply = await anchorRun(data);
       if (!reply) {
         this.anchorNotice = 'The wallet did not send it. Your score is still on the board.';
@@ -4074,7 +3939,7 @@ class App {
         return;
       }
 
-      const claim = await signClaim(claimMessage(run));
+      const claim = await signClaim(scoreClaimForRun(run));
       if (!claim) {
         this.signNotice = 'The wallet did not sign. Your score is still on the board.';
         return;
@@ -4187,7 +4052,7 @@ class App {
      */
     let claim: { publicKey: string; signature: string } | null = null;
     if (this.session?.address && !this.practice) {
-      claim = await signClaim(claimMessage(run));
+      claim = await signClaim(scoreClaimForRun(run));
     }
     this.signedRun = claim !== null;
 
@@ -4828,41 +4693,6 @@ class App {
     this.camera.resize(this.renderer.width, this.renderer.height);
     this.hud.measure();
   }
-}
-
-/**
- * A Nimiq address, short enough to sit on a button.
- *
- * They are thirty six characters in six blocks, which is unreadable in a row of
- * controls and pointless at full length: nobody verifies an address by reading
- * it off a game screen. The first and last blocks are enough to recognise the
- * one you approved.
- */
-function shortAddress(address: string | null): string | null {
-  if (!address) return null;
-  const blocks = address.replace(/^NQ/i, 'NQ').split(' ').filter(Boolean);
-  if (blocks.length < 3) return address;
-  return `${blocks[0]} ${blocks[1]} … ${blocks[blocks.length - 1]}`;
-}
-
-/** The player's current pose, in the shape squadmates are drawn from. */
-function poseOf(run: RunState): GhostFrame {
-  return {
-    x: run.player.x,
-    y: run.player.y,
-    angle: Math.atan2(run.player.aimY, run.player.aimX),
-    firing: run.player.fireCooldown > 0,
-    down: run.phase === 'died',
-    carrying: run.carrying,
-  };
-}
-
-function winnerAddressOf(challenge: Challenge, meId: string): string | null {
-  const creatorWon = (challenge.opponentScore ?? -1) < challenge.creatorScore;
-  if (creatorWon) {
-    return challenge.creatorId === meId ? null : challenge.creatorAddress;
-  }
-  return challenge.opponentId === meId ? null : challenge.opponentAddress;
 }
 
 /*

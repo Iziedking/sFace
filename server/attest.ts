@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Score attestation: turning "some device says 14,820" into "this Nimiq
  * address says 14,820, and nobody else could have said it for them".
  *
@@ -35,6 +35,9 @@
  * raw bytes does not.
  */
 
+import { scoreClaimMessage, type ScoreClaim } from '../src/data/score-claim';
+
+export type { ScoreClaim } from '../src/data/score-claim';
 import { PublicKey, Signature } from '@nimiq/core';
 
 const encoder = new TextEncoder();
@@ -99,24 +102,7 @@ export function envelopes(message: string): Array<{ name: string; bytes: Uint8Ar
   ];
 }
 
-export interface ScoreClaim {
-  date: string;
-  seed: string;
-  stage: number;
-  score: number;
-}
-
-/**
- * The one string that gets signed.
- *
- * Every field that could be swapped for a better one is inside it. Signing only
- * the score would let a signature earned on stage one be presented as a stage
- * seven result, and signing only the date would let yesterday's good run be
- * replayed against today's seed.
- */
-export function claimMessage(claim: ScoreClaim): string {
-  return `sface:${claim.date}:${claim.seed}:s${claim.stage}:${claim.score}`;
-}
+export const claimMessage = scoreClaimMessage;
 
 export interface Attestation {
   /** Human-readable Nimiq address, derived from the key that signed. */

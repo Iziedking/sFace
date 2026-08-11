@@ -35,8 +35,8 @@ import * as board from './leaderboard';
 import * as challenges from './challenges';
 import * as clans from './clans';
 import * as contests from './contests';
-import { ROSTER_SIZE, xsenseConfigured } from './xsense';
 import * as contestRules from '../src/data/contests';
+import { ROSTER_SIZE, xsenseConfigured } from './xsense';
 import * as ghosts from './ghosts';
 import * as signals from './xsignals';
 import * as profiles from './profiles';
@@ -46,13 +46,17 @@ import { xusersConfigured } from './xusers';
 import { attachLive } from './live';
 import { backupSnapshot, flush, getPersistenceHealth, loadSnapshot, saveNow, scheduleSave } from './store';
 import { PlayerAuth } from './player-auth';
+import { mountPlayerAuthRoutes } from './player-auth-routes';
+import { mountSystemRoutes } from './system-routes';
+import { mountLeaderboardReadRoutes } from './leaderboard-read-routes';
+import { mountCommunityReadRoutes } from './community-read-routes';
+import { mountPublicArtifactRoutes } from './public-artifact-routes';
+import { sweepContests } from './contest-lifecycle';
 import { createActorVerifier } from './player-actor';
 import {
   mergeBodyDigest,
   bodyDigest,
-  type AuthAction,
   type DeviceProof,
-  type PublicKeyJwk,
 } from '../src/net/player-auth-protocol';
 import * as anchor from './anchor';
 import * as chat from './chat';
@@ -400,93 +404,17 @@ const requireAdmin = adminMiddleware(ADMIN_CONFIG);
 
 // Routes -------------------------------------------------------------------
 
-app.get('/health', (_req, res) => {
-  const effective = currentHealth();
-  res.status(effective.persistence.status === 'healthy' ? 200 : 503).json({
-    ok: effective.persistence.status === 'healthy',
-    date: utcDate(),
-    ...effective,
-  });
-});
+mountSystemRoutes({ app, limit: rateLimiter.limit, health: currentHealth, date: utcDate, mission: getMission });
 
 mountAdminObservabilityRoutes({ app, limit: rateLimiter.limit, requireAdmin, logs: adminLogs, record: recordAdminLog });
 mountAdminOperationsRoutes({ app, limit: rateLimiter.limit, requireAdmin, nonces: ADMIN_NONCES, backup: backupSnapshot, diagnostics: buildDiagnosticBundle, health: currentHealth, config: configInventory, logs: adminLogs, record: recordAdminLog, date: utcDate, rateLimitCount: () => rateLimiter.count(), commit: process.env.GIT_COMMIT ?? null });
 mountAdminReadRoutes({ app, limit: rateLimiter.limit, requireAdmin, logs: adminLogs, record: recordAdminLog, sources: { profiles: profiles.serialise, scores: board.serialise, clans: clans.serialise, contests: contests.serialise, challenges: challenges.serialise, tips: tips.serialise, ghosts: ghosts.serialise, chat: chat.serialise, signals: signals.serialise } });
 mountAdminConfigRoutes({ app, limit: rateLimiter.limit, requireAdmin, nonces: ADMIN_NONCES, inventory: configInventory, record: recordAdminLog });
 mountAdminOverviewRoutes({ app, limit: rateLimiter.limit, requireAdmin, health: currentHealth, inventory: configInventory, date: utcDate, commit: process.env.GIT_COMMIT ?? null, uptimeSeconds: () => Math.floor(process.uptime()) });
-
-app.post('/auth/player/register', rateLimiter.limit(8, 2), async (req, res) => {
-  const parsed = z.object({ publicKeyJwk }).safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ ok: false, error: 'invalid_request' });
-    return;
-  }
-  const registered = await playerAuth.register({
-    publicKeyJwk: parsed.data.publicKeyJwk as PublicKeyJwk,
-  });
-  if (!registered.ok) {
-    res.status(400).json({ ok: false, error: 'invalid_request' });
-    return;
-  }
-  scheduleSave(snapshot);
-  res.json({ ok: true, playerId: registered.value.playerId });
-});
-
-app.post('/auth/player/challenge', rateLimiter.limit(24, 8), async (req, res) => {
-  const parsed = z.discriminatedUnion('action', [
-    z.object({
-      playerId: deviceId,
-      action: z.literal('profile.merge'),
-      claim: z.object({ from: deviceId, into: deviceId }),
-    }),
-    z.object({
-      playerId: deviceId,
-      action: z.enum([
-        'chat.say', 'chat.edit', 'tips.report', 'tips.seen',
-        'clan.join', 'clan.decide', 'contest.create', 'contest.join',
-        'contest.settle', 'challenge.create', 'challenge.accept',
-        'challenge.settle', 'signals.unlock', 'score.post', 'score.sign',
-        'score.anchor', 'ghost.post',
-      ]),
-      bodyDigest: z.string().regex(/^[0-9a-f]{64}$/i),
-    }),
-  ]).safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ ok: false, error: 'invalid_request' });
-    return;
-  }
-  const network = networkOf(req);
-  const digest =
-    parsed.data.action === 'profile.merge'
-      ? await mergeBodyDigest({ ...parsed.data.claim, network })
-      : parsed.data.bodyDigest;
-  const issued = playerAuth.issueChallenge({
-    playerId: parsed.data.playerId,
-    action: parsed.data.action as AuthAction,
-    bodyDigest: digest,
-  });
-  if (!issued.ok) {
-    res.status(403).json({ ok: false, error: 'unauthorized' });
-    return;
-  }
-  res.json({ ok: true, challenge: issued.value });
-});
-
-app.get('/mission/today', rateLimiter.limit(120, 40), async (req, res) => {
-  const mission = await getMission({ rehearsal: isRehearsal(req) });
-
-  if (!mission) {
-    // The client has a practice mission for exactly this case. Say so plainly
-    // rather than shipping a fabricated chart.
-    res.status(503).json({ error: 'The market is unreachable. Play the practice mission.' });
-    return;
-  }
-
-  // Cache at the edge for five minutes. The payload only changes once a day,
-  // and this is the endpoint every player hits on open.
-  res.setHeader('cache-control', 'public, max-age=300');
-  res.json({ ...mission.payload, stale: mission.stale });
-});
+mountPlayerAuthRoutes({ app, limit: rateLimiter.limit, auth: playerAuth, save: () => scheduleSave(snapshot) });
+mountLeaderboardReadRoutes({ app, limit: rateLimiter.limit });
+mountCommunityReadRoutes({ app, limit: rateLimiter.limit });
+mountPublicArtifactRoutes({ app, limit: rateLimiter.limit });
 
 /*
  * Registered before /board/:date on purpose. Express matches in declaration
@@ -795,41 +723,6 @@ app.post('/tips/seen', rateLimiter.limit(60, 60), async (req, res) => {
   }
   tips.markSeen(networkOf(req), parsed.data.deviceId, Date.now());
   res.json({ ok: true });
-});
-
-app.get('/stats', rateLimiter.limit(60, 20), (req, res) => {
-  res.json(profiles.usage(networkOf(req)));
-});
-
-app.get('/board/all-time', rateLimiter.limit(120, 40), (req, res) => {
-  res.json(profiles.allTime(50, networkOf(req)));
-});
-
-app.get('/board/:date', rateLimiter.limit(120, 40), (req, res) => {
-  const date = isoDate.safeParse(req.params.date);
-  if (!date.success) {
-    res.status(400).json({ error: 'Bad date.' });
-    return;
-  }
-  /*
-   * The daily board ranks on today's best run, but a row still wants the
-   * pilot's avatar, clan and lifetime total so it can carry a rank badge.
-   * Merged here rather than duplicated into the board store, which only needs
-   * to know about today.
-   */
-  // The board the caller is looking at, which is the one their client is on.
-  const network = networkOf(req);
-  const rows = board.top(network, date.data).map((entry) => {
-    const profile = profiles.get(entry.id, network);
-    return {
-      ...entry,
-      avatarUrl: profile?.avatarUrl ?? null,
-      clanTag: profile?.clanTag ?? null,
-      lifetimeFace: profile?.lifetimeFace ?? 0,
-    };
-  });
-
-  res.json(rows);
 });
 
 app.post('/board', rateLimiter.limit(20, 10), async (req, res) => {
@@ -1331,39 +1224,6 @@ app.post('/board/sign', rateLimiter.limit(20, 10), async (req, res) => {
  * can do is describe a result incorrectly.
  */
 
-/**
- * Apply any deadlines that have passed, and record what they cost.
- *
- * Called at the top of every contest read and before a score is folded in, so
- * nobody is ever shown or allowed to act on a contest whose clock ran out while
- * the page was open. The debts are written here for the same reason they are
- * written after a score: the store reports the transition and the profile is
- * where a settlement record has to outlive the contest itself.
- */
-function sweepContests(network: string): void {
-  for (const contest of contests.expireDue(Date.now())) {
-    for (const owed of contestRules.obligationsOf(contest)) {
-      const who = contest.entrants.find((e) => e.id === owed.fromId);
-      profiles.recordDebt(owed.fromId, who?.name ?? 'Pilot', network);
-    }
-  }
-}
-
-app.get('/contests', rateLimiter.limit(120, 40), (req, res) => {
-  sweepContests(networkOf(req));
-  res.json(contests.list(networkOf(req)));
-});
-
-app.get('/contests/:id', rateLimiter.limit(120, 40), (req, res) => {
-  sweepContests(networkOf(req));
-  const found = contests.get(String(req.params.id ?? ''), networkOf(req));
-  if (!found.ok) {
-    res.status(found.code).json({ error: found.reason });
-    return;
-  }
-  res.json(contests.toPublic(found.value));
-});
-
 app.post('/contests', rateLimiter.limit(12, 6), async (req, res) => {
   const parsed = contestBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
@@ -1509,28 +1369,6 @@ app.post('/contests/:id/settled', rateLimiter.limit(20, 10), async (req, res) =>
   profiles.recordSettlement(parsed.data.deviceId, networkOf(req));
 
   res.json(contests.toPublic(result.value));
-});
-
-app.get('/clans', rateLimiter.limit(120, 40), (req, res) => {
-  res.json(clans.table(50, networkOf(req)));
-});
-
-app.get('/clans/:tag', rateLimiter.limit(120, 40), (req, res) => {
-  const tag = clans.normaliseTag(req.params.tag);
-  if (!tag) {
-    res.status(400).json({ error: 'A clan tag is two to four letters or digits.' });
-    return;
-  }
-
-  const found = clans.detail(tag, networkOf(req));
-  if (!found) {
-    // Not an error. An empty tag is a clan waiting for its first member, and
-    // the join screen wants to show it as available rather than as missing.
-    res.json({ tag, face: 0, members: 0, bestScore: 0, topPilot: null, topPilotAvatar: null, roster: [], place: 0 });
-    return;
-  }
-
-  res.json(found);
 });
 
 app.post('/clans/join', rateLimiter.limit(12, 6), async (req, res) => {
@@ -1906,20 +1744,6 @@ function closingPage(payload: unknown): string {
 </script>`;
 }
 
-app.get('/ghosts', rateLimiter.limit(60, 20), (req, res) => {
-  const parsed = seed.safeParse(req.query.seed);
-  if (!parsed.success) {
-    res.status(400).json({ error: 'Bad seed.' });
-    return;
-  }
-
-  const limitRaw = Number(req.query.limit ?? 4);
-  const count = Number.isFinite(limitRaw) ? Math.min(Math.max(1, limitRaw), 8) : 4;
-  const exclude = typeof req.query.exclude === 'string' ? req.query.exclude : undefined;
-
-  res.json(ghosts.top(parsed.data, count, exclude));
-});
-
 // Traces are the largest thing anyone posts, so this gets the tightest bucket.
 app.post('/ghosts', rateLimiter.limit(8, 4), async (req, res) => {
   const parsed = ghostBody.extend({ auth: deviceProof }).safeParse(req.body);
@@ -1961,15 +1785,6 @@ app.post('/challenges', rateLimiter.limit(12, 6), async (req, res) => {
   }
 
   res.status(201).json(challenges.toPublic(result.value));
-});
-
-app.get('/challenges/:id', rateLimiter.limit(120, 40), (req, res) => {
-  const result = challenges.get(String(req.params.id));
-  if (!result.ok) {
-    res.status(result.code).json({ error: result.reason });
-    return;
-  }
-  res.json(challenges.toPublic(result.value));
 });
 
 app.post('/challenges/:id/accept', rateLimiter.limit(20, 10), async (req, res) => {
