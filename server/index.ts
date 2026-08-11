@@ -26,6 +26,7 @@ import { OperationNonces } from './admin/nonces';
 import { buildDiagnosticBundle } from './admin/diagnostics';
 import { adminRecord } from './admin/records';
 import { isAuditEvent } from './admin/audit';
+import { mountAdminObservabilityRoutes } from './admin/observability-routes';
 import { secretFingerprint, validateSecretReplacement, writePendingSecret } from './admin/secrets';
 
 import * as daily from './daily';
@@ -408,42 +409,7 @@ app.get('/health', (_req, res) => {
   });
 });
 
-app.post('/admin/api/login/check', rateLimiter.limit(5, 3), requireAdmin, (req, res) => {
-  recordAdminLog({ time: Date.now(), level: 'info', subsystem: 'admin', event: 'login_success', message: 'Admin login accepted', context: { ip: req.ip } });
-  res.json({ ok: true });
-});
-
-app.get('/admin/api/logs', rateLimiter.limit(30, 10), requireAdmin, (req, res) => {
-  const limitValue = Number(req.query.limit ?? 200);
-  const level = ['info', 'warn', 'error'].includes(String(req.query.level ?? ''))
-    ? String(req.query.level) as 'info' | 'warn' | 'error'
-    : undefined;
-  res.json({
-    ok: true,
-    entries: adminLogs.list(Date.now(), Number.isFinite(limitValue) ? limitValue : 200, {
-      level,
-      subsystem: typeof req.query.subsystem === 'string' ? req.query.subsystem : undefined,
-      event: typeof req.query.event === 'string' ? req.query.event : undefined,
-    }),
-  });
-});
-
-app.get('/admin/api/logs/stream', rateLimiter.limit(12, 4), requireAdmin, (req, res) => {
-  res.setHeader('content-type', 'text/event-stream');
-  res.setHeader('cache-control', 'no-store');
-  res.setHeader('connection', 'keep-alive');
-  res.flushHeaders();
-  res.write(': connected\n\n');
-  const unsubscribe = adminLogs.subscribe((entry) => {
-    res.write('event: log\\ndata: ' + JSON.stringify(entry) + '\\n\\n');
-  });
-  const heartbeat = setInterval(() => res.write(': heartbeat\n\n'), 20_000);
-  heartbeat.unref?.();
-  req.on('close', () => {
-    clearInterval(heartbeat);
-    unsubscribe();
-  });
-});
+mountAdminObservabilityRoutes({ app, limit: rateLimiter.limit, requireAdmin, logs: adminLogs, record: recordAdminLog });
 
 app.get('/admin/api/operations/nonce', rateLimiter.limit(30, 10), requireAdmin, (req, res) => {
   const operation = typeof req.query.operation === 'string' ? req.query.operation : '';
