@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { corsDecision, parseAllowedOrigins } from '../server/cors';
+import { allowedRequestHeaders } from '../server/http-boundary';
 
 describe('production CORS policy', () => {
   it('requires an explicit production allowlist', () => {
@@ -24,5 +25,9 @@ describe('production CORS policy', () => {
       allowed: true,
       header: null,
     });
+  });
+
+  it('allows the bearer header used by the admin panel', () => {
+    expect(allowedRequestHeaders('x-sface-network')).toContain('authorization');
   });
 });

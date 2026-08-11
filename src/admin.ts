@@ -1,5 +1,6 @@
 ﻿const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
 const adminRoot = document.querySelector<HTMLElement>('#admin');
+const RESOLVED_API_BASE = API_BASE || (window.location.hostname === 'sface.site' || window.location.hostname === 'www.sface.site' ? 'https://api.sface.site' : '');
 if (!adminRoot) throw new Error('Admin root is missing.');
 const root = adminRoot;
 
@@ -8,7 +9,7 @@ let idleTimer: number | null = null;
 let streamController: AbortController | null = null;
 let pollTimer: number | null = null;
 
-function login(message = 'Enter the admin token. It is kept in memory until this tab locks.'): void {
+function login(message = ''): void {
   token = '';
   if (idleTimer !== null) window.clearTimeout(idleTimer);
   streamController?.abort();
@@ -17,11 +18,11 @@ function login(message = 'Enter the admin token. It is kept in memory until this
   pollTimer = null;
   root.innerHTML = `
     <section class="login">
-      <p class="eyebrow">SFACEE control plane</p>
+      <p class="eyebrow">SFACE PANEL</p>
       <h1>Admin access</h1>
-      <p>${message}</p>
+      ${message ? `<p>${message}</p>` : ''}
       <form id="login-form">
-        <label>Admin token<input name="token" type="password" autocomplete="off" required /></label>
+        <label>Enter admin token<input name="token" type="password" autocomplete="off" required /></label>
         <button>Open diagnostics</button>
       </form>
       <p id="error" role="alert"></p>
@@ -31,17 +32,27 @@ function login(message = 'Enter the admin token. It is kept in memory until this
 
 async function submitLogin(event: SubmitEvent): Promise<void> {
   event.preventDefault();
-  const form = new FormData(event.currentTarget as HTMLFormElement);
+  const formElement = event.currentTarget as HTMLFormElement;
+  const form = new FormData(formElement);
   const candidate = String(form.get('token') ?? '');
-  const response = await adminFetch('/admin/api/login/check', candidate, { method: 'POST' });
-  if (!response.ok) {
-    const error = root.querySelector<HTMLElement>('#error');
-    if (error) error.textContent = 'Access denied.';
-    return;
+  const button = formElement.querySelector<HTMLButtonElement>('button');
+  const error = root.querySelector<HTMLElement>('#error');
+  if (button) { button.disabled = true; button.textContent = 'Checking...'; }
+  if (error) error.textContent = '';
+  try {
+    const response = await adminFetch('/admin/api/login/check', candidate, { method: 'POST' });
+    if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) {
+      if (error) error.textContent = response.status === 401 ? 'Access denied.' : 'Admin API is unavailable.';
+      return;
+    }
+    token = candidate;
+    resetIdleLock();
+    await overview();
+  } catch {
+    if (error) error.textContent = 'Could not reach the admin API.';
+  } finally {
+    if (button && document.body.contains(button)) { button.disabled = false; button.textContent = 'Open diagnostics'; }
   }
-  token = candidate;
-  resetIdleLock();
-  await overview();
 }
 
 async function overview(): Promise<void> {
@@ -66,7 +77,7 @@ async function overview(): Promise<void> {
     ? await logsResponse.json() as { entries: Array<{ time: number; level: string; event: string; message: string }> }
     : { entries: [] };
   root.innerHTML = `
-    <header><div><p class="eyebrow">SFACEE control plane</p><h1>Live diagnostics</h1></div><button id="lock">Lock</button></header>
+    <header><div><p class="eyebrow">SFACE PANEL</p><h1>Live diagnostics</h1></div><button id="lock">Lock</button></header>
     <section class="summary">
       <article><span>Persistence</span><strong>${data.persistence.status}</strong><small>${data.persistence.lastError ?? 'No active error'}</small></article>
       <article><span>Uptime</span><strong>${Math.floor(data.uptimeSeconds / 60)} min</strong><small>${data.commit ?? 'Commit not reported'}</small></article>
@@ -268,7 +279,7 @@ function resetIdleLock(): void {
 }
 
 function adminFetch(path: string, bearer: string, init: RequestInit = {}): Promise<Response> {
-  return fetch(`${API_BASE}${path}`, {
+  return fetch(`${RESOLVED_API_BASE}${path}`, {
     ...init,
     cache: 'no-store',
     headers: { ...init.headers, authorization: `Bearer ${bearer}` },

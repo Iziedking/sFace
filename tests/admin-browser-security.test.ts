@@ -10,4 +10,11 @@ describe('admin token browser handling', () => {
     expect(source).not.toContain('indexedDB');
     expect(source).toContain("cache: 'no-store'");
   });
+
+  it('uses the production API host and exposes login failures', () => {
+    const source = readFileSync(new URL('../src/admin.ts', import.meta.url), 'utf8');
+    expect(source).toContain("'https://api.sface.site'");
+    expect(source).toContain('Could not reach the admin API.');
+    expect(source).toContain('Admin API is unavailable.');
+  });
 });

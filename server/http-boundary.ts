@@ -10,6 +10,10 @@ export interface HttpBoundaryOptions {
   networkHeader: string;
 }
 
+export function allowedRequestHeaders(networkHeader: string): string {
+  return `content-type, authorization, ${networkHeader}`;
+}
+
 export function installHttpBoundary(app: Express, options: HttpBoundaryOptions): void {
   if (options.trustProxy) app.set('trust proxy', 1);
   app.disable('x-powered-by');
@@ -29,7 +33,7 @@ export function installHttpBoundary(app: Express, options: HttpBoundaryOptions):
       if (cors.header !== '*') res.setHeader('vary', 'Origin');
     }
     res.setHeader('access-control-allow-methods', 'GET,POST,OPTIONS');
-    res.setHeader('access-control-allow-headers', `content-type, ${options.networkHeader}`);
+    res.setHeader('access-control-allow-headers', allowedRequestHeaders(options.networkHeader));
     if (req.method === 'OPTIONS') {
       res.sendStatus(204);
       return;
