@@ -14,10 +14,10 @@
 import { isRehearsal, networkOf, NETWORK_HEADER } from './network';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { z } from 'zod';
-import { corsDecision, parseAllowedOrigins } from './cors';
+import { parseAllowedOrigins } from './cors';
 import { createRateLimiter } from './rate-limit';
 import { effectiveHealth } from './admin/health';
-import { apiSecurityHeaders } from './security-headers';
+import { installHttpBoundary } from './http-boundary';
 import { adminConfig, adminMiddleware } from './admin/auth';
 import { configInventory } from './admin/config';
 import { readPendingConfig, validateConfigChange, writePendingConfig } from './admin/config-store';
@@ -45,6 +45,7 @@ import { xusersConfigured } from './xusers';
 import { attachLive } from './live';
 import { backupSnapshot, flush, getPersistenceHealth, loadSnapshot, saveNow, scheduleSave } from './store';
 import { PlayerAuth } from './player-auth';
+import { createActorVerifier } from './player-actor';
 import {
   mergeBodyDigest,
   bodyDigest,
@@ -87,51 +88,14 @@ const ANCHOR_NETWORK_ID = Number(process.env.ANCHOR_NETWORK_ID ?? 5);
 const app = express();
 const playerAuth = new PlayerAuth();
 
-if (TRUST_PROXY) app.set('trust proxy', 1);
-app.disable('x-powered-by');
-app.use((_req, res, next) => {
-  for (const [name, value] of Object.entries(apiSecurityHeaders())) res.setHeader(name, value);
-  next();
+installHttpBoundary(app, {
+  allowedOrigins: ALLOWED_ORIGINS,
+  production: IS_PRODUCTION,
+  trustProxy: TRUST_PROXY,
+  networkHeader: NETWORK_HEADER,
 });
-
-// A mission payload is about 4KB. Nothing posted here is larger than a few
-// hundred bytes, so the cap is generous and still refuses anything strange.
-app.use(express.json({ limit: '16kb' }));
-
-app.use((req, res, next) => {
-  const cors = corsDecision(req.headers.origin, ALLOWED_ORIGINS, IS_PRODUCTION);
-  if (!cors.allowed) {
-    res.status(403).json({ error: 'Origin is not allowed.' });
-    return;
-  }
-  if (cors.header) {
-    res.setHeader('access-control-allow-origin', cors.header);
-    if (cors.header !== '*') res.setHeader('vary', 'Origin');
-  }
-  res.setHeader('access-control-allow-methods', 'GET,POST,OPTIONS');
-  res.setHeader('access-control-allow-headers', `content-type, ${NETWORK_HEADER}`);
-
-  if (req.method === 'OPTIONS') {
-    res.sendStatus(204);
-    return;
-  }
-  next();
-});
-
 const rateLimiter = createRateLimiter();
-async function provesActor(
-  proof: DeviceProof,
-  action: AuthAction,
-  actorId: string,
-  signedBody: unknown,
-): Promise<boolean> {
-  const verified = await playerAuth.verify({
-    proof,
-    action,
-    bodyDigest: await bodyDigest(signedBody),
-  });
-  return verified.ok && verified.value.playerId === actorId;
-}
+const provesActor = createActorVerifier(playerAuth);
 
 // Schemas ------------------------------------------------------------------
 
