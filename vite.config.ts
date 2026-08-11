@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import { resolve } from 'node:path';
 
 export default defineConfig({
   server: {
@@ -10,6 +11,12 @@ export default defineConfig({
   },
   build: {
     target: 'es2020',
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        admin: resolve(__dirname, 'admin.html'),
+      },
+    },
     // The whole game is a few hundred KB of source with one dependency. If
     // this ever warns, something got pulled in that should not have been.
     chunkSizeWarningLimit: 600,
