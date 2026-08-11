@@ -103,7 +103,7 @@ export async function backupSnapshot(label: string): Promise<string | null> {
     await copyFile(SNAPSHOT, target);
     return target;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return target;
     markDegraded('snapshot_backup_failed');
     console.error('[sface] snapshot backup failed', error);
     return null;
