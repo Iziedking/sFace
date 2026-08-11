@@ -1,4 +1,4 @@
-/**
+﻿/**
  * The oracle and challenge service.
  *
  * Small on purpose. It publishes one mission a day, keeps a leaderboard, and
@@ -20,14 +20,14 @@ import { effectiveHealth } from './admin/health';
 import { installHttpBoundary } from './http-boundary';
 import { adminConfig, adminMiddleware } from './admin/auth';
 import { configInventory } from './admin/config';
-import { readPendingConfig, validateConfigChange, writePendingConfig } from './admin/config-store';
 import { adminLogs, initialiseAdminLogs, recordAdminLog } from './admin/logs';
 import { OperationNonces } from './admin/nonces';
 import { buildDiagnosticBundle } from './admin/diagnostics';
-import { adminRecord } from './admin/records';
-import { isAuditEvent } from './admin/audit';
 import { mountAdminObservabilityRoutes } from './admin/observability-routes';
-import { secretFingerprint, validateSecretReplacement, writePendingSecret } from './admin/secrets';
+import { mountAdminOperationsRoutes } from './admin/operations-routes';
+import { mountAdminReadRoutes } from './admin/read-routes';
+import { mountAdminConfigRoutes } from './admin/config-routes';
+import { mountAdminOverviewRoutes } from './admin/overview-routes';
 
 import * as daily from './daily';
 import { getMission, startRefreshLoop, utcDate } from './daily';
@@ -410,118 +410,10 @@ app.get('/health', (_req, res) => {
 });
 
 mountAdminObservabilityRoutes({ app, limit: rateLimiter.limit, requireAdmin, logs: adminLogs, record: recordAdminLog });
-
-app.get('/admin/api/operations/nonce', rateLimiter.limit(30, 10), requireAdmin, (req, res) => {
-  const operation = typeof req.query.operation === 'string' ? req.query.operation : '';
-  if (!['backup.create', 'diagnostics.export'].includes(operation) && !operation.startsWith('secret.replace:')) {
-    res.status(400).json({ error: 'Unsupported operation.' });
-    return;
-  }
-  res.json({ ok: true, nonce: ADMIN_NONCES.issue(operation) });
-});
-
-app.post('/admin/api/backups', rateLimiter.limit(3, 1), requireAdmin, async (req, res) => {
-  const nonce = typeof req.body?.nonce === 'string' ? req.body.nonce : '';
-  if (!ADMIN_NONCES.consume(nonce, 'backup.create')) {
-    res.status(409).json({ error: 'Missing or expired operation nonce.' });
-    return;
-  }
-  const backup = await backupSnapshot('admin-' + utcDate() + '-' + Date.now());
-  if (!backup) {
-    recordAdminLog({ time: Date.now(), level: 'error', subsystem: 'persistence', event: 'backup_failed', message: 'Admin backup failed' });
-    res.status(503).json({ error: 'Backup failed.' });
-    return;
-  }
-  recordAdminLog({ time: Date.now(), level: 'info', subsystem: 'persistence', event: 'backup_created', message: 'Admin backup created' });
-  res.json({ ok: true });
-});
-app.post('/admin/api/diagnostics/export', rateLimiter.limit(3, 1), requireAdmin, (req, res) => {
-  const nonce = typeof req.body?.nonce === 'string' ? req.body.nonce : '';
-  if (!ADMIN_NONCES.consume(nonce, 'diagnostics.export')) {
-    res.status(409).json({ error: 'Missing or expired operation nonce.' });
-    return;
-  }
-  const effective = currentHealth();
-  const bundle = buildDiagnosticBundle({
-    generatedAt: Date.now(),
-    commit: process.env.GIT_COMMIT ?? null,
-    persistence: effective.persistence,
-    capabilities: effective.capabilities,
-    config: configInventory(),
-    logs: adminLogs.list(Date.now(), 1_000),
-    rateLimitBuckets: rateLimiter.count(),
-  });
-  recordAdminLog({ time: Date.now(), level: 'info', subsystem: 'admin', event: 'diagnostics_exported', message: 'Redacted diagnostics exported', context: { ip: req.ip } });
-  res.setHeader('content-disposition', `attachment; filename="sface-diagnostics-${utcDate()}.json"`);
-  res.json(bundle);
-});
-app.get('/admin/api/audit', rateLimiter.limit(30, 10), requireAdmin, (_req, res) => {
-  res.json({ ok: true, entries: adminLogs.list(Date.now(), 1_000).filter((entry) => isAuditEvent(entry.event)) });
-});
-app.get('/admin/api/records/:kind', rateLimiter.limit(30, 10), requireAdmin, (req, res) => {
-  const result = adminRecord(String(req.params.kind ?? ''), {
-    profiles: profiles.serialise,
-    scores: board.serialise,
-    clans: clans.serialise,
-    contests: contests.serialise,
-    challenges: challenges.serialise,
-    tips: tips.serialise,
-    ghosts: ghosts.serialise,
-    chat: chat.serialise,
-    signals: signals.serialise,
-  });
-  if (!result.ok) {
-    res.status(result.error === 'unknown_record_kind' ? 404 : 503).json({ error: result.error });
-    return;
-  }
-  recordAdminLog({ time: Date.now(), level: 'info', subsystem: 'admin', event: 'records_read', message: 'Admin records viewed', context: { kind: result.kind, ip: req.ip } });
-  res.json(result);
-});
-app.get('/admin/api/config', rateLimiter.limit(30, 10), requireAdmin, async (_req, res) => {
-  res.json({ ok: true, entries: configInventory(), pending: await readPendingConfig() });
-});
-
-app.patch('/admin/api/config', rateLimiter.limit(6, 2), requireAdmin, async (req, res) => {
-  const key = typeof req.body?.key === 'string' ? req.body.key : '';
-  const value = typeof req.body?.value === 'string' ? req.body.value : '';
-  const change = validateConfigChange(key, value);
-  if (!change.ok) {
-    res.status(400).json({ error: change.error });
-    return;
-  }
-  const pending = await readPendingConfig();
-  pending[change.key] = change.value;
-  await writePendingConfig(pending);
-  recordAdminLog({ time: Date.now(), level: 'info', subsystem: 'admin', event: 'config_changed', message: 'Configuration change staged for restart', context: { key: change.key, restartRequired: change.restartRequired, ip: req.ip } });
-  res.json({ ok: true, key: change.key, pendingRestart: change.restartRequired });
-});
-app.post('/admin/api/secrets/:key/replace', rateLimiter.limit(3, 1), requireAdmin, async (req, res) => {
-  const key = String(req.params.key ?? '');
-  const value = typeof req.body?.value === 'string' ? req.body.value : '';
-  const nonce = typeof req.body?.nonce === 'string' ? req.body.nonce : '';
-  if (!ADMIN_NONCES.consume(nonce, `secret.replace:${key}`)) {
-    res.status(409).json({ error: 'Missing or expired operation nonce.' });
-    return;
-  }
-  const replacement = validateSecretReplacement(key, value);
-  if (!replacement.ok) {
-    res.status(400).json({ error: replacement.error });
-    return;
-  }
-  await writePendingSecret(replacement.key, value);
-  recordAdminLog({ time: Date.now(), level: 'info', subsystem: 'admin', event: 'secret_replaced', message: 'Secret replacement staged for restart', context: { key: replacement.key, newHash: secretFingerprint(value), ip: req.ip } });
-  res.json({ ok: true, key: replacement.key, pendingRestart: true });
-});
-app.get('/admin/api/overview', rateLimiter.limit(30, 10), requireAdmin, (_req, res) => {
-  res.json({
-    ok: true,
-    uptimeSeconds: Math.floor(process.uptime()),
-    commit: process.env.GIT_COMMIT ?? null,
-    date: utcDate(),
-    ...currentHealth(),
-    config: configInventory(),
-  });
-});
+mountAdminOperationsRoutes({ app, limit: rateLimiter.limit, requireAdmin, nonces: ADMIN_NONCES, backup: backupSnapshot, diagnostics: buildDiagnosticBundle, health: currentHealth, config: configInventory, logs: adminLogs, record: recordAdminLog, date: utcDate, rateLimitCount: () => rateLimiter.count(), commit: process.env.GIT_COMMIT ?? null });
+mountAdminReadRoutes({ app, limit: rateLimiter.limit, requireAdmin, logs: adminLogs, record: recordAdminLog, sources: { profiles: profiles.serialise, scores: board.serialise, clans: clans.serialise, contests: contests.serialise, challenges: challenges.serialise, tips: tips.serialise, ghosts: ghosts.serialise, chat: chat.serialise, signals: signals.serialise } });
+mountAdminConfigRoutes({ app, limit: rateLimiter.limit, requireAdmin, nonces: ADMIN_NONCES, inventory: configInventory, record: recordAdminLog });
+mountAdminOverviewRoutes({ app, limit: rateLimiter.limit, requireAdmin, health: currentHealth, inventory: configInventory, date: utcDate, commit: process.env.GIT_COMMIT ?? null, uptimeSeconds: () => Math.floor(process.uptime()) });
 
 app.post('/auth/player/register', rateLimiter.limit(8, 2), async (req, res) => {
   const parsed = z.object({ publicKeyJwk }).safeParse(req.body);
