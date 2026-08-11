@@ -1,6 +1,6 @@
 ﻿import { afterEach, describe, expect, it } from 'vitest';
 
-import { clearSnapshot, readCleared, readRoomSeen, readSnapshot, readStage, writeCleared, writeRoomSeen, writeSnapshot, writeStage } from '../src/browser-state';
+import { TOUR_MAX_SHOWS, clearSnapshot, clearTourDone, countTourShow, readCleared, readRoomSeen, readSnapshot, readStage, readTourDone, writeCleared, writeRoomSeen, writeSnapshot, writeStage, writeTourDone } from '../src/browser-state';
 
 const originalLocal = globalThis.localStorage;
 const originalSession = globalThis.sessionStorage;
@@ -35,6 +35,54 @@ describe('browser state boundary', () => {
     expect(readSnapshot()).toBeNull();
   });
 
+  /*
+   * The tour flag, which is the whole rule deciding who gets taught.
+   *
+   * One flag serves both entrances: a first practice run and a first real run
+   * by somebody who skipped practice. That is what stops the two paths having
+   * to know about each other, so it is worth pinning that it behaves as one.
+   */
+  it('shows the tour once and then not again', () => {
+    const local = new StorageMock();
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: local });
+
+    expect(readTourDone()).toBe(false);
+    countTourShow();
+    expect(readTourDone()).toBe(false);
+
+    writeTourDone();
+    expect(readTourDone()).toBe(true);
+  });
+
+  it('gives up on a tour nobody ever finishes', () => {
+    const local = new StorageMock();
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: local });
+
+    // Quitting mid-tour leaves it unsettled, so it comes back. The cap is what
+    // keeps "unsettled" from meaning a tutorial that will not go away.
+    for (let show = 0; show < TOUR_MAX_SHOWS; show++) {
+      expect(readTourDone()).toBe(false);
+      countTourShow();
+    }
+
+    expect(readTourDone()).toBe(true);
+  });
+
+  it('arms the tour again when settings asks for it', () => {
+    const local = new StorageMock();
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: local });
+
+    writeTourDone();
+    countTourShow();
+    countTourShow();
+    countTourShow();
+    expect(readTourDone()).toBe(true);
+
+    // Both keys, or the count alone would keep it retired.
+    clearTourDone();
+    expect(readTourDone()).toBe(false);
+  });
+
   it('fails soft when browser storage is unavailable', () => {
     Object.defineProperty(globalThis, 'localStorage', { configurable: true, get: () => { throw new Error('blocked'); } });
     Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, get: () => { throw new Error('blocked'); } });
@@ -42,6 +90,14 @@ describe('browser state boundary', () => {
     expect(readCleared()).toBe(0);
     expect(readRoomSeen()).toBe(0);
     expect(readSnapshot()).toBeNull();
+    /*
+     * And a blocked store teaches the controls rather than skipping them.
+     *
+     * Private mode, an embedded WebView with storage off. Being shown the tour
+     * twice is a far smaller failure than a first-time player being handed a
+     * ship, a gun and no statement anywhere about which key does what.
+     */
+    expect(readTourDone()).toBe(false);
   });
 });
 

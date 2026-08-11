@@ -616,6 +616,9 @@ function recordTrail(state: RunState): void {
 
 export function damagePlayer(state: RunState, amount: number): void {
   const player = state.player;
+  // The tour is on screen. See RunState.tutored for why this is the only line
+  // the tutorial is allowed to add to the simulation.
+  if (state.tutored) return;
   if (state.time < player.invulnerableUntil) return;
   if (state.finished) return;
 

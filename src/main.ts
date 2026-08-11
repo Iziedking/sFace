@@ -140,7 +140,10 @@ import {
   rememberedChallenge,
 } from './nimiq/deeplink';
 import { capture, matches, restore } from './game/snapshot';
-import { clearSnapshot, readCleared, readRoomSeen, readSnapshot, readStage, writeCleared, writeRoomSeen, writeSnapshot, writeStage } from './browser-state';
+import { clearSnapshot, clearTourDone, countTourShow, readCleared, readRoomSeen, readSnapshot, readStage, readTourDone, writeCleared, writeRoomSeen, writeSnapshot, writeStage, writeTourDone } from './browser-state';
+import { Tour, deviceFor } from './core/tour';
+import { TourCard } from './ui/tour';
+import { touchCapable, usingPads } from './core/scheme';
 import { breachButtonAt } from './core/breachbutton';
 import { cellInReach } from './game/cell';
 import { buy } from './game/consume';
@@ -278,6 +281,24 @@ class App {
    * "this run does not count" is a property of the run and not of the person.
    */
   private practice = false;
+
+  /**
+   * The first-play tour, while one is running.
+   *
+   * Null on every run after the first, which is the normal case. See
+   * core/tour.ts for the steps and browser-state.ts for the rule that decides
+   * whether a run gets one.
+   */
+  private tour: Tour | null = null;
+
+  /**
+   * The card the tour is drawn on.
+   *
+   * Made once and kept, rather than per run, because it has a Skip handler
+   * bound to this app and rebuilding it per run would leak a listener a run.
+   * It only appears on screen while `tour` is set.
+   */
+  private readonly tourCard = new TourCard({ onSkip: () => this.endTour(true) });
 
   /**
    * True while the stage brief is on screen, and the run is held.
@@ -1145,6 +1166,15 @@ class App {
           this.ui.className = '';
           // Deliberate, unlike a refresh, so the run is genuinely abandoned.
           clearSnapshot();
+          /*
+           * And the tour goes with it, unsettled.
+           *
+           * Somebody who quit part way through has not been taught the
+           * controls, so the next run offers them again. browser-state.ts caps
+           * how often that can happen, which is what keeps "not finished" from
+           * turning into a tutorial that will not go away.
+           */
+          this.endTour(false);
           this.showBrief();
         },
       });
@@ -1164,6 +1194,109 @@ class App {
   private showRunOverlay(): void {
     this.ui.className = 'is-hud';
     renderRunOverlay(this.ui, { onPause: () => this.setPaused(true) });
+    // mount() replaced the layer's children, so the card has to be put back.
+    // Cheap and idempotent; see TourCard.attach.
+    if (this.tour) this.tourCard.attach(this.ui);
+  }
+
+  // The tour ----------------------------------------------------------------
+
+  /**
+   * Decide whether this run opens with the controls explained, and open one.
+   *
+   * The rule, in one place: a first run gets the tour, whether that first run
+   * is a practice run or a real one. Practice is where a stranger meets this
+   * game and so it is the natural home for it, but practice is optional and
+   * always was, and somebody who goes straight to signing in must not end up
+   * with a ship, a gun and no statement anywhere about which key does what.
+   *
+   * One flag serves both, which is what stops the two paths having to know
+   * about each other. See browser-state.ts for why it is per device.
+   */
+  private startTour(): void {
+    this.endTour(false);
+
+    if (readTourDone()) return;
+    // A preview is 25 seconds long. Six steps do not fit in it, and spending a
+    // quarter of somebody's only look at the game on a tutorial is the wrong
+    // trade: the preview exists to make them want the real run.
+    if (this.run?.preview) return;
+
+    countTourShow();
+    this.tour = new Tour(deviceFor(touchCapable(), usingPads()));
+    this.tourCard.attach(this.ui);
+  }
+
+  /**
+   * Take the tour down.
+   *
+   * `settled` is the difference between finishing and being interrupted. A tour
+   * that ran its course, or that the player skipped, is done with and does not
+   * come back. One abandoned by quitting the run has taught nobody anything, so
+   * it is left unsettled and runs again next time, up to the cap in
+   * browser-state.ts that stops "unsettled" from meaning "forever".
+   */
+  private endTour(settled: boolean): void {
+    if (this.tour === null) return;
+
+    this.tour = null;
+    this.tourCard.detach();
+    // The one line the tour adds to the simulation, off again the instant the
+    // card leaves. See RunState.tutored.
+    if (this.run) this.run.tutored = false;
+
+    if (settled) writeTourDone();
+  }
+
+  /**
+   * Feed the machine one step of the run, and draw whatever it returns.
+   *
+   * Called from update() immediately after step(), which is the only place that
+   * can see both the run and the input, the same reason the recorder and the
+   * live publish are there.
+   */
+  private advanceTour(run: RunState, dt: number, fired: boolean, bought: boolean): void {
+    const tour = this.tour;
+    if (!tour) return;
+
+    const command = this.command();
+    const cheapest = CONSUMABLES.reduce(
+      (least, item) => Math.min(least, item.cost),
+      Number.POSITIVE_INFINITY,
+    );
+
+    tour.observe(dt, {
+      moving: Math.hypot(command.moveX, command.moveY) > 0.15,
+      fired,
+      freed: run.events.some((event) => event.kind === 'freed'),
+      bought,
+      canAfford: run.purse.held >= cheapest,
+      // Close enough that pointing at the pad is telling somebody where they
+      // already are. Generous, because the step is informational either way.
+      nearExtraction: run.player.x >= run.extractionX - 600,
+      cellInReach: cellInReach(run) !== null,
+      carInReach: Boolean(
+        run.city &&
+          run.car &&
+          Math.hypot(run.player.x - run.car.x, run.player.y - run.car.y) <= CAR_REACH,
+      ),
+      driving: run.driving,
+      panelOpen: run.openNodeId !== null,
+      gateOpen: run.openGateId !== null,
+    });
+
+    const step = tour.current;
+    if (!step) {
+      this.endTour(true);
+      return;
+    }
+
+    run.tutored = true;
+    this.tourCard.show(step, tour.position, tour.length, {
+      width: this.renderer.width,
+      height: this.renderer.height,
+      slotCount: CONSUMABLES.length,
+    });
   }
 
   /**
@@ -2210,6 +2343,13 @@ class App {
       voiceState: narrator.engineState,
       onReplayIntro: () => this.playIntro(),
       onControls: () => this.showControls(),
+      tourDone: readTourDone(),
+      onReplayTour: () => {
+        clearTourDone();
+        // Repaint, so the row changes to say the tour is coming. Without it the
+        // button reads as having done nothing.
+        this.showSettings();
+      },
     });
   }
 
@@ -3373,6 +3513,9 @@ class App {
     clearSnapshot();
     // And drops /docs off the URL, so a refresh mid-run resumes the run.
     this.clearRoutedPath();
+    // After prepareRun, which is what decides whether this is a preview, and
+    // before the brief, so the card is already in the layer when the run begins.
+    this.startTour();
     this.showStageBrief();
   }
 
@@ -3491,6 +3634,17 @@ class App {
     if (!run) return;
 
     this.ui.className = '';
+
+    /*
+     * A run that reached its end has been through the tour, whatever step it
+     * happened to be on.
+     *
+     * Settled rather than abandoned, because the alternative is a player who
+     * flew a complete run being taught the controls again on their next one.
+     * Getting to the results screen is proof enough that they worked out how to
+     * fly, which is the only thing the tour was there to establish.
+     */
+    this.endTour(true);
 
     this.screen = 'results';
     this.input.reset();
@@ -4327,6 +4481,11 @@ class App {
        * that only exists on one stage. The HUD swaps with it, so what the slots
        * do is always what is drawn under your thumb.
        */
+      // Whether a number key did anything this step, for the tour's buy step.
+      // Read from the outcomes below rather than from the keypress, so pressing
+      // 3 with an empty purse does not count as having learned what 3 does.
+      let bought = false;
+
       for (const slot of this.input.takeBuys()) {
         // What a number key means here. The rule lives in game/intent.ts so it
         // can be tested; it used to be inline and was wrong for a whole stage.
@@ -4336,6 +4495,7 @@ class App {
           const outcome = answerNode(run, slot);
           if (outcome === 'captured') audio.play('relic');
           else if (outcome === 'wrong') audio.play('down');
+          bought = true;
           continue;
         }
 
@@ -4357,6 +4517,7 @@ class App {
           const outcome = answerGate(run, slot);
           if (outcome === 'open') audio.play('relic');
           else if (outcome === 'wrong') audio.play('down');
+          bought = true;
           continue;
         }
 
@@ -4381,6 +4542,7 @@ class App {
           });
         } else if (result === 'bought') {
           audio.play('cache');
+          bought = true;
         }
       }
 
@@ -4426,10 +4588,15 @@ class App {
 
       const firedAt = run.player.lastFiredAt;
       step(run, dt, this.command());
+      const fired = run.player.lastFiredAt !== firedAt;
       // One blip per round that actually left the gun. Playing it while the
       // trigger was merely held meant the sound ran at the frame rate and had
       // nothing to do with the weapon's fire rate.
-      if (run.player.lastFiredAt !== firedAt) audio.play('shoot');
+      if (fired) audio.play('shoot');
+      // Before the effects layer, which drains run.events, and before the
+      // damage watcher, so a step that ends the tour drops the invulnerability
+      // on the same frame rather than one late.
+      this.advanceTour(run, dt, fired, bought);
       this.watchDamage(run);
       // Record after the step, so a frame is the pose the player ended it in.
       this.recorder.sample(run);

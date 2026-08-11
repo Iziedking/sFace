@@ -5,6 +5,8 @@ const STAGE_KEY = 'sface.stage';
 const CLEARED_KEY = 'sface.cleared';
 const RUN_KEY = 'sface.run';
 const ROOM_SEEN_KEY = 'sface.room.seen';
+const TOUR_DONE_KEY = 'sface.tour.done';
+const TOUR_SHOWS_KEY = 'sface.tour.shows';
 
 /** The last selected stage, clamped because browser storage is editable. */
 export function readStage(): number {
@@ -83,5 +85,72 @@ export function writeRoomSeen(at: number): void {
     localStorage.setItem(ROOM_SEEN_KEY, String(at));
   } catch {
     // Treat the room as unread next session when storage is unavailable.
+  }
+}
+
+/** Longest a tour nobody finishes is allowed to keep coming back. */
+export const TOUR_MAX_SHOWS = 3;
+
+/**
+ * How many times a run has opened with the tour on it.
+ *
+ * Counted rather than merely flagged, because a player who quits mid-tour has
+ * not been taught and should get it again, and a player who quits mid-tour
+ * three times has told us something else entirely. The cap is what stops "not
+ * finished" from meaning "forever".
+ */
+export function readTourShows(): number {
+  try {
+    const raw = Number(localStorage.getItem(TOUR_SHOWS_KEY));
+    return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Has this device been shown the controls?
+ *
+ * Per device on purpose. Somebody who learned this on a laptop and opened it on
+ * a phone has not learned the phone controls, because they are not the same
+ * controls: one of them is two thumbs on a sheet of glass. A server-side flag
+ * against the X account would carry the wrong fact across.
+ *
+ * Blocked storage reports "not done", so a player in private mode is taught
+ * rather than left with an unexplained ship. Being shown it twice is a smaller
+ * failure than never being shown it.
+ */
+export function readTourDone(): boolean {
+  try {
+    if (localStorage.getItem(TOUR_DONE_KEY) === '1') return true;
+  } catch {
+    return false;
+  }
+  return readTourShows() >= TOUR_MAX_SHOWS;
+}
+
+export function writeTourDone(): void {
+  try {
+    localStorage.setItem(TOUR_DONE_KEY, '1');
+  } catch {
+    // The tour runs again next session. Harmless, and skippable in one tap.
+  }
+}
+
+export function countTourShow(): void {
+  try {
+    localStorage.setItem(TOUR_SHOWS_KEY, String(readTourShows() + 1));
+  } catch {
+    // Without the count the cap cannot bite, so the done flag is the only stop.
+  }
+}
+
+/** Settings offers this, so a tour skipped by accident is not gone for good. */
+export function clearTourDone(): void {
+  try {
+    localStorage.removeItem(TOUR_DONE_KEY);
+    localStorage.removeItem(TOUR_SHOWS_KEY);
+  } catch {
+    // Nothing was stored to begin with.
   }
 }

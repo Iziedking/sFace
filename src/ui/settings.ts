@@ -69,6 +69,16 @@ export interface SettingsOptions {
   /** The illustrated how-to-play guide, which is a document, not a setting. */
   onControls: () => void;
   /**
+   * Whether this device has already been through the in-run tour.
+   *
+   * Decides both the label and whether the row does anything, so a player who
+   * has not seen it yet is told it is coming rather than offered a replay of
+   * something that has not happened.
+   */
+  tourDone: boolean;
+  /** Arms the tour again for the next run. See core/tour.ts. */
+  onReplayTour: () => void;
+  /**
    * The connected wallet's address, when there is one.
    *
    * Prefilled into the faucet field so the common case is one tap. Somebody
@@ -114,6 +124,21 @@ export function renderSettings(root: HTMLElement, options: SettingsOptions): voi
           : null,
         button('Replay intro', options.onReplayIntro, 'quiet'),
         button('How to play', options.onControls, 'quiet'),
+        /*
+         * The in-run tour again, on the next run.
+         *
+         * It runs once on a device and then never, which is right for a
+         * tutorial and wrong for the two people who need it back: somebody who
+         * skipped it by accident, and somebody showing the game to a friend.
+         * The label says when it will happen, because a button that appears to
+         * do nothing is worse than no button.
+         */
+        button(
+          options.tourDone ? 'Replay the tour' : 'Tour runs next game',
+          options.onReplayTour,
+          'quiet',
+          { disabled: !options.tourDone },
+        ),
       ),
 
       /*

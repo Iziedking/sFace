@@ -459,6 +459,25 @@ export class RunState {
   relicTaken = false;
 
   /**
+   * The tour is up, so nothing may kill this player.
+   *
+   * The single concession the tour asks of the simulation, read by damagePlayer
+   * and by nothing else. Somebody being told which button fires is not also
+   * fighting, and dying during the sentence that explains firing teaches the
+   * wrong lesson about whether this game is worth another go.
+   *
+   * Deliberately does not touch the clock, the seed, the ghosts or the step
+   * rate. Those are what server/verify.ts rebuilds a level from and bounds a
+   * score against, so a tutored run stays inside exactly the same limits as
+   * every other run on the seed and needs no special case when it is submitted.
+   * Not being shot cannot inflate a score; it can only fail to end one early.
+   *
+   * Set by main.ts while the tour has a step on screen, and cleared the moment
+   * it does not.
+   */
+  tutored = false;
+
+  /**
    * Multiplier from today's contracts, set once when the run ends.
    *
    * One means none were met, which is a normal outcome rather than a penalty.

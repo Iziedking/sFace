@@ -280,6 +280,19 @@ export function renderBrief(root: HTMLElement, options: BriefOptions): void {
              * exactly the problem it exists to solve.
              */
             tile('Room', options.roomValue, options.onRoom, false, 'room'),
+            /*
+             * How to play, beside the room rather than only in the footer.
+             *
+             * It was a footer link, which is where a site puts the things it
+             * does not expect anybody to need, and this is the one page that
+             * explains that the ground is a real chart. A first-time player
+             * arriving here has no reason to look at the bottom of the page.
+             *
+             * It also fixes the row above it. Room was the last tile in an
+             * odd-numbered grid, so it stretched the full width and read as a
+             * section header rather than as one destination among several.
+             */
+            tile('How to play', 'the whole game in a minute', options.onControls),
           ),
         ),
       ),

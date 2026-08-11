@@ -59,8 +59,64 @@ const GATE_CARD_SECONDS = 6;
  */
 const GATE_ARC = 0.7;
 
+/**
+ * Where a map goes, and it is the same corner for both of them.
+ *
+ * Top right, which is the one part of the screen no hand covers.
+ *
+ * Both maps used to sit bottom left, lifted 150 pixels whenever the fixed pads
+ * were on, because that corner belongs to the movement pad. Lifting them only
+ * moved the problem: the map left the pad alone and landed on the level
+ * instead, in the band a player is flying through, and on a phone it also
+ * crowded the row of buys along the bottom centre. Reported from a phone twice,
+ * the second time as the map affecting the play itself.
+ *
+ * The top right has none of that. Nothing is drawn there but the assist tier
+ * line, which is one row of 10px text, so the map starts below it.
+ *
+ * Shared by drawMap and drawRingMap rather than written twice, because a map
+ * that changes corner depending on which stage you are on is a map you have to
+ * hunt for, and two copies of this arithmetic is how that happens.
+ */
+function mapCorner(insets: SafeInsets, width: number, w: number): { x: number; y: number } {
+  return {
+    x: width - insets.right - 12 - w,
+    // Clear of the strip and of the assist tier line beneath it.
+    y: insets.top + BAR_HEIGHT + 30,
+  };
+}
+
+/**
+ * How long a button that has just become useful draws attention to itself.
+ *
+ * Long enough to be noticed by somebody looking at the middle of the screen,
+ * short enough that it is over before it is annoying. Three pulses inside it.
+ */
+const NUDGE_SECONDS = 2.7;
+/** One expand-and-fade. Three of these fit inside the window above. */
+const NUDGE_CYCLE = 0.9;
+
 export class Hud {
   private insets: SafeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
+
+  /**
+   * Run clock at which each buy first became affordable, or undefined.
+   *
+   * The buys have been on screen, priced and dimmed, since the day they were
+   * added, and the dimming was doing the whole job of saying "not yet". Nothing
+   * said "now", so a player watching the level rather than the bottom of the
+   * screen never learned the buttons were for using at all. Reported from a
+   * phone, as not knowing the buttons were to be used.
+   *
+   * Set once per slot per run and never cleared, so a slot pulses the first
+   * time it comes within reach and not again every time the purse crosses back
+   * over the price. Once is instruction; every time is a flashing button.
+   */
+  private nudgedAt: number[] = [];
+  /** Whether the use button has already announced itself this run. */
+  private useNudgedAt: number | null = null;
+  /** Last run clock seen, so a rewind can be read as a new run. */
+  private nudgeClock = 0;
 
   /** Which gate the card is currently about, and when it came up. */
   private gateShownFor: number | null = null;
@@ -84,6 +140,31 @@ export class Hud {
     return this.insets.top + BAR_HEIGHT;
   }
   private probe: HTMLDivElement | null = null;
+
+  /**
+   * How long ago each buy became affordable, or -1 for never yet.
+   *
+   * Computed once a frame and handed to whichever of the three layouts is
+   * drawing, so the pads arc, the thumb strip and the keyboard row all pulse on
+   * the same rule rather than each deciding for itself.
+   */
+  private nudges(state: RunState): number[] {
+    // A rewound clock is a new run, and the only signal available here that the
+    // previous run's history has stopped applying.
+    if (state.time < this.nudgeClock) {
+      this.nudgedAt = [];
+      this.useNudgedAt = null;
+    }
+    this.nudgeClock = state.time;
+
+    return CONSUMABLES.map((item, index) => {
+      if (state.purse.held < item.cost) return -1;
+
+      const at = this.nudgedAt[index] ?? state.time;
+      this.nudgedAt[index] = at;
+      return state.time - at;
+    });
+  }
 
   /** Re-read on every resize, since rotating a phone changes the insets. */
   measure(): void {
@@ -122,6 +203,9 @@ export class Hud {
   ): void {
     const top = this.insets.top;
     const padX = 16 + Math.max(this.insets.left, this.insets.right);
+    // Once a frame, before any of the three layouts draw, so they all pulse on
+    // the same rule and the same clock.
+    const nudges = this.nudges(state);
 
     ctx.save();
 
@@ -160,7 +244,7 @@ export class Hud {
      * them. They are not: those are the keyboard's, these are the thumb's.
      */
     if (!touchCapable() && state.openNodeId === null && state.openGateId === null) {
-      this.drawSlots(ctx, state, scripRight + 14, mid);
+      this.drawSlots(ctx, state, scripRight + 14, mid, nudges);
     }
     this.drawCargo(ctx, state, width / 2, mid);
     this.drawAlert(ctx, state, width, top + BAR_HEIGHT);
@@ -170,8 +254,8 @@ export class Hud {
     this.drawRead(ctx, state, width, top + BAR_HEIGHT);
     this.drawGate(ctx, state, width, top + BAR_HEIGHT, height);
     // A city has no progress along a line, so it gets a map instead.
-    if (state.rings) this.drawRingMap(ctx, state, height);
-    else if (state.city) this.drawMap(ctx, state, height);
+    if (state.rings) this.drawRingMap(ctx, state, width, height);
+    else if (state.city) this.drawMap(ctx, state, width, height);
     else this.drawProgress(ctx, state, width, top + BAR_HEIGHT);
     /*
      * Where the carried count goes, which is not next to the thumb.
@@ -191,13 +275,13 @@ export class Hud {
     if (touchCapable()) {
       this.drawCarrying(ctx, state, scripRight + 14, mid);
     } else {
-      const mapHeight = state.rings ? 124 : state.city ? 118 : 0;
-      const mapClearance = mapHeight > 0 ? mapHeight + 24 : 0;
-      this.drawCarrying(ctx, state, padX, height - this.insets.bottom - 26 - mapClearance);
+      // No clearance to leave any more. This used to be lifted by the height of
+      // whichever map was drawn, back when both of them sat in this corner.
+      this.drawCarrying(ctx, state, padX, height - this.insets.bottom - 26);
     }
     this.drawStick(ctx, input);
-    this.drawPads(ctx, state, input, width, height);
-    this.drawSlotStrip(ctx, state, input, width, height);
+    this.drawPads(ctx, state, input, width, height, nudges);
+    this.drawSlotStrip(ctx, state, input, width, height, nudges);
     this.drawUse(ctx, state, input, width, height);
 
     ctx.restore();
@@ -332,6 +416,7 @@ export class Hud {
     state: RunState,
     left: number,
     mid: number,
+    nudges: readonly number[],
   ): void {
     const held = state.purse.held;
     const boxW = 62;
@@ -364,6 +449,26 @@ export class Hud {
       ctx.fillStyle = affordable ? theme.accent : theme.inkFaint;
       ctx.font = `600 10px ${MONO}`;
       ctx.fillText(String(item.cost), x + boxW / 2 + 4, mid + 10);
+
+      /*
+       * And the same announcement the thumb layouts get, in this row's shape.
+       *
+       * A rounded box rather than a ring, because a circle drawn around a
+       * 62 by 26 plate reads as a smudge rather than as a pulse coming off the
+       * thing it belongs to. Same timing, same reason, different geometry.
+       */
+      const since = nudges[index] ?? -1;
+      if (since >= 0 && since < NUDGE_SECONDS) {
+        const phase = (since % NUDGE_CYCLE) / NUDGE_CYCLE;
+        const grow = phase * 7;
+
+        ctx.globalAlpha = (1 - phase) * (1 - since / NUDGE_SECONDS) * 0.95;
+        ctx.strokeStyle = theme.accent;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(x - grow, mid - 12 - grow, boxW + grow * 2, 26 + grow * 2, 5 + grow);
+        ctx.stroke();
+      }
     });
 
     ctx.globalAlpha = 1;
@@ -893,28 +998,19 @@ export class Hud {
    * the movement of the whole stage, and hunting blind is not a puzzle, it is a
    * chore.
    */
-  private drawRingMap(ctx: CanvasRenderingContext2D, state: RunState, height: number): void {
+  private drawRingMap(
+    ctx: CanvasRenderingContext2D,
+    state: RunState,
+    width: number,
+    height: number,
+  ): void {
     const rings = state.rings;
     if (!rings) return;
 
-    /*
-     * Smaller, and off the left edge, because that is where a thumb lives.
-     *
-     * At 124 in the bottom left corner it sat exactly under the hand steering
-     * the ship, so the one thing that tells you where you are in the ring city
-     * was the one thing covered for the whole run. Reported from a phone.
-     *
-     * On a short screen it shrinks and moves inward past the stick. Everywhere
-     * else it keeps its size: a laptop has no thumb over the corner and the map
-     * is worth the space.
-     */
     const cramped = height < 520;
     const size = cramped ? 96 : 124;
     const scale = size / rings.width;
-    // Clear of the stick, which owns the bottom left of a phone screen.
-    const x = this.insets.left + (cramped ? 96 : 12);
-    const padClearance = usingPads() ? 150 : 0;
-    const y = height - this.insets.bottom - size - 12 - padClearance;
+    const { x, y } = mapCorner(this.insets, width, size);
 
     const cx = x + rings.cx * scale;
     const cy = y + rings.cy * scale;
@@ -990,28 +1086,21 @@ export class Hud {
    * corners it is built from meaningless. It answers where am I and where is
    * the way out, and nothing else.
    */
-  private drawMap(ctx: CanvasRenderingContext2D, state: RunState, height: number): void {
+  private drawMap(
+    ctx: CanvasRenderingContext2D,
+    state: RunState,
+    width: number,
+    height: number,
+  ): void {
     const city = state.city;
     if (!city) return;
 
-    const size = 118;
+    const size = height < 520 ? 96 : 118;
     const scale = size / Math.max(city.width, city.height);
     const w = city.width * scale;
     const h = city.height * scale;
 
-    const x = this.insets.left + 12;
-
-    /*
-     * Bottom left, and lifted clear of the movement pad when there is one.
-     *
-     * The corner the map wants is the corner a left thumb already owns. On a
-     * phone running the fixed pads it would sit exactly under the ring you
-     * steer with, so it moves up above it rather than being drawn somewhere
-     * else entirely: a map that changes corner depending on your control
-     * scheme is a map you have to hunt for.
-     */
-    const padClearance = usingPads() ? 150 : 0;
-    const y = height - this.insets.bottom - h - 12 - padClearance;
+    const { x, y } = mapCorner(this.insets, width, w);
 
     ctx.save();
     ctx.globalAlpha = 0.9;
@@ -1152,10 +1241,21 @@ export class Hud {
     width: number,
     height: number,
   ): void {
-    if (!touchCapable() || !input.useVisible) return;
+    if (!touchCapable() || !input.useVisible) {
+      // Out of reach again, so the next car gets its own announcement. Unlike
+      // the buys, this button comes and goes with what is in front of the
+      // player, and a car found ten streets later is a new thing to point at.
+      this.useNudgedAt = null;
+      return;
+    }
 
     const region = useRegion(width, height);
     const label = state.driving ? 'EXIT' : state.city ? 'DRIVE' : 'READ';
+
+    // Only the arrival is worth a pulse. Once somebody is at the wheel the
+    // button says EXIT and they have already learned what it is for.
+    if (this.useNudgedAt === null) this.useNudgedAt = state.time;
+    if (!state.driving) drawNudge(ctx, region, state.time - this.useNudgedAt);
 
     ctx.save();
     ctx.globalAlpha = 0.9;
@@ -1192,6 +1292,7 @@ export class Hud {
     input: Input,
     width: number,
     height: number,
+    nudges: readonly number[],
   ): void {
     if (!usingPads()) return;
 
@@ -1296,7 +1397,7 @@ export class Hud {
       return;
     }
 
-    drawBuys(ctx, state, pads.slots);
+    drawBuys(ctx, state, pads.slots, nudges);
 
     ctx.restore();
   }
@@ -1314,6 +1415,7 @@ export class Hud {
     input: Input,
     width: number,
     height: number,
+    nudges: readonly number[],
   ): void {
     if (usingPads() || !touchCapable()) return;
 
@@ -1356,7 +1458,7 @@ export class Hud {
       return;
     }
 
-    drawBuys(ctx, state, regions);
+    drawBuys(ctx, state, regions, nudges);
     ctx.restore();
   }
 }
@@ -1372,11 +1474,16 @@ function drawBuys(
   ctx: CanvasRenderingContext2D,
   state: RunState,
   regions: readonly PadRegion[],
+  nudges: readonly number[],
 ): void {
   regions.forEach((slot, index) => {
     const item = CONSUMABLES[index];
     if (!item) return;
     const affordable = state.purse.held >= item.cost;
+
+    // Before the button, so the rings read as coming off it rather than
+    // sitting on top of the price.
+    drawNudge(ctx, slot, nudges[index] ?? -1);
 
     ctx.globalAlpha = affordable ? 0.55 : 0.22;
     ctx.fillStyle = theme.canvas;
@@ -1397,6 +1504,38 @@ function drawBuys(
     ctx.font = `600 9px ${MONO}`;
     ctx.fillText(String(item.cost), slot.x, slot.y + 10);
   });
+}
+
+/**
+ * A ring or three, off a button that has just become worth pressing.
+ *
+ * The complaint this answers is not that first-timers cannot find the buys. It
+ * is that nobody, on any run, was told the moment one went from unaffordable to
+ * affordable, so the four buttons read as decoration for as long as a player
+ * was looking anywhere else. Dimming says "not yet" and nothing said "now".
+ *
+ * Deliberately outside the button rather than on it. Anything drawn on top has
+ * to compete with the label and the price, which are the two things somebody
+ * looking at it needs to read.
+ *
+ * `since` is seconds since the button became live, or negative for never.
+ */
+function drawNudge(ctx: CanvasRenderingContext2D, region: PadRegion, since: number): void {
+  if (since < 0 || since >= NUDGE_SECONDS) return;
+
+  const phase = (since % NUDGE_CYCLE) / NUDGE_CYCLE;
+  // Fades across the whole window as well as within each pulse, so the last
+  // ring is a suggestion rather than stopping mid-shout.
+  const fade = 1 - since / NUDGE_SECONDS;
+
+  ctx.save();
+  ctx.globalAlpha = (1 - phase) * fade * 0.95;
+  ctx.strokeStyle = theme.accent;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(region.x, region.y, region.r + 3 + phase * 15, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
 }
 
 /**

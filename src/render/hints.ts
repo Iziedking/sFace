@@ -113,6 +113,15 @@ export function hintFor(state: RunState): Hint | null {
   if (state.openNodeId !== null || state.openGateId !== null) return null;
   if (state.alert > 0.01 || state.time < state.alertedUntil) return null;
   if (state.finished) return null;
+  /*
+   * And never underneath the tour.
+   *
+   * core/tour.ts teaches the same stage rules on a first run, in the same band
+   * of the screen, at the moment the thing is in front of the player. Two
+   * systems explaining the sight cones at once is worse than either alone, and
+   * the tour is the one that knows whether this player has seen any of it.
+   */
+  if (state.tutored) return null;
 
   const since = state.time - FIRST_AT;
   if (since < 0) return null;

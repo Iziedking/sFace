@@ -82,6 +82,36 @@
   --lift-sm: 3px 3px 0 var(--ink);
 
   /*
+   * The two cards that sit over a live run: the stage brief and the tour.
+   *
+   * Everywhere else in this app a panel is solid ink, because everywhere else
+   * there is nothing behind it worth seeing. Over a run there is: the ship, the
+   * people being carried, and whoever is walking toward them. A solid slab in
+   * the middle of that hides the game while explaining it, which was reported
+   * from a phone as the card blocking the characters.
+   *
+   * So these two are glass. Dark enough to read cream text off at a glance
+   * mid-fight, clear enough that a character behind it is still a character.
+   * The blur is what buys both at once: it drops the detail underneath without
+   * dropping the light, so contrast holds even over the busiest part of a
+   * level.
+   */
+  /*
+   * Settled by looking at it, with an attacker behind the card.
+   *
+   * At 0.72 a character reads as a smudge: you can tell something is there and
+   * not what. At 0.45 the character is crisp and the accent title starts
+   * dissolving into the panel, which fails the other half of the job. 0.58 is
+   * where both hold: the red hat behind the card is a red hat, and the title is
+   * still the first thing the eye lands on.
+   */
+  --glass: rgba(20, 17, 14, 0.58);
+  /* Raised for the case where the blur is unavailable and the backdrop keeps
+   * every bit of its contrast. See the @supports block by .brief. */
+  --glass-flat: rgba(20, 17, 14, 0.78);
+  --glass-blur: blur(7px) saturate(1.1);
+
+  /*
    * The page.
    *
    * One column width for every screen, because three different maximums is
@@ -4109,14 +4139,42 @@ body.is-fullscreen .foot,
 
 .brief {
   width: min(560px, 100%);
-  background: var(--ink);
+  /* Glass rather than a slab. See --glass for why these two cards differ from
+   * every other panel in the app. */
+  background: var(--glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  /*
+   * The border stays solid ink.
+   *
+   * It is three pixels, so it hides nothing, and it is what keeps the card
+   * looking like it belongs to this app rather than to a phone OS. The fill is
+   * the part that was in the way, not the frame.
+   */
   border: 3px solid var(--ink);
-  box-shadow: 10px 10px 0 rgba(20, 17, 14, 0.28);
+  /* Lighter than the old hard offset, which was itself a slab of dark sitting
+   * on the level just below the card. */
+  box-shadow: 6px 6px 0 rgba(20, 17, 14, 0.18);
   padding: 26px 26px 22px;
   text-align: left;
   /* Clip the words as they fly out rather than letting them cross the card's
    * own border, which reads as a rendering fault rather than as motion. */
   overflow: hidden;
+}
+
+/*
+ * Where there is no blur, there is more ink instead.
+ *
+ * Without the blur the backdrop keeps all of its contrast, and cream text over
+ * a busy chart at 72% is a card you have to stop and squint at. Reading the
+ * objective is the whole job here, so that case trades some of the view back
+ * for it rather than shipping an unreadable card.
+ */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .brief,
+  .tour {
+    background: var(--glass-flat);
+  }
 }
 
 /* The card takes taps so it can be dismissed on a phone, while the layer around
@@ -4156,6 +4214,14 @@ body.is-fullscreen .foot,
   display: block;
 }
 
+/* Same reasoning as the tour card's text. The kicker is accent, so it takes the
+ * tighter halo defined with .tour__title rather than this one. */
+.brief__title,
+.brief__objective,
+.brief__day {
+  text-shadow: 0 1px 3px rgba(20, 17, 14, 0.95);
+}
+
 .brief__kicker {
   font-family: var(--mono);
   font-size: 11px;
@@ -4190,7 +4256,8 @@ body.is-fullscreen .foot,
   font-size: 11px;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  color: rgba(244, 237, 224, 0.5);
+  /* Lifted from 0.5, which was set against solid ink. */
+  color: rgba(244, 237, 224, 0.68);
   margin-top: 14px;
 }
 
@@ -6083,4 +6150,302 @@ body.is-fullscreen .foot,
   color: var(--ink-muted);
   margin: 0;
   max-width: 54ch;
+}
+
+/* The first-play tour ----------------------------------------------------
+ *
+ * A card that names one action, and a ring around the control that performs
+ * it. See core/tour.ts for what it says and ui/tour.ts for how it is placed.
+ *
+ * Lives in the HUD layer alongside the pause button, so the layer itself stays
+ * click-through and only the Skip button takes input. Everything here is
+ * positioned in the same CSS pixels the canvas is drawn in, which is what lets
+ * the ring sit exactly on a pad computed by core/pads.ts.
+ */
+
+.tour-layer {
+  /*
+   * Fixed, for the same reason the brief is: #ui is a scroll container, and a
+   * card that can be scrolled away from is a card that vanishes the moment a
+   * thumb moves. Same reasoning as .brief-layer above.
+   */
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/*
+ * Top centre, under the pause button.
+ *
+ * The middle of the screen is the level and the bottom corners are the thumbs,
+ * which leaves the band under the strip. It is the same band the brief uses,
+ * and the two never overlap because the run is held while the brief is up.
+ */
+.tour {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 96px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(400px, calc(100vw - 40px));
+  /* Glass, for the same reason the brief is. This one is up while the run is
+   * live rather than held, so it matters more here, not less. */
+  background: var(--glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 3px solid var(--ink);
+  box-shadow: 5px 5px 0 rgba(20, 17, 14, 0.18);
+  padding: 12px 14px 10px;
+  /*
+   * The card itself is not tappable. Only the Skip button on it is.
+   *
+   * This differs from .brief, which takes taps because tapping it is how you
+   * dismiss it. Nothing about this card wants a tap, and on the floating scheme
+   * the entire left half of the screen is the movement control, which is
+   * exactly where the short-screen layout puts this. A card that swallowed
+   * touches there would be a patch of screen where the ship does not respond,
+   * during the step that is asking the player to move.
+   */
+  pointer-events: none;
+}
+
+/*
+ * On a short screen it goes to the top left and tightens.
+ *
+ * A phone in landscape is about 380 tall, and a card 96px down with three lines
+ * in it lands in the middle of the level, which is where the ship is. This is
+ * the layout most players will actually see, so it is the one worth being
+ * careful about.
+ *
+ * Left rather than centred, because the centre of that band is taken: the pause
+ * button sits at the top middle from 54px down. Moving the card up to 52px
+ * without also moving it sideways put the two on top of each other. The top
+ * left is free the whole run, the strip owns the row above it, and the maps now
+ * own the opposite corner.
+ *
+ * Width is capped well short of half the screen so it cannot reach the pause
+ * button on a narrow phone either.
+ */
+@media (max-height: 460px) {
+  .tour {
+    top: calc(env(safe-area-inset-top) + 52px);
+    left: calc(env(safe-area-inset-left) + 12px);
+    transform: none;
+    width: min(320px, 42vw);
+    padding: 8px 12px;
+  }
+
+  /* The entry slides straight down, since there is no centring to preserve. */
+  .tour--in .tour {
+    animation-name: tour-in-flush;
+  }
+}
+
+.tour__head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+/*
+ * Everything written on the glass gets a shadow of the ink behind it.
+ *
+ * A translucent panel costs contrast, and it costs most of it from the small
+ * loud text: the accent title sits at about five to one on solid ink and about
+ * two to one on glass, which is the difference between reading it at a glance
+ * and stopping to read it. The shadow puts the missing ink back immediately
+ * around each glyph rather than across the whole card, so the text reads as it
+ * did before and the characters behind the card still show through.
+ */
+.tour__count,
+.tour__say,
+.tour__skip {
+  text-shadow: 0 1px 3px rgba(20, 17, 14, 0.95);
+}
+
+/*
+ * The accent labels get a tighter, heavier halo than the cream text does.
+ *
+ * Orange is the one colour on this palette that loses to a lightened panel: the
+ * cream body text still has most of its contrast at this alpha and the accent
+ * does not. A close halo puts ink right up against the letterforms, which is
+ * what the colour needs to stay the first thing the eye lands on, and it stays
+ * small enough not to read as a glow.
+ */
+.tour__title,
+.brief__kicker {
+  text-shadow:
+    0 0 5px rgba(20, 17, 14, 0.98),
+    0 1px 2px rgba(20, 17, 14, 0.95);
+}
+
+.tour__count {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  /* Brighter than --ink-faint, which was chosen against solid ink. */
+  color: rgba(244, 237, 224, 0.62);
+}
+
+.tour__title {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: var(--accent);
+}
+
+.tour__say {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--canvas);
+  margin: 5px 0 0;
+}
+
+@media (max-height: 460px) {
+  .tour__say {
+    font-size: 12px;
+    line-height: 1.35;
+  }
+}
+
+.tour__keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.tour__key {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--ink);
+  background: var(--canvas);
+  border: 2px solid var(--canvas);
+  box-shadow: 2px 2px 0 var(--accent);
+  padding: 2px 7px;
+}
+
+/*
+ * Quiet, and deliberately so.
+ *
+ * It has to be there, because a tutorial with no way out is a trap, and it has
+ * to be the least interesting thing on the card, because the card is six short
+ * steps and skipping it is almost always the wrong choice.
+ */
+.tour__skip {
+  appearance: none;
+  display: block;
+  /* The one thing on the layer that takes a tap. See .tour above. */
+  pointer-events: auto;
+  margin: 8px 0 0 auto;
+  /* Generous for its size, because it is a small target on a phone and it is
+   * the only way out of the tour. */
+  padding: 6px 10px;
+  border: 0;
+  background: none;
+  color: rgba(244, 237, 224, 0.58);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.tour__skip:hover,
+.tour__skip:focus-visible {
+  color: var(--canvas);
+}
+
+/*
+ * The ring around the control the step is about.
+ *
+ * Positioned from core/pads.ts, never from a hardcoded corner, so it moves with
+ * the button it frames. Two rings: a solid one that says where, and a pulse
+ * that draws the eye to it without covering the label underneath.
+ */
+.tour__ring {
+  position: absolute;
+  border: 3px solid var(--accent);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.tour__ring::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border: 3px solid var(--accent);
+  border-radius: 50%;
+  animation: tour-pulse 1.6s ease-out infinite;
+}
+
+@keyframes tour-pulse {
+  from {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+
+  to {
+    transform: scale(1.45);
+    opacity: 0;
+  }
+}
+
+.tour--in .tour {
+  animation: tour-in 0.28s ease-out both;
+}
+
+@keyframes tour-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+/*
+ * The same arrival for the left-aligned card.
+ *
+ * A separate set of frames rather than a shared one, because the centred card
+ * carries its centring in the same transform the animation drives. One keyframe
+ * block cannot express both without the short-screen card jumping half its own
+ * width sideways as the animation takes over.
+ */
+@keyframes tour-in-flush {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/*
+ * No motion, same instructions.
+ *
+ * Somebody who has asked the OS to stop animations still has to be told which
+ * key fires. The ring stays put and stops breathing, and the card arrives
+ * without sliding; nothing here carries information that only the motion had.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .tour__ring::after {
+    animation: none;
+    opacity: 0.5;
+  }
+
+  .tour--in .tour {
+    animation: none;
+  }
 }

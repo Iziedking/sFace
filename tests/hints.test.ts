@@ -172,3 +172,27 @@ describe('how often they appear', () => {
     expect(hintFor(state)?.alpha).toBe(1);
   });
 });
+
+describe('standing down for the tour', () => {
+  /*
+   * Two systems teaching the same rule in the same band of the screen is worse
+   * than either alone, and the tour is the one that knows whether this player
+   * has ever seen the game before. So hints give way, the same way they give
+   * way to a node card and to an alarm.
+   */
+  it('says nothing at all while the tour is up', () => {
+    const state = atStage(4, 0);
+    const at = firstHintTime(state);
+    expect(at).not.toBeNull();
+
+    state.time = at ?? 0;
+    expect(hintFor(state)).not.toBeNull();
+
+    state.tutored = true;
+    expect(hintFor(state)).toBeNull();
+
+    // And comes back the moment the card leaves, rather than being spent.
+    state.tutored = false;
+    expect(hintFor(state)).not.toBeNull();
+  });
+});
