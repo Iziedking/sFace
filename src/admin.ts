@@ -1,4 +1,4 @@
-const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
+﻿const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
 const adminRoot = document.querySelector<HTMLElement>('#admin');
 if (!adminRoot) throw new Error('Admin root is missing.');
 const root = adminRoot;
@@ -56,6 +56,7 @@ async function overview(): Promise<void> {
   const data = await overviewResponse.json() as {
     uptimeSeconds: number;
     commit: string | null;
+    restartSupported: boolean;
     date: string;
     persistence: { status: string; lastError: string | null };
     capabilities: Record<string, { enabled: boolean; required: boolean }>;
@@ -78,15 +79,19 @@ async function overview(): Promise<void> {
     <section><h2>Audit history</h2><div class="records-controls"><button id="load-audit">Load audit history</button></div><pre id="audit-output">Operator actions are loaded on demand.</pre></section>
     <section><h2>Read-only game records</h2><div class="records-controls"><select id="record-kind"><option>profiles</option><option>scores</option><option>clans</option><option>contests</option><option>challenges</option><option>tips</option><option>ghosts</option><option>chat</option><option>signals</option></select><button id="load-records">Load records</button></div><pre id="records-output">Choose a record set.</pre></section>
     <section><h2>Replace secret</h2><div class="secret-form"><select id="secret-key"><option>ADMIN_TOKEN</option><option>X_CLIENT_ID</option><option>X_CLIENT_SECRET</option><option>X_BEARER_TOKEN</option><option>XAI_API_KEY</option></select><input id="secret-value" type="password" autocomplete="off" placeholder="New value" /><button id="replace-secret">Stage replacement</button></div><p id="secret-status" role="status">Values are write-only and require restart.</p></section>
-    <section><h2>Operations</h2><div class="operations"><button id="backup">Create snapshot backup</button><button id="export-diagnostics">Export diagnostics</button><p id="operation-status" role="status">No operation running.</p></div></section>
-    <section><h2>Configuration</h2><div class="ledger">${data.config.map((entry) => `
-      <article><span>${entry.key}</span><strong class="${entry.configured ? 'on' : 'off'}">${entry.configured ? 'configured' : 'missing'}</strong><small>${entry.secret ? 'secret, value hidden' : 'non-secret'}${entry.restartRequired ? ', restart required' : ', runtime metadata'}</small></article>`).join('')}</div></section>`;
+    <section><h2>Operations</h2><div class="operations"><button id="backup">Create snapshot backup</button><button id="export-diagnostics">Export diagnostics</button><button id="restart" ${data.restartSupported ? "" : "disabled"}>Restart service</button><p id="operation-status" role="status">No operation running.</p></div></section>
+    <section><h2>Backup history</h2><div class="records-controls"><button id="load-backups">Refresh backups</button></div><pre id="backups-output">Backups are loaded on demand.</pre></section>
+<section><h2>Configuration</h2><div class="ledger">${data.config.map((entry) => `
+      <article><span>${entry.key}</span><strong class="${entry.configured ? 'on' : 'off'}">${entry.configured ? 'configured' : 'missing'}</strong><small>${entry.secret ? 'secret, value hidden' : 'non-secret'}${entry.restartRequired ? ', restart required' : ', runtime metadata'}</small></article>`).join('')}</div><div class="config-form"><select id="config-key">${data.config.filter((entry) => !entry.secret).map((entry) => `<option value="${entry.key}">${entry.key}</option>`).join('')}</select><input id="config-value" type="text" autocomplete="off" placeholder="New non-secret value" /><button id="stage-config">Stage configuration</button></div><p id="config-status" role="status">Changes apply after a restart.</p></section>`;
   root.querySelector<HTMLButtonElement>('#lock')?.addEventListener('click', () => login());
   root.querySelector<HTMLButtonElement>('#backup')?.addEventListener('click', () => void createBackup());
+  root.querySelector<HTMLButtonElement>('#load-backups')?.addEventListener('click', () => void loadBackups());
   root.querySelector<HTMLButtonElement>('#export-diagnostics')?.addEventListener('click', () => void exportDiagnostics());
+  root.querySelector<HTMLButtonElement>('#restart')?.addEventListener('click', () => void requestRestart());
   root.querySelector<HTMLButtonElement>('#load-records')?.addEventListener('click', () => void loadRecords());
   root.querySelector<HTMLButtonElement>('#load-audit')?.addEventListener('click', () => void loadAudit());
   root.querySelector<HTMLButtonElement>('#replace-secret')?.addEventListener('click', () => void replaceSecret());
+  root.querySelector<HTMLButtonElement>('#stage-config')?.addEventListener('click', () => void stageConfig());
   for (const event of ['pointerdown', 'keydown']) window.addEventListener(event, resetIdleLock, { once: true });
   if (!streamController) void startLogStream();
 }
@@ -111,6 +116,18 @@ async function replaceSecret(): Promise<void> {
   if (status) status.textContent = response.ok ? 'Replacement staged. Restart required.' : 'Replacement refused.';
 }
 
+async function stageConfig(): Promise<void> {
+  const key = root.querySelector<HTMLSelectElement>('#config-key')?.value ?? '';
+  const input = root.querySelector<HTMLInputElement>('#config-value');
+  const value = input?.value ?? '';
+  const status = root.querySelector<HTMLElement>('#config-status');
+  if (input) input.value = '';
+  const nonceResponse = await adminFetch(`/admin/api/operations/nonce?operation=${encodeURIComponent(`config.change:${key}`)}`, token);
+  if (!nonceResponse.ok) { if (status) status.textContent = 'Could not authorize configuration change.'; return; }
+  const { nonce } = await nonceResponse.json() as { nonce: string };
+  const response = await adminFetch('/admin/api/config', token, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ nonce, key, value }) });
+  if (status) status.textContent = response.ok ? 'Configuration staged. Restart required.' : 'Configuration change refused.';
+}
 async function loadAudit(): Promise<void> {
   const output = root.querySelector<HTMLElement>('#audit-output');
   const response = await adminFetch('/admin/api/audit', token);
@@ -135,6 +152,27 @@ async function loadRecords(): Promise<void> {
   if (output) output.textContent = JSON.stringify(body.records, null, 2);
 }
 
+
+
+async function requestRestart(): Promise<void> {
+  const status = root.querySelector<HTMLElement>('#operation-status');
+  if (!window.confirm('Restart the service gracefully? The dashboard will disconnect and require the token again.')) return;
+  if (status) status.textContent = 'Authorizing restart...';
+  const nonceResponse = await adminFetch('/admin/api/operations/nonce?operation=restart.request', token);
+  if (!nonceResponse.ok) { if (status) status.textContent = 'Restart is not enabled or authorization failed.'; return; }
+  const { nonce } = await nonceResponse.json() as { nonce: string };
+  const response = await adminFetch('/admin/api/restart', token, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ nonce }) });
+  if (status) status.textContent = response.ok ? 'Restart requested. Reconnect after the supervisor brings the service back.' : 'Restart refused.';
+  if (response.ok) window.setTimeout(() => login('Service restarted. Enter the admin token again.'), 2_000);
+}
+async function loadBackups(): Promise<void> {
+  const output = root.querySelector<HTMLElement>('#backups-output');
+  if (output) output.textContent = 'Loading...';
+  const response = await adminFetch('/admin/api/backups', token);
+  if (!response.ok) { if (output) output.textContent = 'Could not load backup history.'; return; }
+  const body = await response.json() as { backups: Array<{ name: string; sizeBytes: number; modifiedAt: number }> };
+  if (output) output.textContent = body.backups.length === 0 ? 'No backups found.' : JSON.stringify(body.backups, null, 2);
+}
 async function exportDiagnostics(): Promise<void> {
   const status = root.querySelector<HTMLElement>('#operation-status');
   if (status) status.textContent = 'Preparing diagnostics...';

@@ -1,7 +1,7 @@
-import { readFileSync, unlinkSync } from 'node:fs';
+﻿import { readFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 
-const CONFIG_KEYS = new Set(['ALLOWED_ORIGINS', 'TRUST_PROXY', 'ANCHOR_ADDRESS', 'SFACE_TREASURY', 'SIGNALS_PRICE_NIM', 'GIT_COMMIT']);
+const CONFIG_KEYS = new Set(['ADMIN_ALLOWED_IPS', 'ALLOWED_ORIGINS', 'TRUST_PROXY', 'ANCHOR_ADDRESS', 'SFACE_TREASURY', 'SIGNALS_PRICE_NIM', 'GIT_COMMIT']);
 const SECRET_KEYS = new Set(['ADMIN_TOKEN', 'X_CLIENT_ID', 'X_CLIENT_SECRET', 'X_BEARER_TOKEN', 'XAI_API_KEY']);
 
 export function mergeStartupConfig(

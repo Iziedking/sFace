@@ -11,8 +11,8 @@
  * by design and an open POST with no cap is an invitation.
  */
 
-import { isRehearsal, networkOf, NETWORK_HEADER } from './network';
-import express, { type NextFunction, type Request, type Response } from 'express';
+import { networkOf, NETWORK_HEADER } from './network';
+import express from 'express';
 import { z } from 'zod';
 import { parseAllowedOrigins } from './cors';
 import { createRateLimiter } from './rate-limit';
@@ -24,6 +24,8 @@ import { adminLogs, initialiseAdminLogs, recordAdminLog } from './admin/logs';
 import { OperationNonces } from './admin/nonces';
 import { buildDiagnosticBundle } from './admin/diagnostics';
 import { mountAdminObservabilityRoutes } from './admin/observability-routes';
+import { installRequestLogging } from './request-logging';
+import { installFallbackRoutes } from './fallback-routes';
 import { mountAdminOperationsRoutes } from './admin/operations-routes';
 import { mountAdminReadRoutes } from './admin/read-routes';
 import { mountAdminConfigRoutes } from './admin/config-routes';
@@ -44,13 +46,19 @@ import * as xauth from './xauth';
 import { xpostsConfigured } from './xposts';
 import { xusersConfigured } from './xusers';
 import { attachLive } from './live';
-import { backupSnapshot, flush, getPersistenceHealth, loadSnapshot, saveNow, scheduleSave } from './store';
+import { backupSnapshot, flush, getPersistenceHealth, listBackups, loadSnapshot, saveNow, scheduleSave } from './store';
 import { PlayerAuth } from './player-auth';
 import { mountPlayerAuthRoutes } from './player-auth-routes';
 import { mountSystemRoutes } from './system-routes';
 import { mountLeaderboardReadRoutes } from './leaderboard-read-routes';
 import { mountCommunityReadRoutes } from './community-read-routes';
 import { mountPublicArtifactRoutes } from './public-artifact-routes';
+import { mountProfileReadRoutes } from './profile-read-routes';
+import { mountXAuthRoutes } from './xauth-routes';
+import { mountSignalsReadRoutes } from './signals-read-routes';
+import { mountSocialReadRoutes } from './social-read-routes';
+import { mountChallengeWriteRoutes } from './challenge-write-routes';
+import { mountGhostWriteRoutes } from './ghost-write-routes';
 import { sweepContests } from './contest-lifecycle';
 import { createActorVerifier } from './player-actor';
 import {
@@ -100,6 +108,7 @@ installHttpBoundary(app, {
   networkHeader: NETWORK_HEADER,
 });
 const rateLimiter = createRateLimiter();
+installRequestLogging(app, { record: recordAdminLog });
 const provesActor = createActorVerifier(playerAuth);
 
 // Schemas ------------------------------------------------------------------
@@ -294,46 +303,6 @@ const anchorBody = z.object({
   shape: z.string().max(60).optional(),
 });
 
-const createBody = z.object({
-  deviceId,
-  name: pilotName,
-  address: nimiqAddress.nullable(),
-  date: isoDate,
-  seed,
-  stakeNim: z.number().min(challenges.MIN_STAKE_NIM).max(challenges.MAX_STAKE_NIM),
-  score: z.number().int().min(0).max(board.SCORE_CEILING),
-  // The same window a contest takes, from the same shared band. Absent means
-  // the rest of the UTC day, which is as long as the seed lives anyway.
-  openMinutes: z
-    .number()
-    .int()
-    .min(contestRules.MIN_OPEN_MINUTES)
-    .max(contestRules.MAX_OPEN_MINUTES)
-    .nullable()
-    .optional(),
-});
-
-const acceptBody = z.object({
-  deviceId,
-  name: pilotName,
-  address: nimiqAddress.nullable(),
-  score: z.number().int().min(0).max(board.SCORE_CEILING),
-  // Must match the challenge's seed, or the two players ran different levels.
-  seed,
-});
-
-const ghostBody = z.object({
-  deviceId,
-  name: pilotName,
-  seed,
-  score: z.number().int().min(0).max(board.SCORE_CEILING),
-  // The day's cast is eight. See ROSTER_SIZE in server/xsense.ts.
-  facesExtracted: z.number().int().min(0).max(ROSTER_SIZE),
-  // Length and alphabet only. The client's decoder is the real validator, and
-  // it returns null rather than throwing on anything malformed.
-  trace: z.string().min(8).max(ghosts.MAX_TRACE_CHARS).regex(/^[A-Za-z0-9+/]+={0,2}$/),
-});
-
 const joinClanBody = z.object({
   deviceId,
   name: pilotName,
@@ -380,12 +349,6 @@ const unlockBody = z.object({
   serializedTx: z.string().regex(/^[0-9a-f]+$/i).min(32).max(4096),
 });
 
-const settleBody = z.object({
-  deviceId,
-  /** A serialized Nimiq transaction, hex. Stored as reported, not verified. */
-  serializedTx: z.string().regex(/^[0-9a-f]+$/i).min(32).max(4096),
-});
-
 function currentHealth() {
   return effectiveHealth({
     persistence: getPersistenceHealth(),
@@ -400,21 +363,29 @@ function currentHealth() {
 }
 
 
-const requireAdmin = adminMiddleware(ADMIN_CONFIG);
+const requireAdmin = adminMiddleware(ADMIN_CONFIG, ({ reason, ip, path }) => {
+  recordAdminLog({ time: Date.now(), level: 'warn', subsystem: 'admin', event: reason === 'ip_denied' ? 'login_ip_denied' : 'login_failed', message: reason === 'ip_denied' ? 'Admin request denied by IP policy' : 'Admin authentication refused', context: { reason, ip, path } });
+});
 
 // Routes -------------------------------------------------------------------
 
 mountSystemRoutes({ app, limit: rateLimiter.limit, health: currentHealth, date: utcDate, mission: getMission });
 
 mountAdminObservabilityRoutes({ app, limit: rateLimiter.limit, requireAdmin, logs: adminLogs, record: recordAdminLog });
-mountAdminOperationsRoutes({ app, limit: rateLimiter.limit, requireAdmin, nonces: ADMIN_NONCES, backup: backupSnapshot, diagnostics: buildDiagnosticBundle, health: currentHealth, config: configInventory, logs: adminLogs, record: recordAdminLog, date: utcDate, rateLimitCount: () => rateLimiter.count(), commit: process.env.GIT_COMMIT ?? null });
+mountAdminOperationsRoutes({ app, limit: rateLimiter.limit, requireAdmin, nonces: ADMIN_NONCES, backup: backupSnapshot, listBackups, diagnostics: buildDiagnosticBundle, health: currentHealth, config: configInventory, logs: adminLogs, record: recordAdminLog, date: utcDate, rateLimitCount: () => rateLimiter.count(), commit: process.env.GIT_COMMIT ?? null, restartSupported: process.env.ADMIN_RESTART_ENABLED === 'true', restart: () => { const timer = setTimeout(() => process.kill(process.pid, 'SIGTERM'), 250); timer.unref(); } });
 mountAdminReadRoutes({ app, limit: rateLimiter.limit, requireAdmin, logs: adminLogs, record: recordAdminLog, sources: { profiles: profiles.serialise, scores: board.serialise, clans: clans.serialise, contests: contests.serialise, challenges: challenges.serialise, tips: tips.serialise, ghosts: ghosts.serialise, chat: chat.serialise, signals: signals.serialise } });
 mountAdminConfigRoutes({ app, limit: rateLimiter.limit, requireAdmin, nonces: ADMIN_NONCES, inventory: configInventory, record: recordAdminLog });
-mountAdminOverviewRoutes({ app, limit: rateLimiter.limit, requireAdmin, health: currentHealth, inventory: configInventory, date: utcDate, commit: process.env.GIT_COMMIT ?? null, uptimeSeconds: () => Math.floor(process.uptime()) });
+mountAdminOverviewRoutes({ app, limit: rateLimiter.limit, requireAdmin, health: currentHealth, inventory: configInventory, date: utcDate, commit: process.env.GIT_COMMIT ?? null, uptimeSeconds: () => Math.floor(process.uptime()), restartSupported: process.env.ADMIN_RESTART_ENABLED === 'true' });
 mountPlayerAuthRoutes({ app, limit: rateLimiter.limit, auth: playerAuth, save: () => scheduleSave(snapshot) });
 mountLeaderboardReadRoutes({ app, limit: rateLimiter.limit });
 mountCommunityReadRoutes({ app, limit: rateLimiter.limit });
 mountPublicArtifactRoutes({ app, limit: rateLimiter.limit });
+mountProfileReadRoutes({ app, limit: rateLimiter.limit });
+mountXAuthRoutes({ app, limit: rateLimiter.limit, allowedOrigins: ALLOWED_ORIGINS });
+mountSignalsReadRoutes({ app, limit: rateLimiter.limit });
+mountSocialReadRoutes({ app, limit: rateLimiter.limit });
+mountChallengeWriteRoutes({ app, limit: rateLimiter.limit, provesActor });
+mountGhostWriteRoutes({ app, limit: rateLimiter.limit, provesActor });
 
 /*
  * Registered before /board/:date on purpose. Express matches in declaration
@@ -429,78 +400,6 @@ mountPublicArtifactRoutes({ app, limit: rateLimiter.limit });
  * proved one, so the number is smaller than the flattering version and cannot
  * be padded by anybody who feels like posting an address. See walletCount.
  */
-/*
- * The room.
- *
- * ## Why the message carries only an id
- *
- * A posted message says who sent it and nothing else about them. The name, the
- * picture, the clan, the rank and the wallet are all read from that pilot's
- * profile when the room is served, so nobody can post under somebody else's
- * name by asking to, and a name change shows up on every line at once.
- *
- * It is also what makes tipping safe: the address a tip goes to is one this
- * service proved from a signature, never one that arrived attached to a
- * message.
- */
-app.get('/chat', rateLimiter.limit(240, 60), (req, res) => {
-  const network = networkOf(req);
-  const stored = chat.recent(network);
-
-  /*
-   * A posted run is resolved here, from the board, under the sender's own id.
-   *
-   * The message said which day. It did not say what happened, because a score
-   * that arrived attached to a message is a number somebody typed, and the
-   * entire point of putting a run in front of people who might tip it is that
-   * it is the number the board is ranking.
-   *
-   * A row that has gone is not an error. A message lives a day and a board is
-   * pruned on its own schedule, so a card can outlive the run it points at; the
-   * room draws those as an ordinary line and says the run has aged out.
-   */
-  const messages = stored.map((message) => ({
-    ...message,
-    run: message.runDate ? board.runCard(network, message.runDate, message.pilotId) : null,
-  }));
-
-  /*
-   * Everyone who has spoken, sent alongside rather than looked up one by one.
-   *
-   * The room needs a name and a picture for every line, and a hundred lines
-   * from a dozen people is a dozen profiles. Sending them once as a map is the
-   * difference between one small payload and a hundred repeated ones.
-   */
-  const people: Record<string, unknown> = {};
-  for (const id of chat.speakers(network)) {
-    const profile = profiles.get(id, network);
-    if (!profile) continue;
-
-    people[id] = {
-      name: profile.name,
-      avatarUrl: profile.avatarUrl,
-      clanTag: profile.clanTag,
-      lifetimeFace: profile.lifetimeFace,
-      // Only ever an address a signature proved. See the note above.
-      address: profile.address,
-    };
-  }
-
-  /*
-   * Whether the pilot asking has a run to post, answered in the same request.
-   *
-   * The room needs this to decide whether the share button exists at all, and
-   * the only honest source is the board. Asking here rather than in a second
-   * call keeps a screen that refreshes every few seconds down to one request,
-   * and means the button cannot be offered for a run that is not there.
-   */
-  const asking = String(req.query.deviceId ?? '');
-  const today = utcDate();
-  const canShare = asking.length > 0 && board.runCard(network, today, asking) !== null;
-
-  res.json({ messages, people, you: { runDate: canShare ? today : null } });
-});
-
 app.post('/chat', rateLimiter.limit(30, 10), async (req, res) => {
   const parsed = chatBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
@@ -644,28 +543,6 @@ app.post('/chat/:id', rateLimiter.limit(30, 10), async (req, res) => {
  * proved a wallet, and that is this service's own record. Taking the client's
  * word for it would let a message claim money was sent that never could be.
  */
-app.get('/tips', rateLimiter.limit(120, 60), (req, res) => {
-  const who = String(req.query.deviceId ?? '');
-  if (who.length === 0) {
-    res.status(400).json({ error: 'Who is asking?' });
-    return;
-  }
-
-  const network = networkOf(req);
-  const waiting = tips.inbox(network, who);
-
-  // Only the senders of tips that were actually sent. A refused one names
-  // nobody, on purpose, so its sender is not put on the wire either.
-  const people: Record<string, unknown> = {};
-  for (const id of tips.sendersFor(network, who)) {
-    const profile = profiles.get(id, network);
-    if (!profile) continue;
-    people[id] = { name: profile.name, avatarUrl: profile.avatarUrl };
-  }
-
-  res.json({ tips: waiting, people });
-});
-
 app.post('/tips', rateLimiter.limit(60, 60), async (req, res) => {
   const parsed = tipBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
@@ -1450,59 +1327,6 @@ app.post('/clans/:tag/decide', rateLimiter.limit(30, 15), async (req, res) => {
   res.json(clans.detail(tag, networkOf(req)));
 });
 
-/*
- * CT Signals. Who publicly engages a handle, and what they fly for.
- *
- * Public data only, computed on the fly and never stored. See the header of
- * server/xsignals.ts for why that posture matters and for the honest note on
- * what the payment does and does not buy.
- */
-app.get('/signals/:handle', rateLimiter.limit(20, 8), async (req, res) => {
-  const handle = String(req.params.handle ?? '').replace(/^@/, '').toLowerCase();
-  if (!/^[a-z0-9_]{1,15}$/.test(handle)) {
-    res.status(400).json({ error: 'Not an X handle.' });
-    return;
-  }
-
-  const asked = req.query.depth === 'full';
-  const who = typeof req.query.deviceId === 'string' ? req.query.deviceId : '';
-  // Free when no treasury is configured: a paywall with nowhere to pay is a
-  // dead end, not a business model.
-  const paid = signals.treasury() === null || (who !== '' && signals.unlocked(who));
-  const depth = asked && paid ? 'full' : 'glance';
-
-  /*
-   * CT Signals is the most expensive thing in here: two queries per read, per
-   * handle, uncached by nature because it is about one person right now. A
-   * testnet session declines it rather than spending, and says so, which is a
-   * far better test result than a silently empty panel.
-   */
-  if (isRehearsal(req)) {
-    res.json({
-      handle,
-      rehearsal: true,
-      note: 'CT Signals reads live X, so it is off on testnet. Switch to mainnet for the real read.',
-      priceNim: signals.SIGNALS_PRICE_NIM,
-      treasury: signals.treasury(),
-      unlocked: false,
-    });
-    return;
-  }
-
-  const out = await signals.readSignals(handle, depth);
-  if (!out) {
-    res.status(503).json({ error: 'Could not read X right now. Try later.' });
-    return;
-  }
-
-  res.json({
-    ...out,
-    priceNim: signals.SIGNALS_PRICE_NIM,
-    treasury: signals.treasury(),
-    unlocked: paid,
-  });
-});
-
 app.post('/signals/unlock', rateLimiter.limit(12, 6), async (req, res) => {
   const parsed = unlockBody.extend({ auth: deviceProof }).safeParse(req.body);
   if (!parsed.success) {
@@ -1588,261 +1412,7 @@ app.post('/profile/merge', rateLimiter.limit(12, 6), async (req, res) => {
   res.json({ merged: true, profile: merged });
 });
 
-app.get('/profile/:id', rateLimiter.limit(60, 20), (req, res) => {
-  const id = deviceId.safeParse(req.params.id);
-  if (!id.success) {
-    res.status(400).json({ error: 'Bad pilot id.' });
-    return;
-  }
-
-  /*
-   * Scoped to the caller's chain.
-   *
-   * This is the card that shows Face, rank and campaign progress, and those are
-   * per chain. Reading it network-blind would show a mainnet total to somebody
-   * looking at their testnet profile, which is the pooling the split exists to
-   * prevent, surfacing in the one place a player actually reads.
-   */
-  const network = networkOf(req);
-  const profile = profiles.get(id.data, network);
-  if (!profile) {
-    // Not an error. A pilot who has never finished a run has a real, empty
-    // profile, and returning 404 would make the client special-case day one.
-    res.json(profiles.blank(id.data, 'Pilot', network));
-    return;
-  }
-
-  /*
-   * Runs on the board that nobody signed.
-   *
-   * Sent with the profile rather than behind a route of its own, because the
-   * profile screen is the only place that asks and a second request would be a
-   * second thing to fail on a page that already loads.
-   */
-  res.json({
-    ...profile,
-    allTimeRank: profiles.rankOf(id.data, network),
-    unsigned: board.unsignedFor(network, id.data),
-  });
-});
-
-/*
- * X connect. Three endpoints and no session anywhere.
- *
- * /x/start hands the browser an authorize URL. X calls /x/callback with a
- * code, we exchange it server-side because the client secret cannot live in a
- * bundle, and we hand the profile straight back to the page that opened the
- * flow. Nothing about the account is stored. See the header of server/xauth.ts.
- */
-app.get('/x/config', (_req, res) => {
-  res.json({ enabled: xauth.xauthConfigured() });
-});
-
-app.post('/x/start', rateLimiter.limit(20, 8), (req, res) => {
-  /*
-   * Where to send them back to, checked against the allow list.
-   *
-   * Never taken on trust. An open redirect on an OAuth callback is how you
-   * hand somebody else's authorisation to a site of your choosing, so an
-   * origin that is not one of ours is refused outright rather than quietly
-   * replaced with a default.
-   */
-  const asked = typeof req.body?.returnTo === 'string' ? req.body.returnTo : '';
-  const returnTo = ALLOWED_ORIGINS.includes(asked) ? asked : (ALLOWED_ORIGINS[0] ?? '');
-
-  if (!returnTo) {
-    res.status(500).json({ error: 'No allowed origin is configured.' });
-    return;
-  }
-
-  const result = xauth.begin(returnTo);
-  if (!result.ok) {
-    res.status(result.code).json({ error: result.reason });
-    return;
-  }
-  res.json(result.value);
-});
-
-app.get('/x/callback', rateLimiter.limit(30, 12), async (req, res) => {
-  const state = typeof req.query.state === 'string' ? req.query.state : '';
-  const code = typeof req.query.code === 'string' ? req.query.code : '';
-
-  // The user declined on X's own screen. Not an error, just a no.
-  if (typeof req.query.error === 'string') {
-    handOff(res, xauth.returnAddress(state), { ok: false, reason: 'declined' });
-    return;
-  }
-
-  if (!state || !code) {
-    handOff(res, null, { ok: false, reason: 'bad_request' });
-    return;
-  }
-
-  // Read before complete(), which consumes the flow.
-  const returnTo = xauth.returnAddress(state);
-
-  const result = await xauth.complete(state, code);
-  const payload = result.ok
-    ? { ok: true as const, profile: result.value }
-    : { ok: false as const, reason: result.reason };
-
-  handOff(res, returnTo, payload);
-});
-
-/**
- * Send the browser back to the app with the result.
- *
- * ## Why this is a redirect and no longer a popup
- *
- * The old flow opened a popup and handed the result back by postMessage. That
- * works on a desktop and fails on the device this game is actually for. Mobile
- * browsers refuse a blank popup that is navigated after an await, and inside
- * Nimiq Pay's WebView window.open either does nothing or escapes to the system
- * browser, which then has no opener to post a message to. Connect X was simply
- * dead on every phone.
- *
- * The result rides in the URL FRAGMENT, not the query string. A fragment is
- * never sent to a server, so it stays out of access logs and out of any proxy
- * in between, which is the right handling for somebody's account details even
- * though every field in them is public.
- *
- * The popup page is kept below for the case where an opener really is there,
- * so a desktop flow already in progress is not broken by this change.
- */
-function handOff(res: Response, returnTo: string | null, payload: unknown): void {
-  const target = returnTo ?? ALLOWED_ORIGINS[0] ?? '';
-
-  if (!target) {
-    res.type('html').send(closingPage(payload));
-    return;
-  }
-
-  const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
-  res.redirect(302, `${target}/#sface-x=${encoded}`);
-}
-
-/**
- * The old popup page, kept for a flow that genuinely has an opener.
- *
- * The payload is JSON-encoded into a script tag, so `<` is escaped: a display
- * name is attacker-controlled text and this is the one place it is inlined
- * into a document rather than set with textContent.
- */
-function closingPage(payload: unknown): string {
-  const json = JSON.stringify(payload).replace(/</g, '\\u003c');
-  const origin = ALLOWED_ORIGINS[0] ?? '*';
-
-  return `<!doctype html><meta charset="utf-8"><title>sFace</title>
-<body style="background:#f4ede0;color:#14110e;font:600 15px system-ui;display:grid;place-items:center;height:100vh;margin:0">
-<p>You can close this window.</p>
-<script>
-  (function () {
-    var payload = ${json};
-    try { window.opener && window.opener.postMessage({ source: 'sface-x', payload: payload }, ${JSON.stringify(origin)}); } catch (e) {}
-    setTimeout(function () { window.close(); }, 400);
-  })();
-</script>`;
-}
-
-// Traces are the largest thing anyone posts, so this gets the tightest bucket.
-app.post('/ghosts', rateLimiter.limit(8, 4), async (req, res) => {
-  const parsed = ghostBody.extend({ auth: deviceProof }).safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: firstIssue(parsed.error) });
-    return;
-  }
-
-  const { auth: _auth, ...ghost } = parsed.data;
-  if (!(await provesActor(parsed.data.auth as DeviceProof, 'ghost.post', parsed.data.deviceId, ghost))) {
-    res.status(403).json({ error: 'unauthorized' });
-    return;
-  }
-  const result = ghosts.submit(ghost);
-  if (!result.ok) {
-    res.status(result.code).json({ error: result.reason });
-    return;
-  }
-
-  res.json(result.value);
-});
-
-app.post('/challenges', rateLimiter.limit(12, 6), async (req, res) => {
-  const parsed = createBody.extend({ auth: deviceProof }).safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: firstIssue(parsed.error) });
-    return;
-  }
-
-  const { auth: _auth, ...created } = parsed.data;
-  if (!(await provesActor(parsed.data.auth as DeviceProof, 'challenge.create', parsed.data.deviceId, created))) {
-    res.status(403).json({ error: 'unauthorized' });
-    return;
-  }
-  const result = challenges.create(created);
-  if (!result.ok) {
-    res.status(result.code).json({ error: result.reason });
-    return;
-  }
-
-  res.status(201).json(challenges.toPublic(result.value));
-});
-
-app.post('/challenges/:id/accept', rateLimiter.limit(20, 10), async (req, res) => {
-  const parsed = acceptBody.extend({ auth: deviceProof }).safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: firstIssue(parsed.error) });
-    return;
-  }
-
-  const { auth: _auth, ...accepted } = parsed.data;
-  if (!(await provesActor(parsed.data.auth as DeviceProof, 'challenge.accept', parsed.data.deviceId, {
-    id: String(req.params.id ?? ''), ...accepted,
-  }))) {
-    res.status(403).json({ error: 'unauthorized' });
-    return;
-  }
-  const result = challenges.accept(String(req.params.id), accepted);
-  if (!result.ok) {
-    res.status(result.code).json({ error: result.reason });
-    return;
-  }
-  res.json(challenges.toPublic(result.value));
-});
-
-app.post('/challenges/:id/settled', rateLimiter.limit(20, 10), async (req, res) => {
-  const parsed = settleBody.extend({ auth: deviceProof }).safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: firstIssue(parsed.error) });
-    return;
-  }
-
-  if (!(await provesActor(parsed.data.auth as DeviceProof, 'challenge.settle', parsed.data.deviceId, {
-    id: String(req.params.id ?? ''), deviceId: parsed.data.deviceId,
-    serializedTx: parsed.data.serializedTx,
-  }))) {
-    res.status(403).json({ error: 'unauthorized' });
-    return;
-  }
-  const result = challenges.reportSettlement(String(req.params.id), {
-    deviceId: parsed.data.deviceId,
-    serializedTx: parsed.data.serializedTx,
-  });
-  if (!result.ok) {
-    res.status(result.code).json({ error: result.reason });
-    return;
-  }
-  res.json(challenges.toPublic(result.value));
-});
-
-app.use((_req, res) => {
-  res.status(404).json({ error: 'No such endpoint.' });
-});
-
-// An express error handler needs all four parameters to be recognised as one.
-app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('[sface] unhandled', error);
-  res.status(500).json({ error: 'Something broke on our side.' });
-});
+installFallbackRoutes(app, recordAdminLog);
 
 function firstIssue(error: z.ZodError): string {
   return error.issues[0]?.message ?? 'Bad request.';

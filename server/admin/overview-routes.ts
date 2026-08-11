@@ -11,16 +11,18 @@ export interface AdminOverviewRoutesDeps {
   date: () => string;
   commit: string | null;
   uptimeSeconds: () => number;
+  restartSupported: boolean;
 }
 
 export function mountAdminOverviewRoutes(deps: AdminOverviewRoutesDeps): void {
-  const { app, limit, requireAdmin, health, inventory, date, commit, uptimeSeconds } = deps;
+  const { app, limit, requireAdmin, health, inventory, date, commit, uptimeSeconds, restartSupported } = deps;
 
   app.get('/admin/api/overview', limit(30, 10), requireAdmin, (_req, res) => {
     res.json({
       ok: true,
       uptimeSeconds: uptimeSeconds(),
       commit,
+      restartSupported,
       date: date(),
       ...health(),
       config: inventory(),

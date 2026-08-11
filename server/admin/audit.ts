@@ -1,5 +1,7 @@
-const AUDIT_EVENTS = new Set([
+﻿const AUDIT_EVENTS = new Set([
   'login_success',
+  'login_failed',
+  'login_ip_denied',
   'backup_created',
   'backup_failed',
   'diagnostics_exported',

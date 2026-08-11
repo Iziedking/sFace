@@ -24,3 +24,9 @@ select { border: 1px solid #4b5147; background: #0d0e0c; color: inherit; padding
 pre { max-height: 420px; overflow: auto; border: 1px solid #343831; background: #0d0e0c; padding: 18px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .secret-form { display: grid; grid-template-columns: minmax(160px, .8fr) minmax(220px, 1.5fr) auto; gap: 12px; margin: 20px 0 10px; }
 @media (max-width: 720px) { .secret-form { grid-template-columns: 1fr; } }
+
+.config-form { display: grid; grid-template-columns: minmax(160px, .8fr) minmax(220px, 1.5fr) auto; gap: 12px; margin: 20px 0 10px; }
+#config-status { color: #93998f; }
+@media (max-width: 720px) { .config-form { grid-template-columns: 1fr; } }
+
+button:disabled { cursor: not-allowed; opacity: .45; }

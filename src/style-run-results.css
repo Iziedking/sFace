@@ -1,0 +1,142 @@
+/* Runs on the board with nobody's name on them --------------------------
+   An offer, not a warning: an unsigned row counts, ranks and pays Face
+   exactly like any other. Accent-pale rather than a danger colour, and
+   absent entirely when there is nothing outstanding. */
+
+.unsigned {
+  border: 2px solid var(--ink);
+  background: var(--accent-pale);
+  box-shadow: var(--lift-sm);
+  padding: 12px 14px;
+  display: grid;
+  gap: 5px;
+}
+
+.unsigned__head {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--accent-deep);
+  margin: 0;
+}
+
+.unsigned__figure {
+  font-family: var(--mono);
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.15;
+  margin: 0;
+}
+
+.unsigned__say {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+  margin: 0;
+  max-width: 54ch;
+}
+
+/* A refusal, said without implying the score went with it. */
+.unsigned__warn {
+  font-size: 12px;
+  color: var(--accent-deep);
+  margin: 0;
+}
+
+.unsigned__more {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-muted);
+  margin: 0;
+}
+
+/* A stake the presets do not carry. Sits in the same row as the chips and is
+   the same height, so it reads as one more option rather than a form. */
+.stakefield {
+  appearance: none;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  width: 88px;
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  padding: 8px 10px;
+  color: var(--ink);
+}
+
+.stakefield::placeholder {
+  color: var(--ink-faint);
+  font-weight: 600;
+}
+
+/* Marked when it is the one in force, the same as a selected chip. */
+.stakefield--on {
+  background: var(--accent);
+  box-shadow: var(--lift-sm);
+}
+
+/* The spinners are a second control for a thing that already has one, and on
+   a phone they eat a third of the field. */
+.stakefield::-webkit-outer-spin-button,
+.stakefield::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+/* What the stage asked for and did not get -------------------------------
+   The objective line alone was prose, so a player who fell two people short
+   was told to learn every project and had no idea which number failed. */
+
+.missed {
+  border: 2px solid var(--ink);
+  background: var(--accent-pale);
+  padding: 12px 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.missed__head {
+  font-size: 14px;
+  font-weight: 800;
+  margin: 0;
+}
+
+.missed__list {
+  display: grid;
+  gap: 0;
+  border: 2px solid var(--ink);
+  background: var(--canvas);
+}
+
+.missed__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  border-bottom: 2px solid var(--paper-deep);
+}
+
+.missed__row:last-child {
+  border-bottom: 0;
+}
+
+.missed__what {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* What they actually managed, so the gap is a number rather than a deduction. */
+.missed__got {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--accent-deep);
+  flex: none;
+}
+
+.missed__say {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-muted);
+  margin: 0;
+}

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Atomic snapshot persistence for the API process.
  *
  * A missing file is a fresh install. Corrupt, unsupported, or unreadable data
@@ -6,7 +6,7 @@
  * the next write and make player state loss look successful.
  */
 
-import { copyFile, readFile, writeFile, rename, mkdir } from 'node:fs/promises';
+import { copyFile, readFile, writeFile, rename, mkdir, readdir, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { PlayerAuthSnapshot } from './player-auth';
 
@@ -103,13 +103,29 @@ export async function backupSnapshot(label: string): Promise<string | null> {
     await copyFile(SNAPSHOT, target);
     return target;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return target;
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
     markDegraded('snapshot_backup_failed');
     console.error('[sface] snapshot backup failed', error);
     return null;
   }
 }
 
+export interface BackupInfo { name: string; sizeBytes: number; modifiedAt: number; }
+
+export async function listBackups(): Promise<BackupInfo[]> {
+  try {
+    const entries = await readdir(DATA_DIR, { withFileTypes: true });
+    const backups: BackupInfo[] = [];
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.startsWith('sface.json.') || !entry.name.endsWith('.bak')) continue;
+      const metadata = await stat(join(DATA_DIR, entry.name));
+      backups.push({ name: entry.name, sizeBytes: metadata.size, modifiedAt: metadata.mtimeMs });
+    }
+    return backups.sort((left, right) => right.modifiedAt - left.modifiedAt).slice(0, 100);
+  } catch {
+    return [];
+  }
+}
 export async function saveNow(snapshot: Snapshot): Promise<void> {
   await save(snapshot);
 }

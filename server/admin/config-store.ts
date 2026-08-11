@@ -1,8 +1,9 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+﻿import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 const CONFIG_PATH = join(process.env.DATA_DIR ?? join(process.cwd(), '.data'), 'admin-config.pending.json');
 const DEFINITIONS: Record<string, { secret: boolean; restartRequired: boolean }> = {
+  ADMIN_ALLOWED_IPS: { secret: false, restartRequired: true },
   ALLOWED_ORIGINS: { secret: false, restartRequired: true },
   TRUST_PROXY: { secret: false, restartRequired: true },
   ANCHOR_ADDRESS: { secret: false, restartRequired: true },

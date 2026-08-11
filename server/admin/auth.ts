@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
+﻿import { createHash, timingSafeEqual } from 'node:crypto';
 import type { Request, Response, NextFunction } from 'express';
 
 export interface AdminAuthConfig {
@@ -20,16 +20,27 @@ export function tokenMatches(presented: string | undefined, expected: string): b
   return timingSafeEqual(left, right);
 }
 
-export function adminMiddleware(config: AdminAuthConfig) {
+export type AdminDenialReason = 'admin_unconfigured' | 'ip_denied' | 'token_denied';
+export type AdminDenialRecorder = (event: { reason: AdminDenialReason; ip: string; path: string }) => void;
+
+export function adminMiddleware(config: AdminAuthConfig, recordDenial?: AdminDenialRecorder) {
   return (req: Request, res: Response, next: NextFunction): void => {
     res.setHeader('cache-control', 'no-store');
-    if (!config.token || (config.allowedIps.length > 0 && !config.allowedIps.includes(req.ip ?? ''))) {
+    const ip = req.ip ?? '';
+    if (!config.token) {
+      recordDenial?.({ reason: 'admin_unconfigured', ip, path: req.path });
+      res.status(401).json({ error: 'Admin access denied.' });
+      return;
+    }
+    if (config.allowedIps.length > 0 && !config.allowedIps.includes(ip)) {
+      recordDenial?.({ reason: 'ip_denied', ip, path: req.path });
       res.status(401).json({ error: 'Admin access denied.' });
       return;
     }
     const header = req.header('authorization') ?? '';
     const presented = header.startsWith('Bearer ') ? header.slice(7) : undefined;
     if (!tokenMatches(presented, config.token)) {
+      recordDenial?.({ reason: 'token_denied', ip, path: req.path });
       res.status(401).json({ error: 'Admin access denied.' });
       return;
     }
