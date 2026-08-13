@@ -7,10 +7,29 @@
       off the notch and off the home indicator. Nimiq Pay renders this in a
       WebView that goes edge to edge, so without this the timer sits under the
       status bar on most phones.
+
+      interactive-widget=resizes-content is what makes the keyboard survivable.
+
+      The default, resizes-visual, shrinks only the VISUAL viewport when the
+      keyboard opens and leaves the layout viewport at full height. Everything
+      here is laid out inside one `position: fixed` box (#app), and fixed boxes
+      resolve against the LAYOUT viewport, so the app stayed full height while
+      the browser scrolled the visual viewport down to reveal the field being
+      typed into. The result on Android was the room clipped off the top of the
+      screen with a band of empty paper between it and the keyboard: the page was
+      still there, just not where anybody could see it. core/viewport.ts had
+      already corrected the height from visualViewport, which made the box the
+      right size in the wrong place.
+
+      resizes-content shrinks the layout viewport instead, so the fixed box, the
+      viewport units, and the height media queries all agree with what is on
+      screen and the visual viewport never has to scroll. Ignored by engines that
+      do not know it (Safari), which is safe: iOS resolves fixed elements against
+      the visual viewport, so it never had this failure.
     -->
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content"
     />
     <meta name="theme-color" content="#f4ede0" />
     <meta name="color-scheme" content="light" />

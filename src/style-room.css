@@ -9,6 +9,16 @@
   /* Its own scroller, so the conversation moves without the page moving. A
      room that scrolls the whole screen loses the composer off the bottom. */
   max-height: min(52vh, 480px);
+  /*
+   * Measured height rather than 52vh where we have it.
+   *
+   * vh is the layout viewport, and on an engine that does not honour
+   * interactive-widget (Safari) the layout viewport does not notice a keyboard.
+   * So the conversation kept claiming half the phone while the visible area was
+   * half what it was, and the composer went under the keyboard. --app-h is what
+   * is actually on screen, so the list gives the space back. See
+   * core/viewport.ts, and the viewport meta in index.html for the other half. */
+  max-height: min(calc(var(--app-h, 100dvh) * 0.52), 480px);
   overflow-y: auto;
   display: grid;
   /*

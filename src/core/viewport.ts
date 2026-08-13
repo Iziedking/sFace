@@ -29,6 +29,32 @@
 let stop: (() => void) | null = null;
 
 /**
+ * Bring the field being typed into back into view.
+ *
+ * The box shrinking is not by itself enough. Correcting the height puts the
+ * composer at the bottom of a page that is now taller than its scroller, and
+ * whether the engine re-reveals the focused element after a resize is not
+ * something to rely on inside a WebView: on the room screen the field ended up
+ * under the keyboard, which is the one place a text field must never be.
+ *
+ * `nearest` rather than `center`, so a field that is already visible is left
+ * exactly where it is. Scrolling somebody's conversation by a hundred pixels
+ * because the keyboard opened is its own bug.
+ *
+ * Silent when nothing is focused, which is the common case: the box also shrinks
+ * when the browser chrome slides in, and there is nothing to reveal then.
+ */
+function reveal(): void {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement)) return;
+
+  const tag = active.tagName;
+  if (tag !== 'INPUT' && tag !== 'TEXTAREA' && !active.isContentEditable) return;
+
+  active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
+/**
  * Start correcting the app box, and keep it corrected.
  *
  * Safe to call more than once; the previous listeners are dropped first. Does
@@ -60,6 +86,7 @@ export function trackViewport(): void {
       const height = Math.ceil(vv.height);
       if (height <= 0 || height === applied) return;
 
+      const shrank = applied > 0 && height < applied;
       applied = height;
       document.documentElement.style.setProperty('--app-h', `${height}px`);
 
@@ -75,6 +102,10 @@ export function trackViewport(): void {
        * Guarded on the height actually changing, so this cannot feed itself.
        */
       window.dispatchEvent(new Event('resize'));
+
+      // And if the box got smaller, make sure whatever is being typed into is
+      // still somewhere the person typing can see it.
+      if (shrank) reveal();
     });
   };
 

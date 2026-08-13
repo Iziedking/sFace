@@ -170,6 +170,73 @@
   margin-top: 12px;
 }
 
+/* The room, with a keyboard up -------------------------------------------
+ *
+ * Typing is the one thing on this screen that shrinks the screen. The room is a
+ * document: a heading, a paragraph, the conversation, then the box you write in
+ * at the bottom of it. That reads well at full height and falls apart the moment
+ * a keyboard takes half the phone, because the box you are writing in is the
+ * part that goes under the keyboard, and a chat where you cannot see what you
+ * are typing is not a chat.
+ *
+ * So on a short box the room stops being a document and becomes what every chat
+ * app is: a fixed frame, the conversation taking whatever room is left, the
+ * composer at the bottom of the visible area. The list already has its own
+ * scroller, so nothing is lost by making it the part that gives.
+ *
+ * Keyed on height, and it fires for both cases that produce a short box: a
+ * keyboard opening (the layout viewport shrinks, see interactive-widget in
+ * index.html) and a phone held sideways.
+ */
+@media (max-height: 620px) {
+  .room {
+    /* Exactly the frame, rather than at least it, so the column below has a
+       fixed budget to distribute instead of growing past the bottom edge. */
+    height: 100%;
+  }
+
+  .room__list {
+    /* The one part that gives. min-height: 0 is what lets a flex item shrink
+       below its content at all; without it the list keeps its full size and
+       pushes the composer straight back off the bottom. */
+    flex: 1 1 auto;
+    max-height: none;
+    min-height: 88px;
+  }
+}
+
+/* Under this the blurb goes. It says what the room is for, which is worth one
+   read and is not worth the four lines it costs on every visit once the
+   conversation itself has nowhere left to go. */
+@media (max-height: 560px) {
+  .room > .quiet {
+    display: none;
+  }
+}
+
+/*
+ * And under this the label above the headline goes too.
+ *
+ * This is the keyboard-up-on-a-small-phone case, where the frame is around 340
+ * points and the composer was still hanging thirteen points below the bottom
+ * edge. Thirteen points has to come from somewhere, and the choice is between the
+ * conversation and the chrome around it.
+ *
+ * It comes from the chrome. The eyebrow reads THE ROOM directly above a headline
+ * that reads Who else is flying, which is the same fact twice, and the second
+ * one is the one written for a person. The headline itself stays and only gets
+ * smaller: something has to say what this screen is.
+ */
+@media (max-height: 460px) {
+  .room > .eyebrow {
+    display: none;
+  }
+
+  .room > h1 {
+    font-size: 19px;
+  }
+}
+
 /* Results in a short window ------------------------------------------------
  *
  * The wallet in landscape is about 500px tall and the bar takes a chunk of

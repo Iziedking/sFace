@@ -6234,12 +6234,11 @@ body.is-fullscreen .foot,
     width: min(320px, 42vw);
     padding: 8px 12px;
   }
-
-  /* The entry slides straight down, since there is no centring to preserve. */
-  .tour--in .tour {
-    animation-name: tour-in-flush;
-  }
 }
+
+/* The entry animation for this layout is NOT here. It has to be declared after
+   the centred one or it loses the cascade to it; see the note beside
+   @keyframes tour-in-flush at the bottom of this section. */
 
 .tour__head {
   display: flex;
@@ -6429,6 +6428,29 @@ body.is-fullscreen .foot,
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+/*
+ * And this is where the short screen picks it up. Below the centred rule, not
+ * up with the rest of the short-screen layout, and the reason is worth writing
+ * down because the bug it caused was ugly and invisible on a desktop.
+ *
+ * A media query adds no specificity. The override used to sit in the
+ * @media (max-height: 460px) block above, which put it BEFORE
+ * `.tour--in .tour { animation: tour-in ... }` in the file, so the later
+ * shorthand won and the landscape card animated with the centred frames. Those
+ * frames end on `translate(-50%, 0)` and the animation is filled `both`, so the
+ * transform stuck: a card anchored 12px from the left edge then shifted half
+ * its own width off the screen and sat there for the rest of the run, on top of
+ * the HUD strip, with its title and the first half of every line cut off.
+ *
+ * Source order is the fix. Anything that overrides the arrival has to come
+ * after the arrival.
+ */
+@media (max-height: 460px) {
+  .tour--in .tour {
+    animation-name: tour-in-flush;
   }
 }
 
