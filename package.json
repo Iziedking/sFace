@@ -18,6 +18,7 @@
     "server": "tsx --env-file-if-exists=.env server/start.ts",
     "server:dev": "tsx watch --env-file-if-exists=.env server/start.ts",
     "prove": "tsx scripts/prove.ts",
+    "archive:legacy:dry": "tsx --env-file-if-exists=.env scripts/archive-legacy.ts",
     "restore:backup": "tsx --env-file-if-exists=.env scripts/restore-backup.ts",
     "verify:deployment": "node scripts/verify-deployment.mjs",
     "icons": "node scripts/make-icons.mjs",

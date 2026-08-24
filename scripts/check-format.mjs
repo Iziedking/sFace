@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { extname, join } from 'node:path';
 
-const roots = ['.github', 'deploy', 'scripts', 'server', 'src', 'tests'];
+const roots = ['.github', 'deploy', 'scripts', 'server', 'shared', 'src', 'tests'];
 const rootFiles = [
   '.dockerignore', '.env.example', '.gitattributes', '.gitignore',
   'Dockerfile', 'README.md', 'docker-compose.yml', 'index.html', 'package.json',

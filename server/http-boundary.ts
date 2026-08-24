@@ -32,7 +32,7 @@ export function installHttpBoundary(app: Express, options: HttpBoundaryOptions):
       res.setHeader('access-control-allow-origin', cors.header);
       if (cors.header !== '*') res.setHeader('vary', 'Origin');
     }
-    res.setHeader('access-control-allow-methods', 'GET,POST,OPTIONS');
+    res.setHeader('access-control-allow-methods', 'GET,POST,PATCH,OPTIONS');
     res.setHeader('access-control-allow-headers', allowedRequestHeaders(options.networkHeader));
     if (req.method === 'OPTIONS') {
       res.sendStatus(204);

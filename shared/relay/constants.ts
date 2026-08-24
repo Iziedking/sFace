@@ -1,0 +1,28 @@
+export const RELAY_TICK_RATE = 30;
+export const RELAY_RUN_TICKS = 1_350;
+export const RELAY_FIXED_SCALE = 1_000;
+export const RELAY_STEER_MIN = -127;
+export const RELAY_STEER_MAX = 127;
+export const RELAY_MAX_SEGMENTS = 1_350;
+export const RELAY_MAX_COMPRESSED_TRACE_BYTES = 65_536;
+export const RELAY_MAX_EXPANDED_TRACE_BYTES = 262_144;
+export const RELAY_TICKET_TTL_MS = 10 * 60 * 1_000;
+export const RELAY_MAX_REPAIR_UNITS_PER_ACTOR_DAY = 100;
+
+export const RELAY_COURSE_WIDTH = 120_000;
+export const RELAY_COURSE_HEIGHT = 5_400;
+export const RELAY_POD_WIDTH = 480;
+export const RELAY_POD_HEIGHT = 480;
+export const RELAY_FORWARD_SPEED_FIXED = 100;
+export const RELAY_STEER_SPEED_FIXED = 4;
+export const RELAY_INITIAL_INTEGRITY = 3;
+export const RELAY_NODE_CAPACITY = 3;
+export const RELAY_COLLISION_COOLDOWN_TICKS = 15;
+export const RELAY_PICKUP_RADIUS = 420;
+
+export const RELAY_BASE_NODE_SCORE = 100;
+export const RELAY_ROUTE_RISK_BONUS = 20;
+export const RELAY_CHAIN_BONUS = 15;
+export const RELAY_INTEGRITY_BONUS = 50;
+export const RELAY_NO_DAMAGE_BONUS = 100;
+export const RELAY_REPAIR_SCORE_DIVISOR = 10;
