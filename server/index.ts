@@ -85,6 +85,7 @@ import { createRelayWorldService } from './relay/world';
 import { createRelayLeaderboardService } from './relay/leaderboard';
 import { createRelayRewardService } from './relay/rewards';
 import { createAtlasApi, mountAtlasRoutes } from './atlas/routes';
+import { mountAtlasAdminRoutes } from './atlas/admin';
 import { ATLAS_CURRICULUM } from '../shared/atlas/manifest';
 import { createNimiqRelayChainReader } from './relay/chain';
 import { createRelayPayoutService } from './relay/payouts';
@@ -93,6 +94,9 @@ import { legacyConfig } from './legacy/mode';
 import { mountLegacyArchiveRoutes } from './legacy/archive-routes';
 import { legacyMutationMiddleware } from './legacy/mode';
 import { assertSingleRelayWriter } from './relay/writer';
+import { parseAtlasPaymentConfig } from './atlas/config';
+import { createAtlasOrderStore } from './atlas/orders';
+import { createAtlasChainReader } from './atlas/chain';
 
 const PORT = Number(process.env.PORT ?? 8790);
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
@@ -102,6 +106,7 @@ const TRUST_PROXY = process.env.TRUST_PROXY === 'true';
 const ADMIN_CONFIG = adminConfig();
 const ADMIN_NONCES = new OperationNonces(60_000);
 const RELAY_CONFIG = parseRelayConfig();
+const ATLAS_PAYMENT_CONFIG = parseAtlasPaymentConfig();
 const LEGACY_CONFIG = legacyConfig();
 const DATA_DIR = process.env.DATA_DIR ?? join(process.cwd(), '.data');
 const RELAY_WRITER_COUNT = assertSingleRelayWriter();
@@ -143,9 +148,17 @@ const relayLeaderboard = createRelayLeaderboardService({ runs: async () => Objec
 const relayRewards = createRelayRewardService({ store: getRelayStore(), fundedAllocationLuna: RELAY_CONFIG.seasonAllocationLuna });
 const relayChain = createNimiqRelayChainReader({ network: RELAY_CONFIG.network, rpcUrls: RELAY_CONFIG.rpcUrls, minConfirmations: RELAY_CONFIG.minConfirmations });
 const relayPayouts = createRelayPayoutService({ store: getRelayStore(), chain: relayChain, treasuryAddress: RELAY_CONFIG.treasuryAddress ?? '', minConfirmations: RELAY_CONFIG.minConfirmations, network: RELAY_CONFIG.network });
+const atlasOrders = ATLAS_PAYMENT_CONFIG.enabled ? createAtlasOrderStore({ recipient: ATLAS_PAYMENT_CONFIG.recipient!, priceLuna: ATLAS_PAYMENT_CONFIG.valueLuna, minimumConfirmations: ATLAS_PAYMENT_CONFIG.minConfirmations }) : undefined;
+const atlasChain = ATLAS_PAYMENT_CONFIG.enabled ? createAtlasChainReader({ network: ATLAS_PAYMENT_CONFIG.network, rpcUrls: ATLAS_PAYMENT_CONFIG.rpcUrls, minConfirmations: ATLAS_PAYMENT_CONFIG.minConfirmations }) : undefined;
 installRequestLogging(app, { record: recordAdminLog });
 mountRelayRoutes({ app, limit: rateLimiter.limit, api: createRelayApi({ config: RELAY_CONFIG, tickets: relayTickets, walletBindings: relayWalletBindings, daily: relayDaily, repository: relayRepository, actorExists: (actorId) => playerAuth.hasCredential(actorId), world: relayWorld, leaderboard: relayLeaderboard, rewards: relayRewards }) });
-mountAtlasRoutes({ app, limit: rateLimiter.limit, api: createAtlasApi({ curriculum: ATLAS_CURRICULUM, competitiveExpeditions: false }) });
+mountAtlasRoutes({ app, limit: rateLimiter.limit, api: createAtlasApi({
+  curriculum: ATLAS_CURRICULUM,
+  competitiveExpeditions: false,
+  orders: atlasOrders,
+  chain: atlasChain,
+  orderCatalog: ATLAS_PAYMENT_CONFIG.enabled ? { itemId: ATLAS_PAYMENT_CONFIG.itemId, network: ATLAS_PAYMENT_CONFIG.network, recipient: ATLAS_PAYMENT_CONFIG.recipient!, valueLuna: ATLAS_PAYMENT_CONFIG.valueLuna } : undefined,
+}) });
 app.use(['/chat', '/tips', '/tips/seen', '/board', '/board/anchor', '/board/sign', '/contests', '/clans/join', '/signals/unlock', '/profile/merge'], legacyMutationMiddleware(LEGACY_CONFIG));
 const provesActor = createActorVerifier(playerAuth);
 
@@ -418,6 +431,7 @@ mountLegacyArchiveRoutes({ app, limit: rateLimiter.limit, requireAdmin, dataDire
 mountAdminConfigRoutes({ app, limit: rateLimiter.limit, requireAdmin, nonces: ADMIN_NONCES, inventory: configInventory, record: recordAdminLog });
 mountAdminOverviewRoutes({ app, limit: rateLimiter.limit, requireAdmin, health: currentHealth, inventory: configInventory, date: utcDate, commit: process.env.GIT_COMMIT ?? null, uptimeSeconds: () => Math.floor(process.uptime()), restartSupported: process.env.ADMIN_RESTART_ENABLED === 'true' });
 mountRelayAdminRoutes({ app, limit: rateLimiter.limit, requireAdmin, nonces: ADMIN_NONCES, payouts: relayPayouts, rewards: relayRewards });
+mountAtlasAdminRoutes({ app, limit: rateLimiter.limit, requireAdmin, evidence: () => ({ status: 'unavailable', reason: 'atlas_durable_repository_disabled' }) });
 mountPlayerAuthRoutes({ app, limit: rateLimiter.limit, auth: playerAuth, save: () => scheduleSave(snapshot) });
 mountLeaderboardReadRoutes({ app, limit: rateLimiter.limit });
 mountCommunityReadRoutes({ app, limit: rateLimiter.limit });
