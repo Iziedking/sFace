@@ -19,6 +19,49 @@ never the same mission twice.
 
 ---
 
+## Current public experience: NIM Atlas
+
+**Explore the network. Build what survives.**
+
+Sface is a Nimiq Pay Mini App game. NIM Atlas is the free, evergreen adventure
+inside it, where each Nimiq idea becomes useful through play. One human
+character can switch between two paths:
+
+- **Explorer** walks the districts, visits the Pay Harbor shop, learns the
+  Ask, Check, Approve, Confirm, Unlock payment loop, and solves knowledge
+  puzzles.
+- **Builder** repairs the same systems, predicts provider observations, and
+  completes safe, allowlisted trials with copyable TypeScript recipes.
+
+The campaign is local-first and wallet-free by default. The Last Lantern shop
+uses an explicit local test fixture, so opening the game never sends NIM and a
+transaction hash or wallet callback is never treated as payment proof. Mainnet
+shop items, competitive acceptance, rewards, and payouts remain disabled until
+their separate owner gates are approved and the exact recipient, network, Luna
+amount, and chain-confirmation rules are configured.
+
+Scores, replay verification, wallet binding, prize eligibility, daily puzzles,
+Explorer and Builder leaderboards, and the shared Network Beacon are server
+responsibilities. Purchased assistance, when eventually enabled, marks a run
+assisted and removes it from prize eligibility. The declared launch allocation
+is 8,000,000,000 Lunas (80,000 NIM); it is not a claim that funds are present or
+that a payout has occurred.
+
+For local development:
+
+```bash
+npm install
+npm run dev
+npm run check
+npm run build
+npm run prove:relay
+npm run archive:legacy:dry
+```
+
+The former Rescue Relay gameplay and records remain in the repository as
+historical/internal material. Legacy data in `.data/sface.json` is preserved,
+administrator-only, and excluded from Atlas persistence and public navigation.
+
 <div align="center">
   <img src="docs/shots/opening.png" width="820" alt="The sFace opening screen, reading save face, tap to begin">
   <p><em>Every visit opens here. The tap starts the story and unlocks the voice.</em></p>

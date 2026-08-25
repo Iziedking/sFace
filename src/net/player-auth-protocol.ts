@@ -17,7 +17,8 @@ export type AuthAction =
   | 'score.post'
   | 'score.sign'
   | 'score.anchor'
-  | 'ghost.post';
+  | 'ghost.post'
+  | 'atlas.wallet.recover';
 
 export interface MergeClaim {
   from: string;

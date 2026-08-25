@@ -1,7 +1,7 @@
 ﻿import type { Express, RequestHandler } from 'express';
 import { isAuditEvent } from './audit';
 import type { AdminLogBuffer, AdminLogLevel } from './logs';
-import { adminRecord, type AdminRecordSources } from './records';
+import { ADMIN_RECORD_PAGE_SIZE_MAX, adminRecord, paginateAdminRecords, type AdminRecordSources } from './records';
 
 export interface AdminReadRoutesDeps {
   app: Express;
@@ -25,7 +25,21 @@ export function mountAdminReadRoutes(deps: AdminReadRoutesDeps): void {
       res.status(result.error === 'unknown_record_kind' ? 404 : 503).json({ error: result.error });
       return;
     }
+    res.setHeader('cache-control', 'no-store');
+    const page = parseQueryInteger(req.query.page, 1);
+    const pageSize = parseQueryInteger(req.query.pageSize, Math.min(50, ADMIN_RECORD_PAGE_SIZE_MAX));
+    const paged = paginateAdminRecords(result.kind, result.records, page, pageSize);
+    if (!paged.ok) {
+      res.status(paged.error === 'record_response_too_large' ? 413 : 400).json({ error: paged.error });
+      return;
+    }
     record({ time: Date.now(), level: 'info', subsystem: 'admin', event: 'records_read', message: 'Admin records viewed', context: { kind: result.kind, ip: req.ip } });
-    res.json(result);
+    res.json(paged);
   });
+}
+
+function parseQueryInteger(value: unknown, fallback: number): number {
+  if (value === undefined) return fallback;
+  if (Array.isArray(value) || typeof value !== 'string' || !/^\d+$/.test(value)) return Number.NaN;
+  return Number(value);
 }

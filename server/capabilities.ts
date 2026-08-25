@@ -1,5 +1,6 @@
 export interface CapabilityInputs {
   persistence: boolean;
+  relayPersistence?: boolean;
   anchor: boolean;
   xOAuth: boolean;
   xRead: boolean;
@@ -19,6 +20,7 @@ export type Capabilities = Record<keyof CapabilityInputs | 'playerIdentity' | 'm
 export function buildCapabilities(input: CapabilityInputs): Capabilities {
   return {
     persistence: state(input.persistence, true),
+    relayPersistence: state(input.relayPersistence ?? input.persistence, true),
     playerIdentity: state(true, true),
     marketOracle: state(true, true),
     anchor: state(input.anchor, false),

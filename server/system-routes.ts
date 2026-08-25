@@ -16,8 +16,8 @@ export function mountSystemRoutes(deps: SystemRoutesDeps): void {
 
   app.get('/health', (_req, res) => {
     const effective = health();
-    res.status(effective.persistence.status === 'healthy' ? 200 : 503).json({
-      ok: effective.persistence.status === 'healthy',
+    res.status(effective.relayPersistence.status === 'healthy' ? 200 : 503).json({
+      ok: effective.relayPersistence.status === 'healthy',
       date: date(),
       ...effective,
     });

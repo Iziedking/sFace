@@ -103,3 +103,12 @@ id_rsa*
 
 # Brainstorming visual companion session files are local design tooling output.
 .superpowers/
+
+# Internal Cycle 2 planning and review artifacts. These guide local agent work
+# but are not part of the public competition repository.
+docs/superpowers/
+ui-artifacts/
+PLAN-CYCLE-*.md
+
+.vercel
+.env*

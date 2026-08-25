@@ -89,6 +89,7 @@ async function overview(): Promise<void> {
       <article><span>${new Date(entry.time).toISOString()} | ${entry.level}</span><strong>${entry.event}</strong><small>${entry.message}</small></article>`).join('')}</div></section>
     <section><h2>Audit history</h2><div class="records-controls"><button id="load-audit">Load audit history</button></div><pre id="audit-output">Operator actions are loaded on demand.</pre></section>
     <section><h2>Read-only game records</h2><div class="records-controls"><select id="record-kind"><option>profiles</option><option>scores</option><option>clans</option><option>contests</option><option>challenges</option><option>tips</option><option>ghosts</option><option>chat</option><option>signals</option></select><button id="load-records">Load records</button></div><pre id="records-output">Choose a record set.</pre></section>
+    <section><h2>Legacy archive</h2><div class="records-controls"><button id="load-legacy-manifest">Refresh archive metadata</button></div><pre id="legacy-manifest-output">Archive metadata is loaded on demand.</pre><div class="records-controls"><select id="legacy-record-kind"><option>profiles</option><option>scores</option><option>clans</option><option>contests</option><option>challenges</option><option>tips</option><option>ghosts</option><option>chat</option><option>signals</option></select><input id="legacy-page" type="number" min="1" value="1" aria-label="Legacy archive page" /><input id="legacy-page-size" type="number" min="1" max="100" value="50" aria-label="Legacy archive page size" /><button id="load-legacy-records">Load archived records</button></div><pre id="legacy-records-output">Choose an archived record set.</pre></section>
     <section><h2>Replace secret</h2><div class="secret-form"><select id="secret-key"><option>ADMIN_TOKEN</option><option>X_CLIENT_ID</option><option>X_CLIENT_SECRET</option><option>X_BEARER_TOKEN</option><option>XAI_API_KEY</option></select><input id="secret-value" type="password" autocomplete="off" placeholder="New value" /><button id="replace-secret">Stage replacement</button></div><p id="secret-status" role="status">Values are write-only and require restart.</p></section>
     <section><h2>Operations</h2><div class="operations"><button id="backup">Create snapshot backup</button><button id="export-diagnostics">Export diagnostics</button><button id="restart" ${data.restartSupported ? "" : "disabled"}>Restart service</button><p id="operation-status" role="status">No operation running.</p></div></section>
     <section><h2>Backup history</h2><div class="records-controls"><button id="load-backups">Refresh backups</button></div><pre id="backups-output">Backups are loaded on demand.</pre></section>
@@ -100,6 +101,8 @@ async function overview(): Promise<void> {
   root.querySelector<HTMLButtonElement>('#export-diagnostics')?.addEventListener('click', () => void exportDiagnostics());
   root.querySelector<HTMLButtonElement>('#restart')?.addEventListener('click', () => void requestRestart());
   root.querySelector<HTMLButtonElement>('#load-records')?.addEventListener('click', () => void loadRecords());
+  root.querySelector<HTMLButtonElement>('#load-legacy-manifest')?.addEventListener('click', () => void loadLegacyManifest());
+  root.querySelector<HTMLButtonElement>('#load-legacy-records')?.addEventListener('click', () => void loadLegacyRecords());
   root.querySelector<HTMLButtonElement>('#load-audit')?.addEventListener('click', () => void loadAudit());
   root.querySelector<HTMLButtonElement>('#replace-secret')?.addEventListener('click', () => void replaceSecret());
   root.querySelector<HTMLButtonElement>('#stage-config')?.addEventListener('click', () => void stageConfig());
@@ -161,6 +164,51 @@ async function loadRecords(): Promise<void> {
   }
   const body = await response.json() as { records: unknown };
   if (output) output.textContent = JSON.stringify(body.records, null, 2);
+}
+
+async function loadLegacyManifest(): Promise<void> {
+  const output = root.querySelector<HTMLElement>('#legacy-manifest-output');
+  if (output) output.textContent = 'Loading...';
+  const response = await adminFetch('/admin/api/legacy/manifest', token);
+  if (!response.ok) {
+    if (output) output.textContent = 'Could not load the legacy archive metadata.';
+    return;
+  }
+  const body = await response.json() as {
+    sourcePath: string;
+    snapshotVersion: number;
+    byteLength: number;
+    sha256: string;
+    backupCount: number;
+    lastVerifiedAt: number | null;
+    recordCounts: Record<string, number>;
+  };
+  if (output) {
+    output.textContent = [
+      `Original path: ${body.sourcePath}`,
+      `Snapshot version: ${body.snapshotVersion}`,
+      `Byte size: ${body.byteLength}`,
+      `SHA-256: ${body.sha256}`,
+      `Backup count: ${body.backupCount}`,
+      `Last verified: ${body.lastVerifiedAt === null ? 'not verified' : new Date(body.lastVerifiedAt).toISOString()}`,
+      `Record counts: ${JSON.stringify(body.recordCounts)}`,
+    ].join('\n');
+  }
+}
+
+async function loadLegacyRecords(): Promise<void> {
+  const kind = root.querySelector<HTMLSelectElement>('#legacy-record-kind')?.value ?? '';
+  const page = root.querySelector<HTMLInputElement>('#legacy-page')?.value ?? '1';
+  const pageSize = root.querySelector<HTMLInputElement>('#legacy-page-size')?.value ?? '50';
+  const output = root.querySelector<HTMLElement>('#legacy-records-output');
+  if (output) output.textContent = 'Loading...';
+  const response = await adminFetch(`/admin/api/legacy/records/${encodeURIComponent(kind)}?page=${encodeURIComponent(page)}&pageSize=${encodeURIComponent(pageSize)}`, token);
+  if (!response.ok) {
+    if (output) output.textContent = 'Could not load archived records.';
+    return;
+  }
+  const body = await response.json() as { records: unknown; page: number; pageSize: number; totalRecords: number; totalPages: number };
+  if (output) output.textContent = JSON.stringify(body, null, 2);
 }
 
 

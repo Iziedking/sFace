@@ -17,8 +17,30 @@ await check('health contract', async () => {
   const body = await response.json();
   requireValue([200, 503].includes(response.status), `unexpected status ${response.status}`);
   requireValue(typeof body.persistence?.status === 'string', 'persistence status missing');
+  requireValue(typeof body.relayPersistence?.status === 'string', 'Relay persistence status missing');
+  requireValue(body.relayWriterCount === 1, 'Relay must report exactly one writer');
   requireValue(body.capabilities && typeof body.capabilities === 'object', 'capabilities missing');
   return `${response.status} ${body.persistence.status}`;
+});
+await check('Relay bootstrap contract', async () => {
+  const response = await fetch(`${base}/relay/api/bootstrap`, { cache: 'no-store' });
+  const body = await response.json();
+  requireValue(response.ok, `received ${response.status}`);
+  requireValue(body.data && (body.data.mode === 'practice' || body.data.mode === 'competitive'), 'Relay bootstrap mode missing');
+  requireValue(typeof body.data.rewardsEnabled === 'boolean', 'Relay reward flag missing');
+  return `${body.data.mode} rewards=${body.data.rewardsEnabled}`;
+});
+await check('legacy mutation is archived', async () => {
+  const response = await fetch(`${base}/chat`, { method: 'POST', cache: 'no-store' });
+  const body = await response.json();
+  requireValue(response.status === 410 && body.error === 'legacy_experience_archived', `received ${response.status}`);
+  return '410 legacy_experience_archived';
+});
+await check('legacy archive requires admin', async () => {
+  const response = await fetch(`${base}/admin/api/legacy/manifest`, { cache: 'no-store' });
+  requireValue(response.status === 401, `expected 401, received ${response.status}`);
+  requireValue(response.headers.get('cache-control')?.includes('no-store'), 'archive response is cacheable');
+  return '401 no-store';
 });
 await check('browser security headers', async () => {
   const response = await fetch(`${base}/health`);

@@ -1,10 +1,10 @@
 {
-  "name": "sFace",
-  "short_name": "sFace",
-  "description": "Every day the worst-performing coin becomes a level. Fly its real chart and pull the faces out before the clock runs down.",
+  "name": "Sface: NIM Atlas",
+  "short_name": "NIM Atlas",
+  "description": "Sface is a Nimiq Pay Mini App game where you explore NIM Atlas, learn the payment network, and build what survives.",
   "start_url": "/",
   "display": "standalone",
-    "background_color": "#f4ede0",
+  "background_color": "#f4ede0",
   "theme_color": "#f4ede0",
   "icons": [
     { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
@@ -12,4 +12,3 @@
     { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
   ]
 }
-

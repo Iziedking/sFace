@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { extname, join } from 'node:path';
 
 const roots = ['.github', 'deploy', 'scripts', 'server', 'shared', 'src', 'tests'];
@@ -15,6 +15,7 @@ function filesUnder(path) {
 }
 
 const files = [...rootFiles, ...roots.flatMap(filesUnder)]
+  .filter((file) => existsSync(file))
   .filter((file) => textExtensions.has(extname(file)) || rootFiles.includes(file));
 const failures = [];
 

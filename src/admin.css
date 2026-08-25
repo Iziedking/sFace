@@ -20,6 +20,8 @@ article strong { font-size: 1.15rem; }
 .operations { display: flex; align-items: center; gap: 16px; margin: 20px 0 40px; }
 .operations p { margin: 0; color: #93998f; }
 .records-controls { display: flex; gap: 12px; margin: 20px 0 12px; }
+.records-controls { flex-wrap: wrap; }
+.records-controls input[type="number"] { width: 8rem; }
 select { border: 1px solid #4b5147; background: #0d0e0c; color: inherit; padding: .75rem; }
 pre { max-height: 420px; overflow: auto; border: 1px solid #343831; background: #0d0e0c; padding: 18px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .secret-form { display: grid; grid-template-columns: minmax(160px, .8fr) minmax(220px, 1.5fr) auto; gap: 12px; margin: 20px 0 10px; }
