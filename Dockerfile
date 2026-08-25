@@ -24,6 +24,7 @@ RUN npm ci --omit=dev
 # server tsconfig having no DOM lib.
 COPY tsconfig.server.json ./
 COPY server ./server
+COPY shared ./shared
 COPY src ./src
 
 # The snapshot lives on a volume. Without this it lands in the working
