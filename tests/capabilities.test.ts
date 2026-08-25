@@ -6,6 +6,7 @@ describe('effective capability health', () => {
   it('reports optional subsystems without exposing configuration values', () => {
     const capabilities = buildCapabilities({
       persistence: true,
+      relayPersistence: false,
       anchor: false,
       xOAuth: true,
       xRead: false,

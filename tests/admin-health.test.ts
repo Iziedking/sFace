@@ -13,4 +13,16 @@ describe('effective health assembly', () => {
     expect(result.capabilities.persistence.enabled).toBe(false);
     expect(result.capabilities.persistence.required).toBe(true);
   });
+
+  it('exposes Relay persistence separately and makes it the required Relay capability', () => {
+    const result = effectiveHealth({
+      persistence: { status: 'healthy', lastError: null, lastSuccessfulWriteAt: 90 },
+      relayPersistence: { status: 'degraded', lastError: 'relay_snapshot_write_failed', lastSuccessfulWriteAt: null },
+      anchor: false, xOAuth: false, xRead: false, xSense: false, signals: false,
+      corsRestricted: true, trustedProxy: true,
+    });
+
+    expect(result.relayPersistence.status).toBe('degraded');
+    expect(result.capabilities.relayPersistence).toEqual({ enabled: false, required: true });
+  });
 });

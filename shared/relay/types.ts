@@ -37,6 +37,7 @@ export interface RelayResult {
 export interface RelayRunRecord {
   id: string;
   actorId: string;
+  ticketId: string;
   walletAddress: string;
   missionDate: string;
   ruleset: RelayRulesetVersion;

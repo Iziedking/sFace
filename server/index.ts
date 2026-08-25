@@ -13,6 +13,7 @@
 
 import { networkOf, NETWORK_HEADER } from './network';
 import express from 'express';
+import { join } from 'node:path';
 import { z } from 'zod';
 import { parseAllowedOrigins } from './cors';
 import { createRateLimiter } from './rate-limit';
@@ -71,6 +72,27 @@ import * as chat from './chat';
 import * as tips from './tips';
 import { claimMessage, mergeClaimMessage, verifyClaim, verifyMessage } from './attest';
 import { levelFacts, refuse } from './verify';
+import { getRelayPersistenceHealth, loadRelayState } from './relay/store';
+import { parseRelayConfig } from './relay/config';
+import { createRelayDailyService } from './relay/daily';
+import { createRelayTicketService } from './relay/tickets';
+import { createRelayApi, mountRelayRoutes } from './relay/routes';
+import { getRelayStore } from './relay/store';
+import { createRelayWalletBindingService } from './relay/wallet-bindings';
+import { createRelayRepository } from './relay/repository';
+import { createRelayTraceStore } from './relay/traces';
+import { createRelayWorldService } from './relay/world';
+import { createRelayLeaderboardService } from './relay/leaderboard';
+import { createRelayRewardService } from './relay/rewards';
+import { createAtlasApi, mountAtlasRoutes } from './atlas/routes';
+import { ATLAS_CURRICULUM } from '../shared/atlas/manifest';
+import { createNimiqRelayChainReader } from './relay/chain';
+import { createRelayPayoutService } from './relay/payouts';
+import { mountRelayAdminRoutes } from './relay/admin-routes';
+import { legacyConfig } from './legacy/mode';
+import { mountLegacyArchiveRoutes } from './legacy/archive-routes';
+import { legacyMutationMiddleware } from './legacy/mode';
+import { assertSingleRelayWriter } from './relay/writer';
 
 const PORT = Number(process.env.PORT ?? 8790);
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
@@ -79,6 +101,10 @@ const ALLOWED_ORIGINS = parseAllowedOrigins(process.env.ALLOWED_ORIGINS ?? '', I
 const TRUST_PROXY = process.env.TRUST_PROXY === 'true';
 const ADMIN_CONFIG = adminConfig();
 const ADMIN_NONCES = new OperationNonces(60_000);
+const RELAY_CONFIG = parseRelayConfig();
+const LEGACY_CONFIG = legacyConfig();
+const DATA_DIR = process.env.DATA_DIR ?? join(process.cwd(), '.data');
+const RELAY_WRITER_COUNT = assertSingleRelayWriter();
 
 /**
  * Where anchored runs are sent, and which chain counts.
@@ -108,7 +134,19 @@ installHttpBoundary(app, {
   networkHeader: NETWORK_HEADER,
 });
 const rateLimiter = createRateLimiter();
+const relayDaily = createRelayDailyService({ store: getRelayStore(), seasonId: RELAY_CONFIG.seasonId });
+const relayTickets = createRelayTicketService({ store: getRelayStore(), daily: relayDaily });
+const relayWalletBindings = createRelayWalletBindingService({ store: getRelayStore() });
+const relayRepository = createRelayRepository({ store: getRelayStore(), traces: createRelayTraceStore({ directory: getRelayStore().paths.traces }) });
+const relayWorld = createRelayWorldService({ store: getRelayStore() });
+const relayLeaderboard = createRelayLeaderboardService({ runs: async () => Object.values((await getRelayStore().load()).verifiedRuns) });
+const relayRewards = createRelayRewardService({ store: getRelayStore(), fundedAllocationLuna: RELAY_CONFIG.seasonAllocationLuna });
+const relayChain = createNimiqRelayChainReader({ network: RELAY_CONFIG.network, rpcUrls: RELAY_CONFIG.rpcUrls, minConfirmations: RELAY_CONFIG.minConfirmations });
+const relayPayouts = createRelayPayoutService({ store: getRelayStore(), chain: relayChain, treasuryAddress: RELAY_CONFIG.treasuryAddress ?? '', minConfirmations: RELAY_CONFIG.minConfirmations, network: RELAY_CONFIG.network });
 installRequestLogging(app, { record: recordAdminLog });
+mountRelayRoutes({ app, limit: rateLimiter.limit, api: createRelayApi({ config: RELAY_CONFIG, tickets: relayTickets, walletBindings: relayWalletBindings, daily: relayDaily, repository: relayRepository, actorExists: (actorId) => playerAuth.hasCredential(actorId), world: relayWorld, leaderboard: relayLeaderboard, rewards: relayRewards }) });
+mountAtlasRoutes({ app, limit: rateLimiter.limit, api: createAtlasApi({ curriculum: ATLAS_CURRICULUM, competitiveExpeditions: false }) });
+app.use(['/chat', '/tips', '/tips/seen', '/board', '/board/anchor', '/board/sign', '/contests', '/clans/join', '/signals/unlock', '/profile/merge'], legacyMutationMiddleware(LEGACY_CONFIG));
 const provesActor = createActorVerifier(playerAuth);
 
 // Schemas ------------------------------------------------------------------
@@ -352,6 +390,8 @@ const unlockBody = z.object({
 function currentHealth() {
   return effectiveHealth({
     persistence: getPersistenceHealth(),
+    relayPersistence: getRelayPersistenceHealth(),
+    relayWriterCount: RELAY_WRITER_COUNT,
     anchor: anchor.isAnchorAddress(ANCHOR_ADDRESS),
     xOAuth: xauth.xauthConfigured(),
     xRead: xpostsConfigured() && xusersConfigured(),
@@ -374,8 +414,10 @@ mountSystemRoutes({ app, limit: rateLimiter.limit, health: currentHealth, date: 
 mountAdminObservabilityRoutes({ app, limit: rateLimiter.limit, requireAdmin, logs: adminLogs, record: recordAdminLog });
 mountAdminOperationsRoutes({ app, limit: rateLimiter.limit, requireAdmin, nonces: ADMIN_NONCES, backup: backupSnapshot, listBackups, diagnostics: buildDiagnosticBundle, health: currentHealth, config: configInventory, logs: adminLogs, record: recordAdminLog, date: utcDate, rateLimitCount: () => rateLimiter.count(), commit: process.env.GIT_COMMIT ?? null, restartSupported: process.env.ADMIN_RESTART_ENABLED === 'true', restart: () => { const timer = setTimeout(() => process.kill(process.pid, 'SIGTERM'), 250); timer.unref(); } });
 mountAdminReadRoutes({ app, limit: rateLimiter.limit, requireAdmin, logs: adminLogs, record: recordAdminLog, sources: { profiles: profiles.serialise, scores: board.serialise, clans: clans.serialise, contests: contests.serialise, challenges: challenges.serialise, tips: tips.serialise, ghosts: ghosts.serialise, chat: chat.serialise, signals: signals.serialise } });
+mountLegacyArchiveRoutes({ app, limit: rateLimiter.limit, requireAdmin, dataDirectory: DATA_DIR, adminReadsEnabled: LEGACY_CONFIG.adminReadsEnabled, sources: { profiles: profiles.serialise, scores: board.serialise, clans: clans.serialise, contests: contests.serialise, challenges: challenges.serialise, tips: tips.serialise, ghosts: ghosts.serialise, chat: chat.serialise, signals: signals.serialise }, record: recordAdminLog });
 mountAdminConfigRoutes({ app, limit: rateLimiter.limit, requireAdmin, nonces: ADMIN_NONCES, inventory: configInventory, record: recordAdminLog });
 mountAdminOverviewRoutes({ app, limit: rateLimiter.limit, requireAdmin, health: currentHealth, inventory: configInventory, date: utcDate, commit: process.env.GIT_COMMIT ?? null, uptimeSeconds: () => Math.floor(process.uptime()), restartSupported: process.env.ADMIN_RESTART_ENABLED === 'true' });
+mountRelayAdminRoutes({ app, limit: rateLimiter.limit, requireAdmin, nonces: ADMIN_NONCES, payouts: relayPayouts, rewards: relayRewards });
 mountPlayerAuthRoutes({ app, limit: rateLimiter.limit, auth: playerAuth, save: () => scheduleSave(snapshot) });
 mountLeaderboardReadRoutes({ app, limit: rateLimiter.limit });
 mountCommunityReadRoutes({ app, limit: rateLimiter.limit });
@@ -1439,6 +1481,8 @@ function snapshot() {
 
 async function main(): Promise<void> {
   await initialiseAdminLogs();
+  await loadRelayState();
+  await relayDaily.load();
   const loaded = await loadSnapshot();
   if (!loaded.ok) {
     throw new Error(`Persistence startup failed: ${loaded.error}. Refusing to boot with empty state.`);

@@ -160,3 +160,23 @@ assist, signed scores, published signatures. An escrow would let it settle itsel
 instead of depending on the loser being honest.
 
 Everything else on this list is a workaround we already have. That one is a wall.
+
+## 7. Transaction return-shape disagreement recorded on 2026-08-24
+
+The installed `@nimiq/mini-app-sdk@0.1.0` declaration says
+`sendBasicTransactionWithData()` resolves with a serialized transaction string.
+The current provider documentation describes the transaction methods as returning
+a transaction hash. The installed declaration and the documentation therefore do
+not agree on whether a string is serialized transaction data or a hash.
+
+Relay keeps this disagreement behind `src/relay/nimiq/transaction-result.ts`.
+Every string is classified as `ambiguous`; it is never treated as chain proof.
+Only an authoritative chain observer may move a payment or payout from pending to
+verified. A wallet reply, serialized transaction, payer report, or hash is evidence
+to reconcile, not proof of payment.
+
+The signing surface does agree: `sign()` returns `{ publicKey, signature }`, and
+Relay verifies that signature with `@nimiq/core` against the canonical binding
+message. The wallet address returned by `listAccounts()` is used as a display and
+request input only; it is not a binding until the public key derives the same
+address and the signature verifies.
