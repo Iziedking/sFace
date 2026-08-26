@@ -9,13 +9,13 @@ import { ATLAS_PROLOGUE } from '../../shared/atlas/prologue';
 import type { AtlasRole } from '../../shared/atlas/types';
 import { LAST_LANTERN, createLastLanternState, replayLastLantern, type LastLanternAction, type LastLanternState } from '../../shared/atlas/adventures/last-lantern';
 import { ATLAS_KNOWLEDGE_BOOK, createKnowledgeBookState, gradeKnowledgeTeachBack, unlockKnowledgeFragment, type KnowledgeBookState } from '../../shared/atlas/knowledge';
-import { ATLAS_DAILY_CHALLENGES } from '../../shared/atlas/daily';
 import { ATLAS_EVERGREEN_ADVENTURES, replayEvergreenAdventure, type EvergreenAction, type EvergreenAdventure, type EvergreenState } from '../../shared/atlas/adventures/evergreen';
 import { ATLAS_MAINNET_SHOP_ITEMS } from '../../shared/atlas/shop';
 import { createAtlasApiClient } from './api';
 import { createAtlasWalletAdapter } from './wallet';
 import { executeAtlasPayment, AtlasPaymentError } from './payment-flow';
 import { readAtlasClientPaymentConfig } from './payment-config';
+import { dailyChallengeChoices, dailyRetryHint, evergreenTeachBackChoices, formatDailyChoice, selectDailyChallenge } from './product-model';
 
 const TICK_MS = 1_000 / 30;
 
@@ -36,7 +36,7 @@ class AtlasApp {
   private readonly progress = createAtlasProgressStore(safeStorage());
   private readonly paymentConfig = readAtlasClientPaymentConfig();
   private readonly wallet = createAtlasWalletAdapter();
-  private readonly api = createAtlasApiClient();
+  private readonly api = createAtlasApiClient({ baseUrl: import.meta.env.VITE_API_BASE ?? '' });
   private readonly sessionActorId = getAtlasSessionActorId(safeStorage());
   private selectedRole: AtlasRole = this.progress.load().activeRole;
   private screen: 'welcome' | 'lantern' | 'playing' | 'trial' | 'book' | 'daily' | 'evergreen' | 'complete' = 'welcome';
@@ -57,6 +57,9 @@ class AtlasApp {
   private evergreenNotice = '';
   private paymentNotice = '';
   private paymentBusy = false;
+  private atlasServiceStatus: 'loading' | 'local-first' | 'unavailable' = 'loading';
+  private atlasBeaconStatus: 'loading' | 'live' | 'stale' | 'unavailable' = 'loading';
+  private atlasContributorCount = 0;
   private liveOrderId: string | null = null;
   private liveLookup: string | null = null;
   private objectiveHeading: HTMLElement | null = null;
@@ -76,8 +79,38 @@ class AtlasApp {
 
   boot(): void {
     if ('serviceWorker' in navigator) void navigator.serviceWorker.register('/service-worker.js', { scope: '/' }).catch(() => undefined);
-    this.renderer.draw(this.state, genesisObjective(this.state));
+    this.renderer.drawHarbor('street', this.selectedRole);
     this.renderWelcome();
+    void this.loadAtlasStatus();
+  }
+
+  private async loadAtlasStatus(): Promise<void> {
+    const [bootstrap, beacon] = await Promise.allSettled([this.api.getBootstrap(), this.api.getBeacon()]);
+    this.atlasServiceStatus = bootstrap.status === 'fulfilled' ? bootstrap.value.campaignMode : 'unavailable';
+    if (beacon.status === 'fulfilled') {
+      this.atlasBeaconStatus = beacon.value.status;
+      this.atlasContributorCount = beacon.value.verifiedContributorCount;
+    } else {
+      this.atlasBeaconStatus = 'unavailable';
+      this.atlasContributorCount = 0;
+    }
+    if (this.screen === 'welcome') this.renderWelcome();
+  }
+
+  private returnHome = (): void => {
+    this.screen = 'welcome';
+    this.suspended = false;
+    this.renderer.drawHarbor('street', this.selectedRole);
+    this.renderWelcome();
+  };
+
+  private screenNav(context: string): HTMLElement {
+    const nav = element('nav', 'atlas-screen-nav');
+    nav.setAttribute('aria-label', 'Atlas navigation');
+    const home = actionButton('Atlas home', this.returnHome, 'Return to NIM Atlas home');
+    const location = element('span', '', `${this.selectedRole.toUpperCase()} / ${context.toUpperCase()}`);
+    nav.append(home, location);
+    return nav;
   }
 
   private startGarden = (): void => {
@@ -108,15 +141,16 @@ class AtlasApp {
 
   private renderWelcome(): void {
     this.ui.replaceChildren();
-    const panel = element('section', 'atlas-panel atlas-welcome');
+    this.renderer.drawHarbor('street', this.selectedRole);
+    const panel = element('section', 'atlas-panel atlas-welcome atlas-home');
     const eyebrow = element('p', 'atlas-eyebrow', 'SFACE / NIM ATLAS');
-    const heading = element('h1', '', 'Welcome to NIM Atlas');
-    const tagline = element('p', 'atlas-tagline', 'Explore the network. Build what survives.');
-    const identity = element('p', 'atlas-identity', 'Sface is a Nimiq Pay Mini App game where you explore NIM Atlas, learn the payment network, and build what survives.');
+    const heading = element('h1', '', 'Keep Pay Harbor alive');
+    const tagline = element('p', 'atlas-tagline', 'Learn Nimiq Pay by using it in an adventure with a consequence you can see.');
+    const identity = element('p', 'atlas-identity', 'Sface is a Nimiq Pay Mini App game. NIM Atlas is its living network: people need help, payment routes must be understood, and every safe action changes the world.');
     const mission = element('div', 'atlas-mission-card');
     mission.append(
-      element('strong', '', 'Meet Mara / Pay Harbor'),
-      element('p', '', 'Mara keeps the harbor market alive. Its lantern is out, and she needs one safe NIM payment route restored before the evening market opens.'),
+      element('strong', '', 'Your first consequence / The Last Lantern'),
+      element('p', '', 'Mara keeps Pay Harbor open. Restore one safe NIM payment route, carry the lantern to its tower, and bring the evening market back to life.'),
     );
     const roles = element('div', 'atlas-role-choice');
     roles.append(element('strong', '', 'CHOOSE YOUR FIRST PATH'));
@@ -128,16 +162,27 @@ class AtlasApp {
         this.renderWelcome();
       }, `Choose ${role.title} path`);
       button.className = `atlas-role atlas-role-${role.id}${this.selectedRole === role.id ? ' is-selected' : ''}`;
-      roleButtons.append(button, element('p', 'atlas-role-description', role.description));
+      button.setAttribute('aria-pressed', String(this.selectedRole === role.id));
+      roleButtons.append(button);
     }
-    roles.append(roleButtons);
-    const promise = element('p', 'atlas-quiet', 'Play the full learning path without a wallet. Nimiq Pay is the live payment gate when you choose to restore the harbor.');
+    const activeRole = ATLAS_PROLOGUE.roles.find((role) => role.id === this.selectedRole)!;
+    roles.append(roleButtons, element('p', 'atlas-role-description', activeRole.description));
+    const promise = element('p', 'atlas-quiet', this.selectedRole === 'builder' ? 'Begin in the provider workshop. Repair consent, exact units, and authoritative confirmation before the lantern route can open.' : 'Begin in Mara\'s shop. Inspect a real item, review the exact request, and unlock it only after authoritative confirmation.');
     const start = actionButton('Meet Mara', this.startLantern, 'Meet Mara in Pay Harbor');
+    start.classList.add('atlas-start');
     const book = actionButton('Open Living Knowledge Book', this.openKnowledgeBook, 'Open Living Knowledge Book');
     const daily = actionButton('Play today\'s Atlas puzzle', this.openDailyPuzzle, 'Play today\'s Atlas puzzle');
     const districts = actionButton('Walk the District Atlas', this.openEvergreen, 'Walk the evergreen District Atlas');
+    const primary = element('div', 'atlas-home-primary');
+    primary.append(mission, roles, promise, start);
+    const introduction = element('div', 'atlas-home-intro');
+    introduction.append(eyebrow, heading, tagline, identity);
+    const homeGrid = element('div', 'atlas-home-grid');
+    homeGrid.append(introduction, primary);
+    const quick = element('div', 'atlas-quick-grid');
+    quick.append(daily, book, districts);
     const saved = this.progress.load().completedAdventureIds.includes('genesis-garden');
-    panel.append(eyebrow, heading, tagline, identity, mission, roles, promise, start, book, daily, districts, this.renderLeaderboards(), this.renderBeaconStatus(), this.renderShopCatalog());
+    panel.append(homeGrid, quick, this.renderStatusDrawer());
     if (saved) panel.append(element('p', 'atlas-saved', 'Garden seal saved on this device. You can replay it.'));
     this.ui.append(panel);
   }
@@ -147,9 +192,9 @@ class AtlasApp {
     section.setAttribute('aria-label', 'Network Beacon');
     section.append(
       element('strong', '', 'NETWORK BEACON'),
-      element('p', 'atlas-beacon-status', 'UNAVAILABLE / SERVER PROJECTION'),
-      element('p', 'atlas-quiet', 'No verified community progress yet'),
-      element('p', 'atlas-quiet', 'District systems will change only after the server projects verified eligible best daily deltas.'),
+      element('p', `atlas-beacon-status is-${this.atlasBeaconStatus}`, `${this.atlasBeaconStatus.toUpperCase()} / SERVER PROJECTION`),
+      element('p', 'atlas-quiet', this.atlasBeaconStatus === 'live' ? `${this.atlasContributorCount.toLocaleString()} verified contributors projected by the server.` : 'Verified shared-world progress is not available in this build. No progress is being invented locally.'),
+      element('p', 'atlas-quiet', `Atlas service: ${this.atlasServiceStatus}. District systems change only after the server projects verified eligible best daily deltas.`),
     );
     const systems = element('div', 'atlas-beacon-systems');
     for (const district of ['GENESIS GARDEN', 'LIGHT FOREST', 'PAY HARBOR', 'ALBATROSS CAUSEWAY', 'VALIDATOR PEAKS', 'BUILDER CITY']) {
@@ -184,15 +229,23 @@ class AtlasApp {
   private renderLeaderboards(): HTMLElement {
     const board = element('section', 'atlas-leaderboards');
     board.setAttribute('aria-label', 'Verified Atlas leaderboards');
-    board.append(element('strong', '', 'VERIFIED PLAY / SEPARATE PATHS'), element('p', 'atlas-quiet', 'Explorer and Builder scores are ranked separately. The public board never invents a score or reward.' ));
+    board.append(element('strong', '', 'VERIFIED PLAY / SEPARATE PATHS'), element('p', 'atlas-quiet', 'Explorer and Builder scores are ranked separately. Public ranking is not connected in this build, so the interface shows no names, scores, or rewards.' ));
     const tracks = element('div', 'atlas-leaderboard-grid');
     for (const title of ['EXPLORER LEADERBOARD', 'BUILDER LEADERBOARD']) {
       const card = element('article', 'atlas-leaderboard-card');
-      card.append(element('strong', '', title), element('p', '', 'No verified scores yet'), element('small', '', 'Server-verified runs appear here after replay checks.'));
+      card.append(element('strong', '', title), element('p', '', 'BOARD UNAVAILABLE'), element('small', '', 'Server-verified runs will appear here only after replay checks and the leaderboard read API are enabled.'));
       tracks.append(card);
     }
     board.append(tracks);
     return board;
+  }
+
+  private renderStatusDrawer(): HTMLElement {
+    const drawer = document.createElement('details');
+    drawer.className = 'atlas-status-drawer';
+    const summary = element('summary', '', 'Verified world, rankings, and optional expansions');
+    drawer.append(summary, this.renderLeaderboards(), this.renderBeaconStatus(), this.renderShopCatalog());
+    return drawer;
   }
 
   private startLantern = (): void => {
@@ -220,24 +273,24 @@ class AtlasApp {
 
   private renderDailyPuzzle(): void {
     this.ui.replaceChildren();
-    const challenge = ATLAS_DAILY_CHALLENGES[0]!;
+    const challenge = selectDailyChallenge(new Date());
     const panel = element('section', 'atlas-panel atlas-daily');
     panel.setAttribute('aria-label', 'Daily Atlas puzzle');
     panel.append(
+      this.screenNav('Daily puzzle'),
       element('p', 'atlas-eyebrow', 'DAILY ATLAS PUZZLE'),
-      element('h1', '', 'Make the lantern exact'),
-      element('p', 'atlas-book-sequence', 'LEARN / SOLVE / VERIFY'),
+      element('h1', '', challenge.title),
+      element('p', 'atlas-book-sequence', `DAY ${challenge.day} OF 28 / ${challenge.theme.toUpperCase()} / LEARN / SOLVE / VERIFY`),
       element('p', 'atlas-trial-copy', challenge.prompt),
-      element('p', 'atlas-lantern-mode', 'FREE CORE / ONE LOCAL PRACTICE ATTEMPT'),
+      element('p', 'atlas-lantern-mode', 'FREE CORE / LOCAL PRACTICE / SERVER VERIFICATION REQUIRED FOR REWARDS'),
     );
     const choices = element('div', 'atlas-daily-choices');
-    for (const answer of ['120000', '1200000', '12000000']) choices.append(actionButton(`${Number(answer).toLocaleString()} Lunas`, () => {
-      this.dailyNotice = answer === challenge.answer ? 'Correct locally. Reward share appears only after server verification.' : 'Not yet. Return to the Knowledge Book and check the Luna conversion.';
+    for (const answer of dailyChallengeChoices(challenge)) choices.append(actionButton(formatDailyChoice(answer), () => {
+      this.dailyNotice = answer === challenge.answer ? 'Correct locally. Reward share appears only after server verification.' : dailyRetryHint(challenge);
       this.renderDailyPuzzle();
-    }, `Answer ${Number(answer).toLocaleString()} Lunas`));
+    }, `Answer ${formatDailyChoice(answer)}`));
     panel.append(choices);
     if (this.dailyNotice) panel.append(element('p', this.dailyNotice.startsWith('Correct') ? 'atlas-builder-success' : 'atlas-lantern-error', this.dailyNotice));
-    panel.append(actionButton('Return to Mara', this.startLantern, 'Return to Mara'));
     this.ui.append(panel);
   }
 
@@ -265,32 +318,37 @@ class AtlasApp {
       this.evergreenActions = actions;
       this.evergreenNotice = '';
     } catch (error) {
-      this.evergreenNotice = error instanceof Error ? error.message : 'That district step could not continue.';
+      this.evergreenNotice = action.type === 'teach-back'
+        ? 'That rule does not explain this consequence yet. Revisit what changed in the district and try again.'
+        : error instanceof Error ? error.message : 'That district step could not continue.';
     }
     this.renderEvergreen();
   };
 
   private renderEvergreen(): void {
     this.ui.replaceChildren();
+    this.renderer.drawDistrict(this.evergreenAdventure.districtId, this.evergreenState.phase === 'completed');
     const panel = element('section', 'atlas-panel atlas-evergreen');
     panel.setAttribute('aria-label', 'Evergreen District Atlas');
     panel.append(
+      this.screenNav('District Atlas'),
       element('p', 'atlas-eyebrow', 'DISTRICT ATLAS / EVERGREEN ADVENTURES'),
       element('h1', '', 'Walk the living network'),
       element('p', 'atlas-trial-copy', 'Meet a human need, use a Nimiq concept in the world, see the consequence, then teach the rule back without the Book.'),
       element('p', 'atlas-book-sequence', 'ENCOUNTER / ACT / CONSEQUENCE / TRANSFER / TEACH-BACK'),
     );
-    const map = element('div', 'atlas-district-list');
+    const map = element('div', 'atlas-district-tabs');
     for (const adventure of ATLAS_EVERGREEN_ADVENTURES) {
-      const card = element('article', `atlas-district-card${adventure.id === this.evergreenAdventure.id ? ' is-selected' : ''}`);
-      card.append(element('strong', '', adventure.title), element('p', '', adventure.humanNeed), element('small', '', `${adventure.location} / ${adventure.districtId.toUpperCase()}`));
-      card.append(actionButton(adventure.id === this.evergreenAdventure.id ? 'District selected' : `Enter ${adventure.districtId}`, () => this.chooseEvergreen(adventure), `Enter ${adventure.title}`));
-      map.append(card);
+      const selected = adventure.id === this.evergreenAdventure.id;
+      const tab = actionButton(adventure.districtId.replace(/-/g, ' '), () => this.chooseEvergreen(adventure), `Enter ${adventure.title}`);
+      tab.className = `atlas-district-tab${selected ? ' is-selected' : ''}`;
+      tab.setAttribute('aria-pressed', String(selected));
+      map.append(tab);
     }
     panel.append(map);
     const adventure = this.evergreenAdventure;
     const journey = element('div', 'atlas-evergreen-journey');
-    journey.append(element('p', 'atlas-trial-context', `${adventure.title.toUpperCase()} / ${this.evergreenState.phase.toUpperCase()}`), element('p', 'atlas-trial-copy', adventure.problem), element('p', 'atlas-builder-boundary', `VISIBLE CONSEQUENCE: ${this.evergreenState.consequence} ${adventure.consequence.visible}`));
+    journey.append(element('p', 'atlas-trial-context', `${adventure.title.toUpperCase()} / ${this.evergreenState.phase.toUpperCase()}`), element('p', 'atlas-human-need', adventure.humanNeed), element('p', 'atlas-trial-copy', adventure.problem), element('p', 'atlas-builder-boundary', `VISIBLE CONSEQUENCE: ${this.evergreenState.consequence} ${adventure.consequence.visible}`));
     if (this.evergreenState.phase === 'arrival') {
       journey.append(actionButton('Observe the problem', () => this.advanceEvergreen({ type: 'observe' }), 'Observe the district problem'));
     } else if (this.evergreenState.phase === 'observed') {
@@ -298,13 +356,17 @@ class AtlasApp {
       journey.append(actionButton(this.selectedRole === 'builder' ? 'Run Builder repair' : 'Take Explorer action', () => this.advanceEvergreen({ type: 'act', role: this.selectedRole }), `Run ${this.selectedRole} action`));
     } else if (this.evergreenState.phase === 'acted') {
       const step = this.evergreenState.teachBack.length + 1;
-      const answer = adventure.teachBack[this.evergreenState.teachBack.length]!;
-      journey.append(element('p', 'atlas-evergreen-role', `TRANSFER / TEACH-BACK ${step} OF ${adventure.teachBack.length}: explain the next rule in your own route.`), actionButton(answer.toUpperCase(), () => this.advanceEvergreen({ type: 'teach-back', answer }), `Teach back ${answer}`));
+      journey.append(element('p', 'atlas-evergreen-role', `TRANSFER / TEACH-BACK ${step} OF ${adventure.teachBack.length}: choose the rule the consequence demonstrated.`));
+      const choices = element('div', 'atlas-evergreen-choices');
+      for (const choice of evergreenTeachBackChoices(adventure, this.evergreenState.teachBack.length)) {
+        choices.append(actionButton(choice.toUpperCase(), () => this.advanceEvergreen({ type: 'teach-back', answer: choice }), `Teach back ${choice}`));
+      }
+      journey.append(choices);
     } else {
       journey.append(element('div', 'atlas-builder-success', `DISTRICT RESTORED / ${adventure.consequence.after}`), element('p', 'atlas-quiet', 'This local seal records learning only. Server verification is required before any score, rank, or reward claim.'));
     }
     if (this.evergreenNotice) journey.append(element('p', 'atlas-lantern-error', this.evergreenNotice));
-    panel.append(journey, actionButton('Open Living Knowledge Book', this.openKnowledgeBook, 'Open Living Knowledge Book'), actionButton('Return to Mara', this.startLantern, 'Return to Mara'));
+    panel.append(journey, actionButton('Open Living Knowledge Book', this.openKnowledgeBook, 'Open Living Knowledge Book'));
     this.ui.append(panel);
   }
 
@@ -342,6 +404,7 @@ class AtlasApp {
     const panel = element('section', 'atlas-panel atlas-book');
     panel.setAttribute('aria-label', 'Living Knowledge Book');
     panel.append(
+      this.screenNav('Knowledge Book'),
       element('p', 'atlas-eyebrow', 'LIVING KNOWLEDGE BOOK'),
       element('h1', '', 'Carry the rules, not the jargon'),
       element('p', 'atlas-trial-copy', 'Fragments are tools for the adventure. Learn a rule, use it in a route, then close the Book and teach it back.'),
@@ -349,11 +412,13 @@ class AtlasApp {
       element('p', 'atlas-lantern-mode', this.bookOpen ? 'FREE CORE / NO PRIZE ADVANTAGE' : 'BOOK CLOSED / TEACH-BACK'),
     );
     if (this.bookOpen) {
+      panel.append(element('p', 'atlas-book-progress', `${this.knowledgeState.fragmentIds.length} OF ${ATLAS_KNOWLEDGE_BOOK.fragments.length} FRAGMENTS CARRIED`));
       const list = element('div', 'atlas-book-list');
       for (const fragment of ATLAS_KNOWLEDGE_BOOK.fragments) {
-        const card = element('article', 'atlas-book-card');
+        const card = document.createElement('details');
+        card.className = 'atlas-book-card atlas-fragment-details';
         const collected = this.knowledgeState.fragmentIds.includes(fragment.id);
-        card.append(element('strong', '', `${fragment.title}${collected ? ' / COLLECTED' : ''}`), element('p', '', fragment.summary), element('p', 'atlas-book-example', `TRY IT: ${fragment.example}`), element('p', 'atlas-book-failure', `IF MISSED: ${fragment.failure}`));
+        card.append(element('summary', '', `${fragment.title}${collected ? ' / COLLECTED' : ''}`), element('p', '', fragment.summary), element('p', 'atlas-book-example', `TRY IT: ${fragment.example}`), element('p', 'atlas-book-failure', `IF MISSED: ${fragment.failure}`));
         card.append(actionButton(collected ? 'Fragment carried' : 'Carry fragment', () => this.collectKnowledge(fragment.id), `Carry ${fragment.title} fragment`));
         list.append(card);
       }
@@ -362,7 +427,7 @@ class AtlasApp {
       panel.append(element('div', 'atlas-builder-success', 'TEACH-BACK COMPLETE / KNOWLEDGE ACTIVE'), element('p', 'atlas-quiet', this.teachBackNotice), actionButton('Open Book again', this.openKnowledgeBook, 'Open Living Knowledge Book again'), actionButton('Return to Mara', this.startLantern, 'Return to Mara'));
     } else {
       const stepId = ATLAS_KNOWLEDGE_BOOK.teachBackOrder[this.teachBackStep]!;
-      panel.append(element('p', 'atlas-builder-progress', `TEACH-BACK STEP ${this.teachBackStep + 1} OF 5 / NAME THE NEXT MOVE`), element('p', 'atlas-trial-copy', `Mara presents a new payment route. Which principle comes next: ${stepId.toUpperCase()}?`));
+      panel.append(element('p', 'atlas-builder-progress', `TEACH-BACK STEP ${this.teachBackStep + 1} OF 5 / NAME THE NEXT MOVE`), element('p', 'atlas-trial-copy', knowledgeTeachBackPrompt(stepId)));
       const choices = element('div', 'atlas-book-choices');
       for (const choice of ATLAS_KNOWLEDGE_BOOK.teachBackOrder) choices.append(actionButton(choice.toUpperCase(), () => this.answerTeachBack(choice), `Answer ${choice}`));
       panel.append(choices);
@@ -387,9 +452,11 @@ class AtlasApp {
 
   private renderLantern(notice = ''): void {
     this.ui.replaceChildren();
+    this.renderer.drawHarbor(this.lanternState.phase, this.selectedRole);
     const panel = element('section', 'atlas-panel atlas-lantern');
     panel.setAttribute('aria-label', 'The Last Lantern local practice');
     panel.append(
+      this.screenNav('Pay Harbor'),
       element('p', 'atlas-eyebrow', 'PAY HARBOR / THE LAST LANTERN'),
       element('h1', '', 'Keep the harbor open'),
       element('p', 'atlas-trial-copy', this.selectedRole === 'builder' ? 'Repair Mara\'s payment route: provider request, exact Lunas, then authoritative confirmation.' : 'Walk through Mara\'s shop, review a NIM payment, and carry the lantern to the harbor tower.'),
@@ -425,6 +492,7 @@ class AtlasApp {
     const phase = this.lanternState.phase;
     if (phase === 'street') return actionButton('Enter Pay Harbor shop', () => this.advanceLantern({ type: 'enter-shop' }), 'Enter Pay Harbor shop');
     if (phase === 'shop') return actionButton('Inspect the harbor lantern', () => this.advanceLantern({ type: 'select-lantern' }), 'Inspect the harbor lantern');
+    if (phase === 'selected' && this.selectedRole === 'builder') return actionButton('Open provider workshop', this.startBuilderRepair, 'Open the Pay Harbor provider workshop');
     if (phase === 'selected') return actionButton('Review payment request', () => this.advanceLantern({ type: 'review-request', request: this.currentLanternRequest() }), 'Review payment request');
     if (phase === 'review' && this.lanternState.mode === 'live') return this.paymentButton('Pay with Nimiq Pay', this.payWithNimiqPay, 'Pay with Nimiq Pay on TestAlbatross');
     if (phase === 'confirming' && this.lanternState.mode === 'live') return this.paymentButton('Check authoritative confirmation', this.reconcileLiveOrder, 'Check authoritative payment confirmation');
@@ -507,7 +575,11 @@ class AtlasApp {
     const shell = element('section', 'atlas-play-shell');
     shell.setAttribute('aria-label', 'Genesis Garden adventure');
     const topbar = element('header', 'atlas-topbar');
-    const brand = element('div', 'atlas-brand');
+    const brand = document.createElement('button');
+    brand.type = 'button';
+    brand.className = 'atlas-brand';
+    brand.setAttribute('aria-label', 'Exit Genesis Garden and return to Atlas home');
+    brand.addEventListener('click', this.returnHome);
     brand.append(element('span', '', 'NIM ATLAS'), element('small', '', '01 / 06 • GENESIS GARDEN'));
     this.integrityStatus = element('div', 'atlas-integrity', 'INTEGRITY 3/3');
     this.integrityStatus.setAttribute('role', 'status');
@@ -569,8 +641,14 @@ class AtlasApp {
     this.screen = 'trial';
     this.builderStep = 0;
     this.builderNotice = '';
-    if (this.selectedRole === 'builder') this.renderBuilderRepair();
-    else this.renderTrial();
+    this.renderTrial();
+  };
+
+  private startBuilderRepair = (): void => {
+    this.screen = 'trial';
+    this.builderStep = 0;
+    this.builderNotice = '';
+    this.renderBuilderRepair();
   };
 
   private renderBuilderRepair(): void {
@@ -578,8 +656,9 @@ class AtlasApp {
     const panel = element('section', 'atlas-panel atlas-builder-repair');
     panel.setAttribute('aria-label', 'Builder repair practice');
     panel.append(
+      this.screenNav('Provider workshop'),
       element('p', 'atlas-eyebrow', 'BUILDER REPAIR / PAYMENT PATH'),
-      element('p', 'atlas-trial-context', 'BUILDER TRIAL 1 OF 6 / YOU ARE HERE: GENESIS GARDEN RESTORED'),
+      element('p', 'atlas-trial-context', 'BUILDER PATH / YOU ARE HERE: MARA\'S PAY HARBOR WORKSHOP'),
       element('h1', '', 'Repair the route Mara can trust'),
       element('p', 'atlas-trial-copy', 'Predict each observation before running the repair. Each tile is a typed operation, never executable code.'),
       element('p', 'atlas-lantern-mode', 'SIMULATED LOOKUP / NO PAYMENT'),
@@ -592,7 +671,7 @@ class AtlasApp {
       recipe.className = 'atlas-builder-recipe';
       recipe.textContent = 'provider-init → user intent → accounts → exact payment → lookup → chain confirmation → one fulfillment';
       panel.append(recipe, element('p', 'atlas-quiet', 'This local seal does not create a wallet proof, score, rank, or reward claim.'));
-      panel.append(actionButton('Install Builder seal', this.completeBuilderRepair, 'Install local Builder repair seal'));
+      panel.append(actionButton('Install repair and reopen route', this.finishBuilderRepairIntoHarbor, 'Install the local Builder repair and return to Pay Harbor'));
       this.ui.append(panel);
       return;
     }
@@ -628,27 +707,37 @@ class AtlasApp {
     this.ui.append(panel);
   }
 
-  private completeBuilderRepair = (): void => {
+  private finishBuilderRepairIntoHarbor = (): void => {
     this.progress.completeDistrict('pay-harbor');
     this.progress.completeTrial('harbor-repair-v1');
-    this.screen = 'complete';
-    this.ui.replaceChildren();
-    const panel = element('section', 'atlas-panel atlas-complete');
-    panel.append(
-      element('p', 'atlas-eyebrow', 'PAY HARBOR / REPAIR VERIFIED LOCALLY'),
-      element('div', 'atlas-seal', 'B'),
-      element('h1', '', 'Mara can trust the route'),
-      element('p', 'atlas-tagline', 'You predicted the provider, intent, account, payment, lookup, confirmation, and one-time fulfillment boundaries.'),
-      element('p', 'atlas-quiet', 'The Explorer and Builder paths converge on the same harbor state. No wallet or fabricated rank was created.'),
-      actionButton('Replay Builder repair', this.startGarden, 'Replay Builder repair'),
-    );
-    this.ui.append(panel);
+    replayLastLantern([{ type: 'review-request', request: this.currentLanternRequest() }], this.lanternState);
+    if (this.lanternState.mode === 'practice') {
+      replayLastLantern([{
+        type: 'receive-evidence',
+        source: 'local-simulation',
+        evidence: {
+          txHash: 'builder-practice-only',
+          network: LAST_LANTERN.request.network,
+          recipient: LAST_LANTERN.recipient,
+          valueLuna: LAST_LANTERN.priceLuna,
+          canonical: true,
+          success: true,
+          confirmations: LAST_LANTERN.minimumConfirmations,
+        },
+      }], this.lanternState);
+      this.paymentNotice = 'Workshop repair passed locally. The route is safe to fulfill in practice mode; no payment, score, or reward proof was created.';
+    } else {
+      this.paymentNotice = 'Workshop repair passed. Review and approve the exact TestAlbatross request in Nimiq Pay before the lantern can unlock.';
+    }
+    this.screen = 'lantern';
+    this.renderLantern();
   };
 
   private renderTrial(): void {
     this.ui.replaceChildren();
     const panel = element('section', 'atlas-panel atlas-trial');
     panel.append(
+      this.screenNav('Luna Lens'),
       element('p', 'atlas-eyebrow', 'BUILDER TRIAL / LUNA LENS'),
       element('p', 'atlas-trial-context', 'Builder Trial 1 of 6 / YOU ARE HERE: GENESIS GARDEN RESTORED'),
       element('h1', '', 'Give Mara the exact units'),
@@ -694,6 +783,7 @@ class AtlasApp {
     this.ui.replaceChildren();
     const panel = element('section', 'atlas-panel atlas-complete');
     panel.append(
+      this.screenNav('Garden seal'),
       element('p', 'atlas-eyebrow', 'GENESIS GARDEN / RESTORED'),
       element('div', 'atlas-seal', 'N'),
       element('h1', '', 'The first path holds'),
@@ -731,7 +821,9 @@ class AtlasApp {
 
   private resize = (): void => {
     this.renderer.resize();
-    this.renderer.draw(this.state, genesisObjective(this.state));
+    if (this.screen === 'playing') this.renderer.draw(this.state, genesisObjective(this.state));
+    else if (this.screen === 'evergreen') this.renderer.drawDistrict(this.evergreenAdventure.districtId, this.evergreenState.phase === 'completed');
+    else this.renderer.drawHarbor(this.lanternState.phase, this.selectedRole);
   };
 
   private movementButton(label: string, direction: AtlasDirection, glyph: string): HTMLButtonElement {
@@ -782,6 +874,17 @@ function lanternDetail(phase: LastLanternState['phase']): string {
     fulfilled: 'Take the item to the tower. This is the first functional inventory item.',
     'tower-lit': 'One verified event changed the harbor state.',
   }[phase];
+}
+
+function knowledgeTeachBackPrompt(stepId: string): string {
+  const prompts: Record<string, string> = {
+    ask: 'A route needs wallet access to continue. What must happen before the wallet opens?',
+    check: 'Mara can see a network, recipient, and amount. What should she do before any approval?',
+    approve: 'The request is exact and readable. Who must make the next decision?',
+    confirm: 'The provider returned a transaction lookup. What must Atlas wait for before delivery?',
+    unlock: 'Canonical evidence matches the approved request. What may safely happen once?',
+  };
+  return prompts[stepId] ?? 'Which authority boundary should the route apply next?';
 }
 
 function actionButton(label: string, action: () => void, ariaLabel: string): HTMLButtonElement {

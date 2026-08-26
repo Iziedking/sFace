@@ -26,4 +26,17 @@ describe('NIM Atlas order API client', () => {
     const api = createAtlasApiClient({ baseUrl: 'https://atlas.test', fetchImpl: vi.fn(async () => new Response('not-json', { status: 503 })) });
     await expect(api.getOrder('order-1')).rejects.toThrow('Atlas service is unavailable.');
   });
+
+  it('reads capability and Beacon status without inventing competitive state', async () => {
+    const fetchImpl = vi.fn(async (input: string | URL) => {
+      if (String(input).endsWith('/bootstrap')) {
+        return new Response(JSON.stringify({ ok: true, data: { product: 'nim-atlas', campaignMode: 'local-first', competitiveExpeditions: false, walletRequired: false, curriculumVersion: 1 } }));
+      }
+      return new Response(JSON.stringify({ ok: true, data: { status: 'unavailable', verifiedContributorCount: 0, systems: [] } }));
+    });
+    const api = createAtlasApiClient({ baseUrl: 'https://atlas.test', fetchImpl });
+
+    await expect(api.getBootstrap()).resolves.toMatchObject({ product: 'nim-atlas', competitiveExpeditions: false });
+    await expect(api.getBeacon()).resolves.toEqual({ status: 'unavailable', verifiedContributorCount: 0, systems: [] });
+  });
 });

@@ -1,5 +1,7 @@
 import type { AtlasState } from '../../../shared/atlas/state';
 import type { GenesisObjective } from '../../../shared/atlas/districts/genesis-garden';
+import type { LastLanternState } from '../../../shared/atlas/adventures/last-lantern';
+import type { AtlasRole } from '../../../shared/atlas/types';
 
 const VIEW_WIDTH = 8_000;
 
@@ -52,6 +54,179 @@ export class AtlasRenderer {
     drawExplorer(context, point(state.player.x, state.player.y), state.player.facing, state.player.shieldTicks > 0, scale);
     context.restore();
   }
+
+  drawHarbor(phase: LastLanternState['phase'], role: AtlasRole): void {
+    const context = this.context;
+    const restored = phase === 'tower-lit';
+    context.save();
+    context.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0);
+    context.fillStyle = restored ? '#f6c85f' : '#e8dfcf';
+    context.fillRect(0, 0, this.width, this.height);
+    context.fillStyle = restored ? '#f4ede0' : '#c9bdac';
+    context.fillRect(0, 0, this.width, this.height * 0.48);
+    drawHarborSkyline(context, this.width, this.height, restored);
+    drawHarborWater(context, this.width, this.height, restored, this.reducedMotion);
+    drawHarborShop(context, this.width * 0.13, this.height * 0.43, restored);
+    drawHarborTower(context, this.width * 0.82, this.height * 0.21, this.height * 0.53, restored);
+    drawHarborFerry(context, this.width * (restored ? 0.58 : 0.48), this.height * 0.69, restored);
+    drawHarborPerson(context, this.width * 0.28, this.height * 0.63, 'MARA', '#f28b30');
+    drawHarborPerson(context, this.width * 0.38, this.height * 0.69, role.toUpperCase(), role === 'builder' ? '#9eae7c' : '#f6c85f');
+    context.restore();
+  }
+
+  drawDistrict(districtId: string, restored: boolean): void {
+    const context = this.context;
+    const palette = districtPalette(districtId);
+    context.save();
+    context.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0);
+    context.fillStyle = '#f4ede0';
+    context.fillRect(0, 0, this.width, this.height);
+    context.fillStyle = palette.ground;
+    context.fillRect(0, this.height * 0.52, this.width, this.height * 0.48);
+    context.strokeStyle = '#171411';
+    context.lineWidth = 5;
+    for (let index = 0; index < 6; index += 1) {
+      const x = this.width * (0.08 + index * 0.18);
+      const top = this.height * (0.2 + (index % 2) * 0.12);
+      context.beginPath();
+      context.moveTo(x, this.height * 0.68);
+      context.lineTo(x, top);
+      context.stroke();
+      context.fillStyle = restored ? palette.active : '#171411';
+      context.beginPath();
+      context.arc(x, top, 18, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+    }
+    context.strokeStyle = restored ? palette.active : '#6d6256';
+    context.lineWidth = 9;
+    context.beginPath();
+    context.moveTo(0, this.height * 0.68);
+    context.lineTo(this.width, this.height * 0.38);
+    context.stroke();
+    context.fillStyle = '#171411';
+    context.font = `900 ${Math.max(15, Math.min(28, this.width / 28))}px ui-monospace, monospace`;
+    context.fillText(districtId.replace(/-/g, ' ').toUpperCase(), 24, this.height - 34);
+    context.restore();
+  }
+}
+
+function drawHarborSkyline(context: CanvasRenderingContext2D, width: number, height: number, restored: boolean): void {
+  context.fillStyle = restored ? '#b9c79a' : '#a9a092';
+  for (let x = -30; x < width + 80; x += 130) {
+    context.beginPath();
+    context.moveTo(x, height * 0.48);
+    context.lineTo(x + 55, height * 0.3);
+    context.lineTo(x + 110, height * 0.48);
+    context.fill();
+  }
+  context.strokeStyle = '#171411';
+  context.lineWidth = 8;
+  context.beginPath();
+  context.moveTo(0, height * 0.55);
+  context.lineTo(width, height * 0.55);
+  context.stroke();
+}
+
+function drawHarborWater(context: CanvasRenderingContext2D, width: number, height: number, restored: boolean, reducedMotion: boolean): void {
+  context.fillStyle = restored ? '#4e7f9f' : '#53626b';
+  context.fillRect(0, height * 0.55, width, height * 0.45);
+  context.strokeStyle = restored ? '#f4ede0' : '#8a9295';
+  context.lineWidth = 3;
+  const offset = reducedMotion ? 0 : Date.now() / 90 % 50;
+  for (let y = height * 0.61; y < height; y += 48) {
+    for (let x = -60 + offset; x < width; x += 110) {
+      context.beginPath();
+      context.moveTo(x, y);
+      context.lineTo(x + 44, y);
+      context.stroke();
+    }
+  }
+}
+
+function drawHarborShop(context: CanvasRenderingContext2D, x: number, y: number, restored: boolean): void {
+  const width = 230;
+  const height = 160;
+  context.fillStyle = '#f4ede0';
+  context.strokeStyle = '#171411';
+  context.lineWidth = 6;
+  context.fillRect(x, y, width, height);
+  context.strokeRect(x, y, width, height);
+  context.fillStyle = restored ? '#f28b30' : '#6d6256';
+  context.fillRect(x - 16, y - 30, width + 32, 42);
+  context.strokeRect(x - 16, y - 30, width + 32, 42);
+  context.fillStyle = '#171411';
+  context.font = '900 14px ui-monospace, monospace';
+  context.fillText(restored ? 'MARA\'S MARKET / OPEN' : 'MARA\'S MARKET / WAITING', x + 10, y - 3);
+  context.fillStyle = restored ? '#f6c85f' : '#171411';
+  context.beginPath();
+  context.arc(x + width * 0.68, y + 70, 20, 0, Math.PI * 2);
+  context.fill();
+  context.stroke();
+}
+
+function drawHarborTower(context: CanvasRenderingContext2D, x: number, y: number, height: number, restored: boolean): void {
+  context.strokeStyle = '#171411';
+  context.lineWidth = 7;
+  context.fillStyle = '#f4ede0';
+  context.beginPath();
+  context.moveTo(x - 54, y + height);
+  context.lineTo(x - 34, y + 82);
+  context.lineTo(x + 34, y + 82);
+  context.lineTo(x + 54, y + height);
+  context.closePath();
+  context.fill();
+  context.stroke();
+  context.fillStyle = restored ? '#f6c85f' : '#171411';
+  context.fillRect(x - 54, y + 26, 108, 70);
+  context.strokeRect(x - 54, y + 26, 108, 70);
+  if (restored) {
+    context.fillStyle = 'rgba(246, 200, 95, .35)';
+    context.beginPath();
+    context.moveTo(x - 48, y + 40);
+    context.lineTo(x - 250, y - 40);
+    context.lineTo(x - 250, y + 140);
+    context.closePath();
+    context.fill();
+  }
+}
+
+function drawHarborFerry(context: CanvasRenderingContext2D, x: number, y: number, restored: boolean): void {
+  context.fillStyle = restored ? '#f28b30' : '#6d6256';
+  context.strokeStyle = '#171411';
+  context.lineWidth = 5;
+  context.beginPath();
+  context.moveTo(x - 105, y);
+  context.lineTo(x + 105, y);
+  context.lineTo(x + 65, y + 54);
+  context.lineTo(x - 65, y + 54);
+  context.closePath();
+  context.fill();
+  context.stroke();
+  context.fillStyle = '#f4ede0';
+  context.fillRect(x - 30, y - 55, 60, 55);
+  context.strokeRect(x - 30, y - 55, 60, 55);
+}
+
+function drawHarborPerson(context: CanvasRenderingContext2D, x: number, y: number, name: string, color: string): void {
+  context.fillStyle = color;
+  context.strokeStyle = '#171411';
+  context.lineWidth = 4;
+  context.beginPath();
+  context.arc(x, y - 54, 18, 0, Math.PI * 2);
+  context.fill();
+  context.stroke();
+  context.fillRect(x - 20, y - 34, 40, 62);
+  context.strokeRect(x - 20, y - 34, 40, 62);
+  label(context, name, x, y + 48);
+}
+
+function districtPalette(districtId: string): { ground: string; active: string } {
+  if (districtId === 'light-forest') return { ground: '#b9c79a', active: '#5b8f68' };
+  if (districtId === 'albatross-causeway') return { ground: '#b8ced9', active: '#4e7f9f' };
+  if (districtId === 'validator-peaks') return { ground: '#d5c7aa', active: '#f6c85f' };
+  if (districtId === 'builder-city') return { ground: '#e1e6df', active: '#f28b30' };
+  return { ground: '#eadfc8', active: '#f28b30' };
 }
 
 function drawGarden(context: CanvasRenderingContext2D, width: number, height: number, tick: number, reducedMotion: boolean): void {

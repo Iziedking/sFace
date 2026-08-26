@@ -97,6 +97,7 @@ import { assertSingleRelayWriter } from './relay/writer';
 import { parseAtlasPaymentConfig } from './atlas/config';
 import { createAtlasOrderStore } from './atlas/orders';
 import { createAtlasChainReader } from './atlas/chain';
+import { createAtlasJsonRepository } from './atlas/persistence';
 
 const PORT = Number(process.env.PORT ?? 8790);
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
@@ -148,7 +149,7 @@ const relayLeaderboard = createRelayLeaderboardService({ runs: async () => Objec
 const relayRewards = createRelayRewardService({ store: getRelayStore(), fundedAllocationLuna: RELAY_CONFIG.seasonAllocationLuna });
 const relayChain = createNimiqRelayChainReader({ network: RELAY_CONFIG.network, rpcUrls: RELAY_CONFIG.rpcUrls, minConfirmations: RELAY_CONFIG.minConfirmations });
 const relayPayouts = createRelayPayoutService({ store: getRelayStore(), chain: relayChain, treasuryAddress: RELAY_CONFIG.treasuryAddress ?? '', minConfirmations: RELAY_CONFIG.minConfirmations, network: RELAY_CONFIG.network });
-const atlasOrders = ATLAS_PAYMENT_CONFIG.enabled ? createAtlasOrderStore({ recipient: ATLAS_PAYMENT_CONFIG.recipient!, priceLuna: ATLAS_PAYMENT_CONFIG.valueLuna, minimumConfirmations: ATLAS_PAYMENT_CONFIG.minConfirmations }) : undefined;
+const atlasOrders = ATLAS_PAYMENT_CONFIG.enabled ? createAtlasOrderStore({ recipient: ATLAS_PAYMENT_CONFIG.recipient!, priceLuna: ATLAS_PAYMENT_CONFIG.valueLuna, minimumConfirmations: ATLAS_PAYMENT_CONFIG.minConfirmations, repository: createAtlasJsonRepository({ directory: join(DATA_DIR, 'atlas') }) }) : undefined;
 const atlasChain = ATLAS_PAYMENT_CONFIG.enabled ? createAtlasChainReader({ network: ATLAS_PAYMENT_CONFIG.network, rpcUrls: ATLAS_PAYMENT_CONFIG.rpcUrls, minConfirmations: ATLAS_PAYMENT_CONFIG.minConfirmations }) : undefined;
 installRequestLogging(app, { record: recordAdminLog });
 mountRelayRoutes({ app, limit: rateLimiter.limit, api: createRelayApi({ config: RELAY_CONFIG, tickets: relayTickets, walletBindings: relayWalletBindings, daily: relayDaily, repository: relayRepository, actorExists: (actorId) => playerAuth.hasCredential(actorId), world: relayWorld, leaderboard: relayLeaderboard, rewards: relayRewards }) });

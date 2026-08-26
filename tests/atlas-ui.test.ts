@@ -34,10 +34,10 @@ describe('NIM Atlas public first district UI', () => {
   it('makes the SFACE and NIM Atlas relationship explicit and keeps Pay central', () => {
     const main = readFileSync(new URL('../src/atlas/main.ts', import.meta.url), 'utf8');
     const manifest = readFileSync(new URL('../public/manifest.webmanifest', import.meta.url), 'utf8');
-    expect(main).toContain('Sface is a Nimiq Pay Mini App game where you explore NIM Atlas, learn the payment network, and build what survives.');
+    expect(main).toContain('Sface is a Nimiq Pay Mini App game. NIM Atlas is its living network');
     expect(manifest).toContain('Sface is a Nimiq Pay Mini App game where you explore NIM Atlas');
-    expect(main).toContain('Play the full learning path without a wallet.');
-    expect(main).toContain('Nimiq Pay is the live payment gate');
+    expect(main).toContain('PRACTICE MODE / PLAYABLE WITHOUT A WALLET');
+    expect(main).toContain('NIMIQ PAY IS THE LIVE PAYMENT GATE');
   });
 
   it('keeps the mission loop visible so a first-time player knows what they are doing', () => {
@@ -81,7 +81,7 @@ describe('NIM Atlas public first district UI', () => {
     expect(main).toContain('Reward share appears only after server verification');
     expect(main).toContain('EXPLORER LEADERBOARD');
     expect(main).toContain('BUILDER LEADERBOARD');
-    expect(main).toContain('No verified scores yet');
+    expect(main).toContain('BOARD UNAVAILABLE');
   });
 
   it('exposes the evergreen district atlas with Explorer and Builder mirrors', () => {
@@ -96,8 +96,8 @@ describe('NIM Atlas public first district UI', () => {
   it('shows the Network Beacon with an honest unavailable state before server data exists', () => {
     const main = readFileSync(new URL('../src/atlas/main.ts', import.meta.url), 'utf8');
     expect(main).toContain('NETWORK BEACON');
-    expect(main).toContain('No verified community progress yet');
-    expect(main).toContain('UNAVAILABLE / SERVER PROJECTION');
+    expect(main).toContain('No progress is being invented locally');
+    expect(main).toContain('SERVER PROJECTION');
   });
 
   it('shows the optional shop as locked until an owner enables a verified mainnet catalog', () => {
@@ -105,5 +105,14 @@ describe('NIM Atlas public first district UI', () => {
     expect(main).toContain('MAINNET EXPANSIONS');
     expect(main).toContain('OWNER APPROVAL REQUIRED');
     expect(main).toContain('Purchases stay disabled');
+  });
+
+  it('ships crawler and agent discovery files for the current product', () => {
+    const robots = readFileSync(new URL('../public/robots.txt', import.meta.url), 'utf8');
+    const llms = readFileSync(new URL('../public/llms.txt', import.meta.url), 'utf8');
+    expect(robots).toContain('User-agent: *');
+    expect(robots).toContain('Allow: /');
+    expect(llms).toContain('# Sface: NIM Atlas');
+    expect(llms).toContain('Nimiq Pay Mini App game');
   });
 });

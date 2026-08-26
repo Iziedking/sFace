@@ -60,7 +60,7 @@ export async function executeAtlasPayment(options: AtlasPaymentRequest & { walle
     const result = await options.wallet.sendBasicPayment({ recipient: options.recipient, valueLuna: options.valueLuna });
     lookup = result.value;
   } catch (error) {
-    await cancelCreatedOrder(options.api, order.id, errorMessage(error, 'The Nimiq Pay approval was not completed.'));
+    await cancelCreatedOrder(options.api, order.id, 'wallet-cancelled');
     throw new AtlasPaymentError('authorizing', errorMessage(error, 'The Nimiq Pay approval was not completed.'), { cause: error });
   }
 

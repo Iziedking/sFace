@@ -42,5 +42,7 @@ describe('NIM Atlas testnet order machine', () => {
     await expect(store.reconcile(order.id, { ...evidence, confirmations: 0 })).rejects.toThrow(/confirm/i);
     await expect(store.cancel(order.id, 'wallet-cancelled')).resolves.toMatchObject({ status: 'cancelled', failureReason: 'wallet-cancelled' });
     await expect(store.cancel(order.id, 'retry')).resolves.toMatchObject({ status: 'cancelled', failureReason: 'wallet-cancelled' });
+    const privateReasonOrder = await store.create({ actorId: 'actor-2', walletAddress: 'NQwallet', itemId: LAST_LANTERN.request.itemId, network: LAST_LANTERN.request.network, recipient: LAST_LANTERN.recipient, valueLuna: LAST_LANTERN.priceLuna });
+    await expect(store.cancel(privateReasonOrder.id, 'wallet stack included a private diagnostic')).rejects.toThrow(/reason/i);
   });
 });

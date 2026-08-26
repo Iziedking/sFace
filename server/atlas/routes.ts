@@ -1,9 +1,10 @@
 import type { Express, RequestHandler } from 'express';
+import { Address } from '@nimiq/core';
 
 import { validateAtlasCurriculum } from '../../shared/atlas/curriculum';
 import { LAST_LANTERN } from '../../shared/atlas/adventures/last-lantern';
 import type { AtlasCurriculum } from '../../shared/atlas/types';
-import type { AtlasOrder, AtlasOrderStore } from './orders';
+import { toPublicAtlasOrder, type AtlasOrder, type AtlasOrderStore } from './orders';
 import type { AtlasBeaconService } from './beacon';
 import type { AtlasChainReader } from './chain';
 
@@ -83,21 +84,21 @@ export function mountAtlasRoutes(options: {
       const body = request.body as Partial<AtlasOrder> & { idempotencyKey?: unknown };
       const catalog = options.api.orderCatalog ?? { itemId: 'harbor-lantern' as const, network: 'testalbatross' as const, recipient: LAST_LANTERN.recipient, valueLuna: LAST_LANTERN.priceLuna };
       const order = await options.api.orders.create({
-        actorId: requiredString(body.actorId), walletAddress: requiredString(body.walletAddress), itemId: catalog.itemId,
+        actorId: requiredString(body.actorId), walletAddress: requiredNimiqAddress(body.walletAddress), itemId: catalog.itemId,
         network: catalog.network, recipient: catalog.recipient, valueLuna: catalog.valueLuna,
         idempotencyKey: body.idempotencyKey === undefined ? undefined : requiredString(body.idempotencyKey),
       });
-      response.status(201).json({ ok: true, data: order });
+      response.status(201).json({ ok: true, data: toPublicAtlasOrder(order) });
     } catch (error) { response.status(400).json({ ok: false, error: safeError(error) }); }
   });
   options.app.get('/atlas/api/orders/:orderId', options.limit(120, 40), async (request, response) => {
     if (!options.api.orders) { response.status(503).json({ ok: false, error: 'Atlas orders are unavailable.' }); return; }
-    try { response.json({ ok: true, data: await options.api.orders.get(request.params.orderId) }); }
+    try { response.json({ ok: true, data: toPublicAtlasOrder(await options.api.orders.get(request.params.orderId)) }); }
     catch { response.status(404).json({ ok: false, error: 'Atlas order was not found.' }); }
   });
   options.app.post('/atlas/api/orders/:orderId/transaction', options.limit(30, 10), async (request, response) => {
     if (!options.api.orders) { response.status(503).json({ ok: false, error: 'Atlas orders are unavailable.' }); return; }
-    try { response.json({ ok: true, data: await options.api.orders.submitLookup(request.params.orderId, requiredString((request.body as { lookup?: unknown }).lookup)) }); }
+    try { response.json({ ok: true, data: toPublicAtlasOrder(await options.api.orders.submitLookup(request.params.orderId, requiredString((request.body as { lookup?: unknown }).lookup))) }); }
     catch (error) { response.status(400).json({ ok: false, error: safeError(error) }); }
   });
   options.app.post('/atlas/api/orders/:orderId/reconcile', options.limit(30, 10), async (request, response) => {
@@ -106,7 +107,7 @@ export function mountAtlasRoutes(options: {
       const order = await options.api.orders.get(request.params.orderId);
       if (!order.lookup) { response.status(409).json({ ok: false, error: 'Atlas order has no provider lookup.' }); return; }
       const observation = await options.api.chain.observe(order.lookup);
-      if (!observation) { response.status(202).json({ ok: true, data: order }); return; }
+      if (!observation) { response.status(202).json({ ok: true, data: toPublicAtlasOrder(order) }); return; }
       const fulfilled = await options.api.orders.reconcile(order.id, {
         lookup: observation.lookup,
         network: observation.network,
@@ -117,10 +118,10 @@ export function mountAtlasRoutes(options: {
         success: observation.success,
         confirmations: observation.confirmations,
       });
-      response.json({ ok: true, data: { ...fulfilled, chainEvidence: { lookup: observation.lookup, network: observation.network, recipient: observation.recipient, valueLuna: observation.valueLuna, canonical: observation.canonical, success: observation.success, confirmations: observation.confirmations } } });
+      response.json({ ok: true, data: { ...toPublicAtlasOrder(fulfilled), chainEvidence: { network: observation.network, recipient: observation.recipient, valueLuna: observation.valueLuna, canonical: observation.canonical, success: observation.success, confirmations: observation.confirmations } } });
     } catch (error) {
       if (safeError(error).toLowerCase().includes('confirm')) {
-        try { response.status(202).json({ ok: true, data: await options.api.orders!.get(request.params.orderId) }); } catch { response.status(404).json({ ok: false, error: 'Atlas order was not found.' }); }
+        try { response.status(202).json({ ok: true, data: toPublicAtlasOrder(await options.api.orders!.get(request.params.orderId)) }); } catch { response.status(404).json({ ok: false, error: 'Atlas order was not found.' }); }
         return;
       }
       response.status(400).json({ ok: false, error: safeError(error) });
@@ -130,7 +131,7 @@ export function mountAtlasRoutes(options: {
     if (!options.api.orders) { response.status(503).json({ ok: false, error: 'Atlas orders are unavailable.' }); return; }
     try {
       const reason = requiredString((request.body as { reason?: unknown }).reason);
-      response.json({ ok: true, data: await options.api.orders.cancel(request.params.orderId, reason) });
+      response.json({ ok: true, data: toPublicAtlasOrder(await options.api.orders.cancel(request.params.orderId, reason)) });
     } catch (error) { response.status(400).json({ ok: false, error: safeError(error) }); }
   });
 }
@@ -138,6 +139,12 @@ export function mountAtlasRoutes(options: {
 function requiredString(value: unknown): string {
   if (typeof value !== 'string' || value.length === 0 || value.length > 256) throw new Error('Atlas order field is invalid.');
   return value;
+}
+
+function requiredNimiqAddress(value: unknown): string {
+  const address = requiredString(value);
+  try { return Address.fromUserFriendlyAddress(address).toUserFriendlyAddress(); }
+  catch { throw new Error('Atlas wallet address is invalid.'); }
 }
 
 function safeError(error: unknown): string { return error instanceof Error ? error.message : 'Atlas request was rejected.'; }

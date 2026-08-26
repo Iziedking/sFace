@@ -1,3 +1,19 @@
+# Sface
+
+**A Nimiq Pay Mini App game. Explore the network. Build what survives.**
+
+Sface is a Nimiq Pay Mini App game where one human character explores NIM Atlas,
+helps people through payment and network problems, and sees the world change only
+after the right evidence exists.
+
+[Play NIM Atlas](https://sface.site) | [Run it locally](#local-development) |
+[Atlas payment safety](#atlas-authority-and-payment-safety)
+
+## Historical Cycle I introduction
+
+<details>
+<summary>Open the archived Cycle I introduction</summary>
+
 <div align="center">
 
 # sFace
@@ -16,6 +32,8 @@ never the same mission twice.
 [Play](https://sface.site) · [What you are flying](#what-you-are-flying) · [The seven stages](docs/stage-1-to-7.md) · [How it is built](#how-it-is-built) · [Run it](#run-it)
 
 </div>
+
+</details>
 
 ---
 

@@ -89,7 +89,7 @@ describe('NIM Atlas mobile payment flow', () => {
 
     await expect(executeAtlasPayment({ actorId: 'actor-1', itemId: 'harbor-lantern', recipient: 'NQmerchant', valueLuna: 100_000, wallet, api }))
       .rejects.toMatchObject({ stage: 'authorizing' });
-    expect(api.cancelOrder).toHaveBeenCalledWith('order-1', expect.stringMatching(/cancel/i));
+    expect(api.cancelOrder).toHaveBeenCalledWith('order-1', 'wallet-cancelled');
     expect(api.submitTransactionLookup).not.toHaveBeenCalled();
   });
 });

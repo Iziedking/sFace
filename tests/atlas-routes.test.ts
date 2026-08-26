@@ -37,12 +37,13 @@ describe('NIM Atlas public curriculum boundary', () => {
 
   it('uses the configured live catalog and reconciles only server-observed chain evidence', async () => {
     const recipient = `NQ00${'A'.repeat(32)}`;
+    const walletAddress = 'NQ07 0000 0000 0000 0000 0000 0000 0000 0000';
     const orders = createAtlasOrderStore({ recipient, priceLuna: 100_000 });
     const api = createAtlasApi({
       curriculum: ATLAS_CURRICULUM,
       orders,
       orderCatalog: { itemId: 'harbor-lantern', network: 'testalbatross', recipient, valueLuna: 100_000 },
-      chain: { observe: async (lookup) => ({ lookup, network: 'testalbatross', blockHeight: 10, confirmations: 3, sender: 'NQwallet', recipient, valueLuna: 100_000, success: true, canonical: true }) },
+      chain: { observe: async (lookup) => ({ lookup, network: 'testalbatross', blockHeight: 10, confirmations: 3, sender: walletAddress, recipient, valueLuna: 100_000, success: true, canonical: true }) },
     });
     const app = express();
     app.use(express.json());
@@ -52,15 +53,25 @@ describe('NIM Atlas public curriculum boundary', () => {
       const address = server.address();
       if (!address || typeof address === 'string') throw new Error('Test server did not expose a port.');
       const base = `http://127.0.0.1:${address.port}`;
-      const created = await fetch(`${base}/atlas/api/orders`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ actorId: 'actor-1', walletAddress: 'NQwallet', recipient: 'NQattacker', valueLuna: 1 }) });
-      const createdPayload = await created.json() as { data: { id: string; recipient: string; valueLuna: number } };
+      const invalid = await fetch(`${base}/atlas/api/orders`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ actorId: 'actor-invalid', walletAddress: 'NQnot-an-address' }) });
+      expect(invalid.status).toBe(400);
+      const created = await fetch(`${base}/atlas/api/orders`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ actorId: 'actor-1', walletAddress, recipient: 'NQattacker', valueLuna: 1 }) });
+      const createdPayload = await created.json() as { data: { id: string; recipient: string; valueLuna: number; actorId?: string; walletAddress?: string; lookup?: string } };
       expect(created.status).toBe(201);
       expect(createdPayload.data).toMatchObject({ recipient, valueLuna: 100_000 });
-      await fetch(`${base}/atlas/api/orders/${createdPayload.data.id}/transaction`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ lookup: 'lookup-1' }) });
+      expect(createdPayload.data.actorId).toBeUndefined();
+      expect(createdPayload.data.walletAddress).toBeUndefined();
+      const submitted = await fetch(`${base}/atlas/api/orders/${createdPayload.data.id}/transaction`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ lookup: 'lookup-1' }) });
+      const submittedPayload = await submitted.json() as { data: { lookup?: string; lookupSubmitted: boolean } };
+      expect(submittedPayload.data.lookup).toBeUndefined();
+      expect(submittedPayload.data.lookupSubmitted).toBe(true);
       const reconciled = await fetch(`${base}/atlas/api/orders/${createdPayload.data.id}/reconcile`, { method: 'POST' });
-      const reconciledPayload = await reconciled.json() as { data: { status: string } };
+      const reconciledPayload = await reconciled.json() as { data: { status: string; actorId?: string; walletAddress?: string; chainEvidence?: { lookup?: string } } };
       expect(reconciled.status).toBe(200);
       expect(reconciledPayload.data.status).toBe('fulfilled');
+      expect(reconciledPayload.data.actorId).toBeUndefined();
+      expect(reconciledPayload.data.walletAddress).toBeUndefined();
+      expect(reconciledPayload.data.chainEvidence?.lookup).toBeUndefined();
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     }
