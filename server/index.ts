@@ -94,7 +94,7 @@ import { legacyConfig } from './legacy/mode';
 import { mountLegacyArchiveRoutes } from './legacy/archive-routes';
 import { legacyMutationMiddleware } from './legacy/mode';
 import { assertSingleRelayWriter } from './relay/writer';
-import { parseAtlasPaymentConfig } from './atlas/config';
+import { ATLAS_PRODUCTION_GATE, parseAtlasPaymentConfig } from './atlas/config';
 import { createAtlasOrderStore } from './atlas/orders';
 import { createAtlasChainReader } from './atlas/chain';
 import { createAtlasJsonRepository } from './atlas/persistence';
@@ -155,7 +155,7 @@ installRequestLogging(app, { record: recordAdminLog });
 mountRelayRoutes({ app, limit: rateLimiter.limit, api: createRelayApi({ config: RELAY_CONFIG, tickets: relayTickets, walletBindings: relayWalletBindings, daily: relayDaily, repository: relayRepository, actorExists: (actorId) => playerAuth.hasCredential(actorId), world: relayWorld, leaderboard: relayLeaderboard, rewards: relayRewards }) });
 mountAtlasRoutes({ app, limit: rateLimiter.limit, api: createAtlasApi({
   curriculum: ATLAS_CURRICULUM,
-  competitiveExpeditions: false,
+  competitiveExpeditions: ATLAS_PRODUCTION_GATE.competitive,
   orders: atlasOrders,
   chain: atlasChain,
   orderCatalog: ATLAS_PAYMENT_CONFIG.enabled ? { itemId: ATLAS_PAYMENT_CONFIG.itemId, network: ATLAS_PAYMENT_CONFIG.network, recipient: ATLAS_PAYMENT_CONFIG.recipient!, valueLuna: ATLAS_PAYMENT_CONFIG.valueLuna } : undefined,
@@ -432,7 +432,30 @@ mountLegacyArchiveRoutes({ app, limit: rateLimiter.limit, requireAdmin, dataDire
 mountAdminConfigRoutes({ app, limit: rateLimiter.limit, requireAdmin, nonces: ADMIN_NONCES, inventory: configInventory, record: recordAdminLog });
 mountAdminOverviewRoutes({ app, limit: rateLimiter.limit, requireAdmin, health: currentHealth, inventory: configInventory, date: utcDate, commit: process.env.GIT_COMMIT ?? null, uptimeSeconds: () => Math.floor(process.uptime()), restartSupported: process.env.ADMIN_RESTART_ENABLED === 'true' });
 mountRelayAdminRoutes({ app, limit: rateLimiter.limit, requireAdmin, nonces: ADMIN_NONCES, payouts: relayPayouts, rewards: relayRewards });
-mountAtlasAdminRoutes({ app, limit: rateLimiter.limit, requireAdmin, evidence: () => ({ status: 'unavailable', reason: 'atlas_durable_repository_disabled' }) });
+/**
+ * The Atlas owner gates are read here rather than restated.
+ *
+ * These switches used to be a frozen constant that only a test read, while the
+ * two places that actually gate behaviour carried their own hardcoded copies:
+ * a literal `false` for competitive expeditions and a literal refusal string
+ * for the evidence surface. The test pinned the constant, so it stayed green
+ * while either literal drifted, which is the one failure this shape exists to
+ * prevent. One source of truth, consumed at both doors.
+ *
+ * Flipping `durableRepository` on its own is deliberately not enough to open
+ * this route: there is no durable evidence reader behind it yet, so the true
+ * branch still refuses and says which half is missing. A gate that reports
+ * available with nothing behind it is worse than one that stays shut.
+ */
+mountAtlasAdminRoutes({
+  app,
+  limit: rateLimiter.limit,
+  requireAdmin,
+  evidence: () => ({
+    status: 'unavailable',
+    reason: ATLAS_PRODUCTION_GATE.durableRepository ? 'atlas_durable_evidence_reader_not_implemented' : 'atlas_durable_repository_disabled',
+  }),
+});
 mountPlayerAuthRoutes({ app, limit: rateLimiter.limit, auth: playerAuth, save: () => scheduleSave(snapshot) });
 mountLeaderboardReadRoutes({ app, limit: rateLimiter.limit });
 mountCommunityReadRoutes({ app, limit: rateLimiter.limit });

@@ -1,4 +1,5 @@
 import { mkdtemp, mkdir, rm, utimes, writeFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -6,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { ATLAS_PRODUCTION_GATE } from '../server/atlas/config';
 import { createAtlasJsonRepository, type AtlasRepositorySnapshot } from '../server/atlas/persistence';
+import { closeAtlasDailyPool } from '../shared/atlas/rewards';
 
 const temporaryDirectories: string[] = [];
 
@@ -21,6 +23,10 @@ async function repository(options: Parameters<typeof createAtlasJsonRepository>[
 
 function snapshot(value: string): AtlasRepositorySnapshot {
   return { version: 1, updatedAt: 100, records: { value } };
+}
+
+function checkpointSnapshot(stage: string, payload: unknown): AtlasRepositorySnapshot {
+  return { version: 1, updatedAt: 100, records: { checkpoint: { stage, payload } } };
 }
 
 describe('isolated Atlas persistence', () => {
@@ -48,6 +54,34 @@ describe('isolated Atlas persistence', () => {
     expect((await crashing.load()).snapshot).toEqual(snapshot('stable'));
   });
 
+  it('keeps the prior durable checkpoint across every Atlas lifecycle crash point', async () => {
+    let crash = false;
+    const store = await repository({ hooks: { afterTempWrite: () => { if (crash) throw new Error('simulated lifecycle crash'); } } });
+    await store.save(checkpointSnapshot('initial', { status: 'empty' }));
+
+    const checkpoints: Array<[string, unknown]> = [
+      ['accepted-run', { runId: 'run-accepted', status: 'verified', prizeEligible: true }],
+      ['order-submission', { orderId: 'order-submitted', status: 'submitted', lookupSubmitted: true }],
+      ['reconciliation', { orderId: 'order-submitted', status: 'confirming', confirmations: 2 }],
+      ['fulfillment', { orderId: 'order-submitted', status: 'fulfilled', itemId: 'harbor-lantern' }],
+      ['daily-close', closeAtlasDailyPool(3)],
+      ['reward-obligation', { period: 'week-1', role: 'explorer', status: 'pending-close', amountLuna: 300_000_000 }],
+      ['payout-update', { payoutId: 'payout-1', status: 'verified', amountLuna: 300_000_000 }],
+    ];
+
+    let previous = checkpointSnapshot('initial', { status: 'empty' });
+    for (const [stage, payload] of checkpoints) {
+      const next = checkpointSnapshot(stage, payload);
+      crash = true;
+      await expect(store.save(next)).rejects.toThrow(/simulated lifecycle crash/);
+      expect((await store.load()).snapshot).toEqual(previous);
+      crash = false;
+      await store.save(next);
+      expect((await store.load()).snapshot).toEqual(next);
+      previous = next;
+    }
+  });
+
   it('clears a stale lock, ignores partial temp files, and recovers a valid backup after corruption', async () => {
     const store = await repository({ lockStaleMs: 1 });
     await store.save(snapshot('recoverable'));
@@ -62,5 +96,16 @@ describe('isolated Atlas persistence', () => {
 
   it('keeps competitive, reward, and durable-production switches off pending owner approval', () => {
     expect(ATLAS_PRODUCTION_GATE).toEqual({ competitive: false, rewards: false, durableRepository: false });
+  });
+
+  it('gates the live server on that constant instead of on its own copies of it', () => {
+    // Asserting the constant alone is what let this drift: the server carried a
+    // hardcoded `competitiveExpeditions: false` and a hardcoded refusal string,
+    // so both doors could be opened without turning this test red. The wiring
+    // is the property worth pinning, not just the values.
+    const server = readFileSync(new URL('../server/index.ts', import.meta.url), 'utf8');
+    expect(server).toContain('ATLAS_PRODUCTION_GATE.competitive');
+    expect(server).toContain('ATLAS_PRODUCTION_GATE.durableRepository');
+    expect(server).not.toContain('competitiveExpeditions: false');
   });
 });

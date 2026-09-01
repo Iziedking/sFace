@@ -91,6 +91,8 @@ id_rsa*
 # Throwaway browser profile from scripts/shoot.mjs. Regenerated on every run and
 # full of cache nobody wants in a diff.
 .shoot-profile/
+.atlas-shoot-profile/
+.atlas-measure-profile/
 
 # The launch video's working directory: captured frames, encoded shots, the
 # narration clips and the export. Hundreds of megabytes of PNGs and MP4s that
@@ -110,5 +112,25 @@ docs/superpowers/
 ui-artifacts/
 PLAN-CYCLE-*.md
 
+# Ad-hoc verification screenshots dropped in the repo root while checking a
+# change by hand. Rule: evidence is generated, never captured. The tracked
+# recipe is scripts/shoot-atlas.mjs, which writes the real set into
+# docs/shots/, and a hand-taken PNG beside it is a picture that cannot be
+# regenerated and will disagree with the build the first time anything moves.
+/sface-*-pass.png
+
+# Vercel CLI local link state. Contains the project and org ids for this
+# checkout, which are per-developer, so it never belongs to anyone else.
 .vercel
+
+# Every real environment file. Added broadly on purpose: the pattern has to
+# catch .env.production and whatever the next platform names its file, not just
+# the three that exist today.
+#
+# The star also swallows .env.example, which is the one file here that MUST be
+# public. It is the only documentation of every key the service reads, and a
+# fresh clone with no .env.example is a service nobody else can configure. It
+# survived only because it was already tracked, and a tracked file ignores
+# .gitignore. That is luck, not a rule, so the exception below makes it a rule.
 .env*
+!.env.example

@@ -37,8 +37,45 @@ describe('NIM Atlas custody-free payout verification', () => {
     await expect(service.recordSubmitted(second.id, 'hash-1')).rejects.toThrow(/duplicate/i);
   });
 
+  it('never downgrades a verified payout when a slower concurrent reconcile finishes second', async () => {
+    // Two reconciles overlap. The one that starts first gets a slow observation
+    // that comes back empty; the one that starts second confirms the payment
+    // straight away. Both read 'submitted' before either finished, so the
+    // stale outcome must not be allowed to push a proven payout back to
+    // 'confirming' when it finally lands.
+    let call = 0;
+    let release: (() => void) | null = null;
+    const blocked = new Promise<void>((resolve) => { release = resolve; });
+    const service = createAtlasPayoutService({
+      network: 'testalbatross', treasuryAddress: 'NQLOCAL_TREASURY', minConfirmations: 3,
+      chain: { observe: async () => {
+        call += 1;
+        if (call === 1) { await blocked; return null; }
+        return { lookup: 'hash-1', network: 'testalbatross' as const, blockHeight: 10, confirmations: 3, sender: 'NQLOCAL_TREASURY', recipient: 'NQWINNER', valueLuna: 300_000_000, success: true, canonical: true };
+      } },
+    });
+    await service.create(base);
+    await service.approve('payout-1');
+    await service.recordSubmitted('payout-1', 'hash-1');
+
+    const stale = service.reconcile('payout-1');
+    await expect(service.reconcile('payout-1')).resolves.toMatchObject({ status: 'verified' });
+    release!();
+    await expect(stale).resolves.toMatchObject({ status: 'verified', refusalReason: null });
+    await expect(service.list()).resolves.toMatchObject([{ id: 'payout-1', status: 'verified' }]);
+  });
+
   it('reports aggregate obligations, verified payouts, rollover, and unawarded funds without exposing addresses', () => {
     const records: AtlasPayoutRecord[] = [{ id: 'payout-1', period: 'week-1', walletAddress: 'NQWINNERSECRET', amountLuna: 300_000_000, network: 'testalbatross', treasuryAddress: 'NQLOCAL_TREASURY', transactionHash: 'hash-1', status: 'verified', refusalReason: null, createdAt: 1 }];
     expect(atlasPayoutSummary(records, { allocationLuna: 8_000_000_000, rolloverLuna: 80, obligationsLuna: 300_000_000 })).toEqual({ allocationLuna: 8_000_000_000, rolloverLuna: 80, obligationsLuna: 300_000_000, verifiedPayoutsLuna: 300_000_000, paidLuna: 300_000_000, unawardedLuna: 7_699_999_920, payouts: [{ id: 'payout-1', period: 'week-1', amountLuna: 300_000_000, status: 'verified', walletAddress: 'NQWI...CRET' }] });
+  });
+
+  it('keeps payout reconciliation idempotent under one hundred concurrent reads', async () => {
+    const service = createAtlasPayoutService({ network: 'testalbatross', treasuryAddress: 'NQLOCAL_TREASURY', minConfirmations: 3, chain: { observe: async () => ({ lookup: 'hash-concurrent', network: 'testalbatross', blockHeight: 10, confirmations: 3, sender: 'NQLOCAL_TREASURY', recipient: 'NQWINNER', valueLuna: 300_000_000, success: true, canonical: true }) } });
+    await service.create({ ...base, id: 'payout-concurrent' });
+    await service.approve('payout-concurrent');
+    await service.recordSubmitted('payout-concurrent', 'hash-concurrent');
+    const results = await Promise.all(Array.from({ length: 100 }, () => service.reconcile('payout-concurrent')));
+    expect(results.every((record) => record.status === 'verified')).toBe(true);
   });
 });

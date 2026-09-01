@@ -34,6 +34,28 @@ export function createAtlasPayoutService(options: { network: AtlasNetwork; treas
     await serialise(async () => { const current = requirePayout(payouts, id); const next = mutate(structuredClone(current)); payouts.set(id, next); result = next; });
     return result ?? (() => { throw new Error('Atlas payout update was not produced.'); })();
   };
+  /**
+   * Every reconcile outcome lands through this guard instead of being written
+   * straight onto the record.
+   *
+   * The status checks in reconcile() run on a snapshot taken before the chain
+   * call, and an RPC round trip is long enough for a second reconcile of the
+   * same payout to finish inside it. Without a re-read the slower caller's
+   * outcome overwrites the faster one, so a payout another call already proved
+   * 'verified' gets pushed back to 'confirming' or 'failed' by a stale
+   * observation. The treasury row then reports unpaid for money that moved,
+   * which is the direction of this bug that costs something.
+   *
+   * The re-read has to happen inside update()'s serialised queue, because that
+   * is the only place the current status can be trusted. 'verified' is
+   * terminal, and a changed hash means this observation describes a different
+   * submission than the one being settled.
+   */
+  const settle = (id: string, observedHash: string, next: (payout: AtlasPayoutRecord) => AtlasPayoutRecord): Promise<AtlasPayoutRecord> =>
+    update(id, (payout) => {
+      if (payout.status === 'verified' || payout.transactionHash !== observedHash) return payout;
+      return next(payout);
+    });
   return {
     async create(input) {
       if (!/^[a-z0-9-]{1,80}$/.test(input.id) || !/^[a-z0-9-]{1,80}$/.test(input.period) || !input.walletAddress) throw new Error('Atlas payout identity is invalid.');
@@ -61,13 +83,13 @@ export function createAtlasPayoutService(options: { network: AtlasNetwork; treas
       if (current.status === 'verified') return structuredClone(current);
       if (!['submitted', 'confirming', 'unknown'].includes(current.status) || !current.transactionHash) throw new Error('Only submitted Atlas payouts can be reconciled.');
       let observation: (AtlasChainObservation & { reorgDetected?: boolean }) | null = null;
-      try { observation = await options.chain.observe(current.transactionHash); } catch { return update(id, (payout) => ({ ...payout, status: 'unknown', refusalReason: 'chain_observer_unavailable' })); }
-      if (!observation) return update(id, (payout) => ({ ...payout, status: 'confirming', refusalReason: 'transaction_not_in_observer' }));
-      if (observation.reorgDetected) return update(id, (payout) => ({ ...payout, status: 'reorg', refusalReason: 'chain_reorg_detected' }));
+      try { observation = await options.chain.observe(current.transactionHash); } catch { return settle(id, current.transactionHash, (payout) => ({ ...payout, status: 'unknown', refusalReason: 'chain_observer_unavailable' })); }
+      if (!observation) return settle(id, current.transactionHash, (payout) => ({ ...payout, status: 'confirming', refusalReason: 'transaction_not_in_observer' }));
+      if (observation.reorgDetected) return settle(id, current.transactionHash, (payout) => ({ ...payout, status: 'reorg', refusalReason: 'chain_reorg_detected' }));
       const mismatch = observation.network !== options.network || observation.sender !== options.treasuryAddress || observation.recipient !== current.walletAddress || observation.valueLuna !== current.amountLuna || !observation.success || !observation.canonical;
-      if (mismatch) return update(id, (payout) => ({ ...payout, status: 'failed', refusalReason: 'chain_evidence_mismatch' }));
-      if (!Number.isSafeInteger(observation.confirmations) || observation.confirmations < options.minConfirmations) return update(id, (payout) => ({ ...payout, status: 'confirming', refusalReason: 'minimum_confirmations_not_reached' }));
-      return update(id, (payout) => ({ ...payout, status: 'verified', refusalReason: null }));
+      if (mismatch) return settle(id, current.transactionHash, (payout) => ({ ...payout, status: 'failed', refusalReason: 'chain_evidence_mismatch' }));
+      if (!Number.isSafeInteger(observation.confirmations) || observation.confirmations < options.minConfirmations) return settle(id, current.transactionHash, (payout) => ({ ...payout, status: 'confirming', refusalReason: 'minimum_confirmations_not_reached' }));
+      return settle(id, current.transactionHash, (payout) => ({ ...payout, status: 'verified', refusalReason: null }));
     },
     async list() { return [...payouts.values()].map((payout) => structuredClone(payout)); },
   };

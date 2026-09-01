@@ -159,28 +159,63 @@ export function createAtlasOrderStore(options: { now?: () => number; recipient?:
   function serialise<T>(operation: () => Promise<T>, persist: boolean): Promise<T> {
     const result = operations.catch(() => undefined).then(async () => {
       await hydrate();
+      const before = persist ? captureState() : null;
       try {
-        return await operation();
-      } finally {
+        const value = await operation();
         if (persist) await save();
+        return value;
+      } catch (error) {
+        if (before) restoreState(before);
+        throw error;
       }
     });
     operations = result.then(() => undefined, () => undefined);
     return result;
   }
 
+  function captureState(): PersistedAtlasOrders {
+    return {
+      version: 1,
+      orders: [...orders.values()].map(clone),
+      idempotency: [...idempotency.entries()].map(([key, value]) => [key, { ...value }]),
+    };
+  }
+
+  function restoreState(state: PersistedAtlasOrders): void {
+    orders.clear();
+    idempotency.clear();
+    for (const order of state.orders) orders.set(order.id, clone(order));
+    for (const [key, value] of state.idempotency) idempotency.set(key, { ...value });
+  }
+
+  /**
+   * Hydration is latched only after it succeeds, and the reason is the whole
+   * order ledger.
+   *
+   * The symptom of getting this wrong is silent and arrives one call late. If
+   * the flag is set before the load, a repository that throws (a corrupt
+   * snapshot with no valid backup, or a transient read error) fails that one
+   * call and then reports itself hydrated forever. The next create() runs
+   * against an empty in-memory map, save() writes that empty map over the
+   * snapshot, and every fulfilled order on disk is gone. Nothing logs an
+   * error, because from the store's point of view it simply had no orders.
+   *
+   * The tell that separates this from an ordinary empty ledger: the first
+   * request after a restart fails, and the second one succeeds with no orders.
+   * A genuinely empty ledger never fails the first request.
+   */
   async function hydrate(): Promise<void> {
     if (hydrated) return;
-    hydrated = true;
-    if (!options.repository) return;
+    if (!options.repository) { hydrated = true; return; }
     const loaded = await options.repository.load();
     const record = loaded.snapshot?.records[PERSISTENCE_KEY];
-    if (record === undefined) return;
+    if (record === undefined) { hydrated = true; return; }
     if (!isPersistedOrders(record)) throw new Error('Atlas persisted order ledger is malformed.');
     orders.clear();
     idempotency.clear();
     for (const order of record.orders) orders.set(order.id, clone(order));
     for (const [key, value] of record.idempotency) idempotency.set(key, { ...value });
+    hydrated = true;
   }
 
   async function save(): Promise<void> {
