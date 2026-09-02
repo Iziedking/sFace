@@ -101,17 +101,42 @@ describe('Atlas action hierarchy and briefing sheets', () => {
     expect([...welcome.matchAll(/\bghostButton\(/g)].length).toBeGreaterThanOrEqual(4);
   });
 
-  it('anchors a briefing to the bottom when the city is already running', () => {
-    expect(css).toContain('.atlas-panel.atlas-sheet');
+  it('anchors every screen to the bottom so the city stays visible above it', () => {
+    // Was: a sheet only when the city was ready, and full pages for welcome and
+    // how-to-play because "nothing is running behind them". The city now runs
+    // from boot, so a full-bleed page is always covering a live world.
+    expect(css).toContain('.atlas-panel');
     expect(css).toContain('align-self: end');
-    expect(app).toContain("this.cityLoadState === 'ready' ? ' atlas-sheet' : ''");
+    expect(app).toContain('private screenPanel(');
+    expect(app).not.toContain("this.cityLoadState === 'ready' ? ' atlas-sheet' : ''");
   });
 
-  it('leaves the welcome and how-to-play screens as full pages', () => {
-    // Nothing is running behind them, so a sheet would be a smaller page for
-    // no reason.
-    expect(app).toContain("element('section', 'atlas-panel atlas-how-to-play')");
-    expect(app).toContain("element('section', 'atlas-panel atlas-welcome atlas-home atlas-landing-shell')");
+  it('builds all seven panel screens through the shared sheet helper', () => {
+    for (const screen of [
+      'renderWelcome', 'renderHowToPlay', 'renderDailyPuzzle', 'renderEvergreen',
+      'renderKnowledgeBook', 'renderLantern', 'renderBuilderRepair',
+    ]) {
+      const start = app.indexOf(`private ${screen}(`);
+      expect(start, `${screen} is missing`).toBeGreaterThan(-1);
+      const body = app.slice(start, start + 2600);
+      expect(body, `${screen} does not use screenPanel`).toContain('this.screenPanel(');
+    }
+  });
+
+  it('leaves the two play shells alone', () => {
+    // These are already the world-first surface everything else is being made
+    // to resemble. Turning them into sheets would sheet the game itself.
+    for (const screen of ['renderBeaconCommons', 'renderPayHarbor']) {
+      const start = app.indexOf(`private ${screen}(`);
+      const body = app.slice(start, start + 2600);
+      expect(body, `${screen} should not be a sheet`).not.toContain('this.screenPanel(');
+      expect(body).toContain('atlas-living-city-play-shell');
+    }
+  });
+
+  it('leaves room for the world above every sheet', () => {
+    const start = css.indexOf('\n.atlas-panel {') + 1;
+    expect(css.slice(start, css.indexOf('}', start))).toMatch(/max-height:\s*min\(6\dsvh/);
   });
 });
 

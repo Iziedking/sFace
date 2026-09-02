@@ -257,7 +257,7 @@ function drawHarborWayfinding(context: CanvasRenderingContext2D, width: number, 
   context.font = '900 13px ui-monospace, monospace';
   context.fillText('PAY HARBOR', width * 0.06, height * 0.12);
   context.fillStyle = restored ? ATLAS_FALLBACK_PALETTE.settled : ATLAS_FALLBACK_PALETTE.active;
-  context.fillText('FOLLOW THE ORANGE WAY', width * 0.06, height * 0.16);
+  context.fillText('FOLLOW THE PINK WAY', width * 0.06, height * 0.16);
   context.restore();
 }
 

@@ -37,6 +37,14 @@ export interface AtlasLivingCityOptions {
   readonly sampleMovement?: () => AtlasCityMovement;
   readonly onFrame?: (frame: { readonly player: AtlasCityPlayerState; readonly qualityTier: 'low' | 'balanced' | 'high' }) => void;
   readonly navigation?: AtlasLivingCityNavigation;
+  /*
+   * A camera heading to hold instead of following the player, or null to follow
+   * as normal. The welcome screen uses it to drift slowly over the harbour; the
+   * play screens never set it. Returning a number here is the whole of the
+   * orbit: the rig already accepts cameraHeadingRadians, so no camera mode and
+   * no renderer change is involved.
+   */
+  readonly idleHeading?: () => number | null;
 }
 
 export interface AtlasLivingCityNavigation {
@@ -221,6 +229,8 @@ export class AtlasLivingCityController {
     if (this.lastFrameTimestamp !== null) this.recordFrameTime(elapsedMilliseconds);
     this.lastFrameTimestamp = timestamp;
     const deltaSeconds = elapsedMilliseconds / 1_000;
+    const idleHeading = this.options.idleHeading?.() ?? null;
+    if (idleHeading !== null) this.player = { ...this.player, cameraHeadingRadians: idleHeading };
     const sampledMovement = this.options.sampleMovement?.() ?? { moveX: 0, moveY: 0 };
     const movement = cameraRelativeMovement(sampledMovement, this.player.cameraHeadingRadians);
     this.player = stepAtlasCityPlayer(

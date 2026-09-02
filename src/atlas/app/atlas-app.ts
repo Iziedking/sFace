@@ -3,6 +3,7 @@ import { projectLivingWorld } from '../../../shared/atlas/living-world';
 import { AtlasCameraLookController, AtlasInputController, installAtlasKeyboard, shouldHandleDirectionalClick, type AtlasDirection } from '../input';
 import { createAtlasProgressStore } from '../progress';
 import { AtlasRenderer } from '../render/renderer';
+import { createIdleOrbit } from '../render/three/orbit';
 import { ATLAS_PROLOGUE } from '../../../shared/atlas/prologue';
 import type { AtlasRole } from '../../../shared/atlas/types';
 import { LAST_LANTERN, createLastLanternState, replayLastLantern, type LastLanternAction, type LastLanternState } from '../../../shared/atlas/adventures/last-lantern';
@@ -76,6 +77,11 @@ export class AtlasApp {
   private readonly audio = createAtlasAudio();
   private livingCity: AtlasLivingCityController | null = null;
   private livingCityHost: HTMLElement | null = null;
+  /* Non-null only while the welcome screen is showing; see screenPanel. */
+  private orbitStartedAt: number | null = null;
+  private readonly orbit = createIdleOrbit({
+    reducedMotion: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
+  });
   private livingCityInit: Promise<void> | null = null;
   private cityAssets: ReturnType<typeof createAtlasAssetManager> | null = null;
   private beaconScene: AtlasCitySceneV1 | null = null;
@@ -164,7 +170,7 @@ export class AtlasApp {
   private renderHowToPlay(): void {
     this.ui.replaceChildren();
     this.renderer.drawHarbor('street', this.selectedRole);
-    const panel = element('section', 'atlas-panel atlas-how-to-play');
+    const panel = this.screenPanel('atlas-how-to-play');
     panel.setAttribute('aria-label', 'How to play NIM Atlas');
     panel.append(
       this.screenNav('How to play'),
@@ -226,7 +232,8 @@ export class AtlasApp {
   private renderWelcome(): void {
     this.ui.replaceChildren();
     this.canvas.hidden = true;
-    const panel = element('section', 'atlas-panel atlas-welcome atlas-home atlas-landing-shell');
+    const panel = this.screenPanel('atlas-welcome atlas-home atlas-landing-shell');
+    if (this.orbit.active) this.orbitStartedAt = performance.now();
     panel.setAttribute('aria-label', 'NIM Atlas game landing page');
     if (this.cityLoadState !== 'ready') {
       panel.append(this.renderLandingSplash());
@@ -293,6 +300,23 @@ export class AtlasApp {
     panel.append(homeGrid, routes, this.renderStatusDrawer());
     if (saved) panel.append(element('p', 'atlas-saved', 'Garden seal saved on this device. You can replay it.'));
     this.ui.append(panel);
+  }
+
+  /*
+   * Every screen is a sheet over a live city.
+   *
+   * This used to be conditional on the city being ready, which meant a screen
+   * could be a full-bleed page one moment and a bottom sheet the next. The city
+   * now runs from boot, so the condition is gone and the shape is constant.
+   *
+   * The two play shells do not come through here: they are already the
+   * world-first surface everything else is being made to resemble.
+   */
+  private screenPanel(className: string): HTMLElement {
+    // Every screen but the welcome one wants the camera following the player,
+    // so stopping the drift here means no screen has to remember to.
+    this.orbitStartedAt = null;
+    return element('section', `atlas-panel ${className}`.trim());
   }
 
   private renderLandingSplash(): HTMLElement {
@@ -396,7 +420,7 @@ export class AtlasApp {
   private openBeaconCommons = (): void => {
     this.canvas.hidden = true;
     this.audio.unlock();
-    this.audio.narrate('Beacon Commons is a living city. Walk the orange route, meet the Nimiq team, and learn what each working district does.', 'ja-JP');
+    this.audio.narrate('Beacon Commons is a living city. Walk the pink route, meet the Nimiq team, and learn what each working district does.', 'ja-JP');
     this.screen = 'beacon-commons';
     this.beaconTravelNotice = '';
     this.cityQuestStep = 'meet-guide';
@@ -430,13 +454,13 @@ export class AtlasApp {
       ? {
           depth: 'glance' as const,
           objective: 'MEET THE COMMONS GUIDE',
-          detail: this.beaconTravelNotice || 'Walk toward the orange guide beside the market. The Nimiq team and community are already working around you.',
+          detail: this.beaconTravelNotice || 'Walk toward the pink guide beside the market. The Nimiq team and community are already working around you.',
           status: `${this.selectedRole.toUpperCase()} PATH / MOVE THROUGH THE CITY / TALK WHEN CLOSE`,
         }
       : {
           depth: 'glance' as const,
           objective: 'FIND THE PAY HARBOR GATE',
-          detail: 'The guide marked the orange route. Follow the working district toward the transport building.',
+          detail: 'The guide marked the pink route. Follow the working district toward the transport building.',
           status: 'MISSION ACCEPTED / PAY HARBOR ROUTE OPEN',
         };
     this.toolkit = createAtlasToolkit(objective);
@@ -467,7 +491,6 @@ export class AtlasApp {
     cameraCenter.className = 'atlas-camera-center';
     shell.append(topbar, this.toolkit.element, this.createBeaconMap(), this.createCityWaypoint(), this.createCameraLookZone(), cameraCenter, controls, hint);
     this.ui.append(shell);
-    this.livingCityHost?.classList.add('is-playing');
     this.livingCity?.resize(window.innerWidth, window.innerHeight, 1);
   }
 
@@ -479,13 +502,13 @@ export class AtlasApp {
       return;
     }
     if (!this.isNearBeaconAnchor(player, 'mission-guide', 2.2)) {
-      this.toolkit?.setDetail('Move closer to the orange guide beside the market, then talk.');
+      this.toolkit?.setDetail('Move closer to the pink guide beside the market, then talk.');
       return;
     }
     this.cityQuestStep = 'guide-met';
     this.beaconTravelNotice = '';
     this.audio.playWorldCue('city-interaction');
-    this.audio.narrate('Welcome to Beacon Commons. Follow the orange route to learn how Nimiq connects people and builders.', 'ja-JP');
+    this.audio.narrate('Welcome to Beacon Commons. Follow the pink route to learn how Nimiq connects people and builders.', 'ja-JP');
     this.renderBeaconCommons();
   };
 
@@ -579,7 +602,7 @@ export class AtlasApp {
   private travelToPayHarbor = (): void => {
     const player = this.livingCity?.playerSnapshot();
     if (!player || !this.isNearBeaconAnchor(player, 'travel-pay-harbor', 3)) {
-      this.toolkit?.setDetail('Follow the orange street to the tall transport building. Travel unlocks when you reach its entrance.');
+      this.toolkit?.setDetail('Follow the pink street to the tall transport building. Travel unlocks when you reach its entrance.');
       return;
     }
     this.toolkit?.setDetail('Opening the verified Pay Harbor route...');
@@ -656,7 +679,6 @@ export class AtlasApp {
     if (paymentReview) shell.append(paymentReview);
     shell.append(this.createBeaconMap(), this.createCityWaypoint(), this.createCameraLookZone(), cameraCenter, controls, hint);
     this.ui.append(shell);
-    this.livingCityHost?.classList.add('is-playing');
     this.livingCity?.resize(window.innerWidth, window.innerHeight, 1);
   }
 
@@ -674,7 +696,7 @@ export class AtlasApp {
     const player = this.livingCity?.playerSnapshot();
     const mission = projectPayHarborPhysicalMission(this.lanternState, this.payHarborBuilderStation);
     if (!player || !this.isNearBeaconAnchor(player, mission.targetAnchorId, 2.4)) {
-      this.toolkit?.setDetail('Follow the orange target on the city map and move closer before acting.');
+      this.toolkit?.setDetail('Follow the pink target on the city map and move closer before acting.');
       return;
     }
     if (this.lanternState.phase === 'street') return this.advancePhysicalLantern({ type: 'enter-shop' });
@@ -803,6 +825,7 @@ export class AtlasApp {
         return { moveX: action.moveX, moveY: action.moveY };
       },
       onFrame: ({ player }) => this.updateBeaconMap(player),
+      idleHeading: () => (this.orbitStartedAt === null ? null : this.orbit.headingAt((performance.now() - this.orbitStartedAt) / 1_000)),
     });
     try {
       await renderer.initialize(host, {
@@ -823,7 +846,6 @@ export class AtlasApp {
       }
       this.livingCityHost = host;
       this.livingCity = controller;
-      host.classList.add('is-playing');
     } catch (error) {
       await controller.destroy().catch(() => undefined);
       this.cityAssets = null;
@@ -844,7 +866,6 @@ export class AtlasApp {
     this.beaconMapTarget = null;
     this.cityWaypointLabel = null;
     this.cityWaypointDistance = null;
-    host?.classList.remove('is-playing');
     await controller?.destroy();
     host?.remove();
   }
@@ -911,7 +932,7 @@ export class AtlasApp {
   private renderDailyPuzzle(): void {
     this.ui.replaceChildren();
     const challenge = selectDailyChallenge(new Date());
-    const panel = element('section', 'atlas-panel atlas-daily');
+    const panel = this.screenPanel('atlas-daily');
     panel.setAttribute('aria-label', 'Daily Atlas puzzle');
     panel.append(
       this.screenNav('Daily puzzle'),
@@ -966,7 +987,7 @@ export class AtlasApp {
   private renderEvergreen(): void {
     this.ui.replaceChildren();
     this.renderer.drawDistrict(this.evergreenAdventure.districtId, this.evergreenState.phase === 'completed');
-    const panel = element('section', 'atlas-panel atlas-evergreen');
+    const panel = this.screenPanel('atlas-evergreen');
     panel.setAttribute('aria-label', 'Evergreen District Atlas');
     panel.append(
       this.screenNav('District Atlas'),
@@ -1040,7 +1061,7 @@ export class AtlasApp {
   private renderKnowledgeBook(): void {
     this.ui.replaceChildren();
     const bookView = createAtlasKnowledgeBookView(ATLAS_KNOWLEDGE_BOOK, this.knowledgeState, this.bookOpen ? 'open' : 'closed');
-    const panel = element('section', 'atlas-panel atlas-book');
+    const panel = this.screenPanel('atlas-book');
     panel.setAttribute('aria-label', 'Living Knowledge Book');
     panel.append(
       this.screenNav('Knowledge Book'),
@@ -1094,7 +1115,7 @@ export class AtlasApp {
   private renderLantern(notice = ''): void {
     this.ui.replaceChildren();
     this.renderer.drawHarbor(this.lanternState.phase, this.selectedRole);
-    const panel = element('section', `atlas-panel atlas-lantern${this.cityLoadState === 'ready' ? ' atlas-sheet' : ''}`);
+    const panel = this.screenPanel('atlas-lantern');
     panel.setAttribute('aria-label', 'The Last Lantern local practice');
     panel.append(
       this.screenNav('Pay Harbor'),
@@ -1235,7 +1256,7 @@ export class AtlasApp {
 
   private renderBuilderRepair(): void {
     this.ui.replaceChildren();
-    const panel = element('section', `atlas-panel atlas-builder-repair${this.cityLoadState === 'ready' ? ' atlas-sheet' : ''}`);
+    const panel = this.screenPanel('atlas-builder-repair');
     panel.setAttribute('aria-label', 'Builder repair practice');
     panel.append(
       this.screenNav('Provider workshop'),

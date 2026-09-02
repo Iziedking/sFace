@@ -26,7 +26,11 @@ describe('NIM Atlas presentation integrity', () => {
   it('uses authored human adventure language instead of placeholder fault art', () => {
     expect(renderer).toContain('drawMatureHuman');
     expect(renderer).toContain('drawHarborLanternShop');
-    expect(renderer).toContain('FOLLOW THE ORANGE WAY');
+    // The colour word moved with the accent: the route the player is told to
+    // follow is magenta now, and copy naming a colour the product no longer
+    // uses is a wrong instruction, not a stale string. What this line guards is
+    // that the wayfinding speaks to a person at all.
+    expect(renderer).toContain('FOLLOW THE PINK WAY');
     expect(renderer).not.toContain("context.fillText('FAULT'");
     expect(renderer).not.toContain('drawHarborPerson');
     expect(app).not.toMatch(/â|Ã/);

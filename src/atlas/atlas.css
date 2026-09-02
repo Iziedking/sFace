@@ -77,36 +77,14 @@ button { min-height: 44px; }
 #atlas-city-stage { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; background: var(--atlas-city-ground); }
 #atlas-city-stage canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; image-rendering: auto; }
 #ui { position: relative; z-index: 1; min-height: 100svh; display: grid; padding: max(14px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); pointer-events: none; }
-.atlas-panel { align-self: center; justify-self: center; width: min(100%, 560px); max-height: calc(100svh - 28px); overflow: auto; padding: clamp(20px, 6vw, 44px); border: 1px solid rgb(var(--atlas-ink-rgb) / .14); border-radius: var(--atlas-radius); background: var(--atlas-paper); backdrop-filter: var(--atlas-glass-blur); box-shadow: var(--atlas-glow); pointer-events: auto; scrollbar-width: thin; scrollbar-color: var(--atlas-signal) transparent; }
-/* A briefing that interrupts play.
-   The city is the thing being taught, so a panel that appears while it is
-   running anchors to the bottom and leaves the world visible above it. The
-   welcome and how-to-play screens stay centred full-page panels, because there
-   is no game behind them to occlude. */
-.atlas-panel.atlas-sheet {
-  align-self: end;
-  justify-self: stretch;
-  width: 100%;
-  max-width: none;
-  max-height: min(62svh, calc(100svh - 132px));
-  padding: clamp(14px, 4vw, 22px);
-  border-width: 1px 0 0;
-  border-radius: var(--atlas-radius) var(--atlas-radius) 0 0;
-  box-shadow: var(--atlas-glow);
-}
-.atlas-panel.atlas-sheet::before {
-  content: '';
-  display: block;
-  width: 44px;
-  height: 4px;
-  margin: 0 auto 12px;
-  border-radius: var(--atlas-radius-pill);
-  background: var(--atlas-muted);
-}
-.atlas-panel.atlas-sheet h1 { font-size: clamp(26px, 8vw, 38px); }
-@media (orientation: landscape) and (max-height: 600px) {
-  .atlas-panel.atlas-sheet { max-height: calc(100svh - 24px); }
-}
+/* Every screen is a sheet over a live city.
+   This used to be centred and full-bleed, with a bottom-anchored variant used
+   by two of the nine screens while the city was running. The city now runs from
+   boot behind all of them, so a centred page is always covering a live world. */
+.atlas-panel { align-self: end; justify-self: stretch; width: 100%; max-width: none; max-height: min(62svh, calc(100svh - 132px)); overflow: auto; padding: clamp(14px, 4vw, 22px); border: 1px solid rgb(var(--atlas-ink-rgb) / .14); border-width: 1px 0 0; border-radius: var(--atlas-radius) var(--atlas-radius) 0 0; background: var(--atlas-paper); backdrop-filter: var(--atlas-glass-blur); box-shadow: var(--atlas-glow); pointer-events: auto; scrollbar-width: thin; scrollbar-color: var(--atlas-signal) transparent; }
+.atlas-panel::before { content: ''; display: block; width: 44px; height: 4px; margin: 0 auto 12px; border-radius: var(--atlas-radius-pill); background: var(--atlas-muted); }
+@media (orientation: landscape) and (max-height: 600px) { .atlas-panel { max-height: calc(100svh - 24px); } }
+
 
 .atlas-panel::-webkit-scrollbar { width: 7px; height: 7px; }
 .atlas-panel::-webkit-scrollbar-track { background: var(--atlas-paper); }
@@ -137,7 +115,9 @@ button { min-height: 44px; }
 .atlas-status-drawer > summary { min-height: 48px; display: flex; align-items: center; cursor: pointer; color: var(--atlas-label); font: 700 13px/1.25 system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; }
 .atlas-status-drawer > summary::marker { color: var(--atlas-signal); }
 .atlas-eyebrow { margin: 0 0 12px; color: var(--atlas-label); font: 700 13px/1.25 system-ui, sans-serif; letter-spacing: .18em; }
-.atlas-panel h1 { margin: 0; max-width: 12ch; font: 400 clamp(42px, 13vw, 74px)/.92 AtlasDisplay, Georgia, serif; letter-spacing: .01em; }
+/* Sized for a 62svh sheet, not a full page: the old clamp topped out at 74px,
+   which ate a third of the sheet before a word of content. */
+.atlas-panel h1 { margin: 0; max-width: 14ch; font: 400 clamp(26px, 8vw, 38px)/.98 AtlasDisplay, Georgia, serif; letter-spacing: .01em; }
 .atlas-tagline { margin: 18px 0 0; max-width: 34ch; font-size: clamp(17px, 4.8vw, 22px); font-weight: 750; line-height: 1.3; }
 .atlas-identity { margin: 12px 0 0; max-width: 42ch; color: var(--atlas-muted); font-size: 13px; line-height: 1.45; }
 .atlas-quiet, .atlas-saved { margin: 16px 0 0; color: var(--atlas-muted); font-size: 13px; line-height: 1.45; }
@@ -211,15 +191,15 @@ button:focus-visible, input:focus-visible, a:focus-visible, [tabindex]:focus-vis
 .atlas-camera-look-zone { position: fixed; z-index: 1; inset: 0 0 0 44%; pointer-events: auto; touch-action: none; user-select: none; cursor: grab; }
 .atlas-camera-look-zone.is-looking { cursor: grabbing; }
 .atlas-camera-look-hint { position: absolute; right: 16px; top: 50%; padding: 5px 7px; background: rgb(var(--atlas-ink-rgb) / .62); color: var(--atlas-paper); font: 700 13px/1.25 system-ui, sans-serif; letter-spacing: .08em; pointer-events: none; }
-.atlas-camera-center { position: absolute; right: 18px; bottom: 148px; z-index: 2; min-width: 58px; min-height: 44px; padding: 6px 8px; border: 2px solid var(--atlas-ink); background: rgb(var(--atlas-paper-rgb) / .9); color: var(--atlas-ink); box-shadow: 2px 2px 0 var(--atlas-ink); font: 700 13px/1.25 system-ui, sans-serif; text-transform: uppercase; pointer-events: auto; }
+.atlas-camera-center { position: absolute; right: 18px; bottom: 148px; z-index: 2; min-width: 58px; min-height: 44px; padding: 6px 12px; border: 1px solid rgb(var(--atlas-ink-rgb) / .18); border-radius: var(--atlas-radius-pill); background: var(--atlas-raised); backdrop-filter: var(--atlas-glass-blur); color: var(--atlas-ink); box-shadow: var(--atlas-glow); font: 700 13px/1.25 system-ui, sans-serif; text-transform: none; pointer-events: auto; }
 .atlas-living-city-play-shell .atlas-toolkit { width: min(100%, 420px); margin-top: 8px; padding: 0; border: none; background: none; box-shadow: none; color: var(--atlas-ink); text-shadow: var(--atlas-scrim); }
 .atlas-living-city-play-shell .atlas-toolkit-depth { color: var(--atlas-label-dim); }
 .atlas-living-city-play-shell .atlas-toolkit-status { color: var(--atlas-hud-dim); }
 .atlas-city-payment-review { position: absolute; top: 232px; left: 0; z-index: 3; width: min(100%, 420px); display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 10px; margin: 0; padding: 9px 10px; border: 2px solid var(--atlas-mission-line); background: var(--atlas-mission-surface); box-shadow: 3px 3px 0 var(--atlas-mission-shadow); pointer-events: auto; }
 .atlas-city-payment-review dt { color: var(--atlas-label-dim); font: 700 13px/1.25 system-ui, sans-serif; letter-spacing: .08em; }
 .atlas-city-payment-review dd { margin: 0; overflow-wrap: anywhere; color: var(--atlas-ink); font: 700 13px/1.25 system-ui, sans-serif; text-align: right; }
-.atlas-mini-map { position: absolute; top: 112px; right: 10px; z-index: 3; width: 132px; aspect-ratio: 1; overflow: hidden; padding: 0; border: 3px solid rgb(var(--atlas-paper-rgb) / .96); border-radius: 50%; background: rgb(var(--atlas-ink-rgb) / .82); box-shadow: 0 0 0 2px var(--atlas-ink), 3px 3px 0 rgb(var(--atlas-ink-rgb) / .42); pointer-events: none; }
-.atlas-city-waypoint { position: absolute; top: 254px; right: 18px; z-index: 3; display: grid; gap: 3px; min-width: 108px; padding: 7px 9px; border: 2px solid var(--atlas-ink); background: rgb(var(--atlas-paper-rgb) / .94); box-shadow: 2px 2px 0 var(--atlas-ink); pointer-events: none; }
+.atlas-mini-map { position: absolute; top: 112px; right: 10px; z-index: 3; width: 132px; aspect-ratio: 1; overflow: hidden; padding: 0; border: 2px solid rgb(var(--atlas-ink-rgb) / .22); border-radius: 50%; background: rgb(var(--atlas-paper-rgb) / .82); backdrop-filter: var(--atlas-glass-blur); box-shadow: var(--atlas-glow); pointer-events: none; }
+.atlas-city-waypoint { position: absolute; top: 254px; right: 18px; z-index: 3; display: grid; gap: 3px; min-width: 108px; padding: 8px 12px; border: 1px solid rgb(var(--atlas-ink-rgb) / .18); border-radius: var(--atlas-radius); background: var(--atlas-raised); backdrop-filter: var(--atlas-glass-blur); box-shadow: var(--atlas-glow); pointer-events: none; }
 .atlas-city-waypoint-kicker, .atlas-city-waypoint-distance { color: var(--atlas-label-dim); font: 700 13px/1.25 system-ui, sans-serif; letter-spacing: .08em; }
 .atlas-city-waypoint-label { font: 900 13px/1 ui-monospace, monospace; }
 .atlas-city-waypoint-label[data-direction='ready'] { color: var(--atlas-ready); }
@@ -378,7 +358,7 @@ button:focus-visible, input:focus-visible, a:focus-visible, [tabindex]:focus-vis
 .atlas-evergreen-journey .atlas-primary { margin-top: 12px; }
 .atlas-seal { width: 74px; height: 74px; margin: 20px 0; display: grid; place-items: center; border: 5px double var(--atlas-ink); background: var(--atlas-signal); font: 400 42px/1 AtlasDisplay, Georgia, serif; transform: rotate(-4deg); }
 .atlas-next-map { margin-top: 24px; padding: 14px; border: 2px dashed var(--atlas-ink); background: var(--atlas-builder); font: 700 13px/1.25 system-ui, sans-serif; letter-spacing: .08em; }
-@media (max-width: 520px) { .atlas-home { align-self: start; } .atlas-home h1 { font-size: clamp(40px, 13vw, 56px); } .atlas-home .atlas-tagline { margin-top: 12px; font-size: 17px; } .atlas-home .atlas-identity { margin-top: 8px; line-height: 1.35; } .atlas-home-grid { gap: 12px; } .atlas-home .atlas-mission-card p { font-size: 14px; line-height: 1.35; } .atlas-home .atlas-role-choice { margin-top: 10px; padding: 10px; } .atlas-home-primary .atlas-quiet { margin-top: 10px; } .atlas-home-primary .atlas-start { margin-top: 10px; } .atlas-quick-grid { grid-template-columns: 1fr; } .atlas-quick-grid .atlas-primary { min-height: 46px; } }
+@media (max-width: 520px) { .atlas-home h1 { font-size: clamp(40px, 13vw, 56px); } .atlas-home .atlas-tagline { margin-top: 12px; font-size: 17px; } .atlas-home .atlas-identity { margin-top: 8px; line-height: 1.35; } .atlas-home-grid { gap: 12px; } .atlas-home .atlas-mission-card p { font-size: 14px; line-height: 1.35; } .atlas-home .atlas-role-choice { margin-top: 10px; padding: 10px; } .atlas-home-primary .atlas-quiet { margin-top: 10px; } .atlas-home-primary .atlas-start { margin-top: 10px; } .atlas-quick-grid { grid-template-columns: 1fr; } .atlas-quick-grid .atlas-primary { min-height: 46px; } }
 @media (max-width: 320px) { .atlas-panel { padding: 18px; box-shadow: 4px 4px 0 var(--atlas-ink); } .atlas-welcome { padding-top: 10px; padding-bottom: 10px; } .atlas-welcome .atlas-mission-card { padding: 12px; } .atlas-welcome .atlas-primary { margin-top: 12px; } .atlas-quick-grid .atlas-primary { margin-top: 0; } .atlas-screen-nav { margin-top: -4px; } .atlas-controls { grid-template-columns: 148px 126px; gap: 6px; } .atlas-movement { grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(2, 44px); } .atlas-move { min-width: 44px; min-height: 44px; } .atlas-objective .atlas-loop { font-size: 8px; } .atlas-objective > p:not(.atlas-loop) { font-size: 11px; } .atlas-key-hint { display: none; } }
 @media (min-width: 390px) { .atlas-controls { grid-template-columns: 164px 160px; } .atlas-movement { grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(2, 52px); } .atlas-move { min-width: 52px; min-height: 52px; } }
 @media (min-width: 430px) { #ui { padding-left: max(18px, env(safe-area-inset-left)); padding-right: max(18px, env(safe-area-inset-right)); } .atlas-controls { grid-template-columns: 176px 174px; } .atlas-movement { grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(2, 56px); } .atlas-move { min-width: 56px; min-height: 56px; } }
@@ -387,7 +367,11 @@ button:focus-visible, input:focus-visible, a:focus-visible, [tabindex]:focus-vis
 
 /* The entry point is a quiet briefing over the same living city the player enters. */
 #atlas-city-stage::after { content: ''; position: fixed; inset: 0; pointer-events: none; background: linear-gradient(90deg, rgb(var(--atlas-shadow-rgb) / .34), rgb(var(--atlas-shadow-rgb) / .08) 58%, rgb(var(--atlas-shadow-rgb) / .18)); }
-.atlas-landing-shell { width: min(100%, 760px); max-height: calc(100svh - 28px); padding: clamp(18px, 4vw, 34px); background: rgb(var(--atlas-paper-rgb) / .91); box-shadow: 6px 6px 0 rgb(var(--atlas-ink-rgb) / .78); backdrop-filter: blur(5px); }
+/* Defers to .atlas-panel for surface and size. It used to carry its own width,
+   max-height, background, blur and a 6px hard offset shadow, which is how the
+   welcome screen stayed a full-height poster card after every other screen
+   became a sheet over the city. */
+.atlas-landing-shell { padding: clamp(18px, 4vw, 34px); }
 .atlas-landing-shell h1 { max-width: 15ch; font-size: clamp(42px, 8vw, 68px); }
 .atlas-landing-shell .atlas-tagline { max-width: 45ch; margin-top: 14px; font-size: clamp(16px, 2vw, 20px); }
 .atlas-landing-shell .atlas-identity { max-width: 54ch; margin-top: 9px; }
@@ -415,7 +399,7 @@ button:focus-visible, input:focus-visible, a:focus-visible, [tabindex]:focus-vis
 .atlas-splash-step[data-state='waiting'] { background: rgb(var(--atlas-raised-rgb) / .58); }
 .atlas-splash-retry { margin-top: 20px; }
 @keyframes atlas-splash-pulse { from { opacity: .58; } to { opacity: 1; } }
-@media (max-width: 520px) { .atlas-landing-shell { align-self: start; margin-top: 4px; } .atlas-learning-loop { gap: 5px; margin-top: 16px; } .atlas-learning-step { padding: 9px 7px; } .atlas-learning-step strong { font-size: 9px; } .atlas-learning-step small { font-size: 10px; } .atlas-landing-shell .atlas-mission-card { margin-top: 14px; } }
+@media (max-width: 520px) { .atlas-learning-loop { gap: 5px; margin-top: 16px; } .atlas-learning-step { padding: 9px 7px; } .atlas-learning-step strong { font-size: 9px; } .atlas-learning-step small { font-size: 10px; } .atlas-landing-shell .atlas-mission-card { margin-top: 14px; } }
 @media (max-width: 360px) { .atlas-landing-shell { padding: 15px; } .atlas-landing-shell h1 { font-size: 39px; } .atlas-landing-shell .atlas-tagline { font-size: 15px; } .atlas-learning-step small { display: none; } }
 
 /* The guide is a playable briefing: scan the rail, pick a role, then go. */

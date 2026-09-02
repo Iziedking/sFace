@@ -22,7 +22,14 @@ describe('approved living-city game entry', () => {
     expect(app).toContain('atlas-joystick-thumb');
     expect(app).toContain('MEET THE COMMONS GUIDE');
     expect(css).toContain('.atlas-living-city-play-shell');
-    expect(css).toContain('#atlas-city-stage.is-playing');
+    // Was '#atlas-city-stage.is-playing'. The stage no longer waits to be
+    // switched on for two of the nine screens: it carries its ground from boot,
+    // which is a stronger form of the property this line was asserting.
+    expect(css).toContain('#atlas-city-stage { position: fixed');
+    expect(css).toContain('background: var(--atlas-city-ground)');
+    // No rule may still be gated on it. The comment explaining why it went is
+    // prose, not a selector, so this matches a rule opening rather than the word.
+    expect(css).not.toMatch(/\.is-playing\s*(?:::[a-z-]+)?\s*\{/);
     expect(css).toContain('border-radius: 50%');
     expect(css).toContain('.atlas-camera-look-zone');
     expect(css).toContain('.atlas-city-waypoint');

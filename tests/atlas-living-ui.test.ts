@@ -100,3 +100,41 @@ describe('Atlas world is always behind the screens', () => {
     expect(source).toContain("host.setAttribute('aria-hidden', 'true')");
   });
 });
+
+describe('Atlas world-facing HUD elements wear the kit', () => {
+  const sheet = readFileSync(new URL('../src/atlas/atlas.css', import.meta.url), 'utf8');
+
+  function rule(selector: string): string {
+    const start = sheet.indexOf(`${selector} {`);
+    expect(start, `${selector} is missing`).toBeGreaterThan(-1);
+    return sheet.slice(start, sheet.indexOf('}', start));
+  }
+
+  it('leaves no hard offset ink shadow on the world-facing HUD', () => {
+    // These four sit directly over the city. A 2px hard offset is the poster
+    // idiom, and it is the last of it left in the product.
+    for (const selector of ['.atlas-camera-center', '.atlas-city-waypoint', '.atlas-mini-map']) {
+      expect(rule(selector), `${selector} still has a hard offset shadow`).not.toMatch(/box-shadow:[^;]*\d+px \d+px 0/);
+    }
+  });
+
+  it('rounds and glazes the waypoint and the centre button', () => {
+    for (const selector of ['.atlas-camera-center', '.atlas-city-waypoint']) {
+      const block = rule(selector);
+      expect(block, `${selector} is not rounded`).toContain('var(--atlas-radius');
+      expect(block, `${selector} is not glass`).toContain('backdrop-filter');
+    }
+  });
+
+  it('keeps the minimap circular', () => {
+    expect(rule('.atlas-mini-map')).toContain('border-radius: 50%');
+  });
+
+  it('does not move any of them', () => {
+    // Position is layout, and layout is frozen by the standing HUD decision.
+    expect(rule('.atlas-mini-map')).toContain('top: 112px');
+    expect(rule('.atlas-city-waypoint')).toContain('top: 254px');
+    expect(rule('.atlas-camera-center')).toContain('bottom: 148px');
+    expect(rule('.atlas-camera-look-zone')).toContain('inset: 0 0 0 44%');
+  });
+});
