@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { createIdleOrbit } from '../src/atlas/render/three/orbit';
 
@@ -32,5 +33,28 @@ describe('Atlas welcome orbit', () => {
     const orbit = createIdleOrbit();
     expect(orbit.headingAt(Number.NaN)).toBe(0);
     expect(orbit.headingAt(Number.POSITIVE_INFINITY)).toBe(0);
+  });
+});
+
+describe('Atlas orbit is confined to the welcome screen', () => {
+  const app = readFileSync(new URL('../src/atlas/app/atlas-app.ts', import.meta.url), 'utf8');
+
+  it('drives the camera only while the welcome screen is showing', () => {
+    /*
+     * The first wiring cleared a flag in screenPanel, which the two play shells
+     * never call by design, so the drift carried on into gameplay and fought
+     * the follow camera. Deriving it from the screen removes the coupling
+     * between "which screens are sheets" and "which screen orbits".
+     */
+    const start = app.indexOf('idleHeading:');
+    expect(start, 'idleHeading is missing').toBeGreaterThan(-1);
+    const body = app.slice(start, start + 700);
+    expect(body).toContain("this.screen !== 'welcome'");
+  });
+
+  it('does not depend on screenPanel to stop the drift', () => {
+    const start = app.indexOf('idleHeading:');
+    const body = app.slice(start, start + 700);
+    expect(body).toContain('return null');
   });
 });

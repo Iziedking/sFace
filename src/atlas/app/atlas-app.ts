@@ -825,7 +825,20 @@ export class AtlasApp {
         return { moveX: action.moveX, moveY: action.moveY };
       },
       onFrame: ({ player }) => this.updateBeaconMap(player),
-      idleHeading: () => (this.orbitStartedAt === null ? null : this.orbit.headingAt((performance.now() - this.orbitStartedAt) / 1_000)),
+      /*
+       * Derived from the current screen, not from a flag each screen has to
+       * remember to clear.
+       *
+       * The first version cleared orbitStartedAt in screenPanel, which the two
+       * play shells deliberately do not call — so after visiting the welcome
+       * screen the camera kept orbiting during play, overriding player-follow
+       * and leaving it pointed at empty ground. Gating on the screen makes the
+       * whole class of mistake impossible.
+       */
+      idleHeading: () => {
+        if (this.screen !== 'welcome' || this.orbitStartedAt === null) return null;
+        return this.orbit.headingAt((performance.now() - this.orbitStartedAt) / 1_000);
+      },
     });
     try {
       await renderer.initialize(host, {
