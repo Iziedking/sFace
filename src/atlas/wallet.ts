@@ -2,6 +2,7 @@ import { init, type NimiqProvider } from '@nimiq/mini-app-sdk';
 
 export interface AtlasWalletProvider {
   listAccounts(): Promise<unknown>;
+  /** Nimiq Provider API returns a lookup string; it is not chain proof. */
   sendBasicTransaction(input: { recipient: string; value: number }): Promise<unknown>;
 }
 

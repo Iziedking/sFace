@@ -46,12 +46,12 @@ export class AtlasRenderer {
     drawPath(context, point, state);
     drawDistantBeacon(context, point(44_000, 4_000), scale);
 
-    for (const fault of state.faults) if (fault.active) drawFault(context, point(fault.x, fault.y), fault.radius * scale);
+    for (const fault of state.faults) if (fault.active) drawRouteHazard(context, point(fault.x, fault.y), fault.radius * scale);
     for (const relay of state.relays) drawRelay(context, point(relay.x, relay.y), relay.scanned, relay.connected, scale);
     drawCourier(context, point(state.rescue.x, state.rescue.y), state.rescue.rescued, scale);
     drawGate(context, point(state.gate.x, state.gate.y), state.gate.unlocked, scale);
     drawDestination(context, point(objective.target.x, objective.target.y), state.tick, this.reducedMotion);
-    drawExplorer(context, point(state.player.x, state.player.y), state.player.facing, state.player.shieldTicks > 0, scale);
+    drawMatureHuman(context, point(state.player.x, state.player.y), state.player.facing, state.player.shieldTicks > 0, scale, state.tick, 'YOU');
     context.restore();
   }
 
@@ -66,11 +66,12 @@ export class AtlasRenderer {
     context.fillRect(0, 0, this.width, this.height * 0.48);
     drawHarborSkyline(context, this.width, this.height, restored);
     drawHarborWater(context, this.width, this.height, restored, this.reducedMotion);
-    drawHarborShop(context, this.width * 0.13, this.height * 0.43, restored);
+    drawHarborLanternShop(context, this.width * 0.13, this.height * 0.43, restored);
     drawHarborTower(context, this.width * 0.82, this.height * 0.21, this.height * 0.53, restored);
     drawHarborFerry(context, this.width * (restored ? 0.58 : 0.48), this.height * 0.69, restored);
-    drawHarborPerson(context, this.width * 0.28, this.height * 0.63, 'MARA', '#f28b30');
-    drawHarborPerson(context, this.width * 0.38, this.height * 0.69, role.toUpperCase(), role === 'builder' ? '#9eae7c' : '#f6c85f');
+    drawHarborWayfinding(context, this.width, this.height, restored);
+    drawMatureHuman(context, [this.width * 0.28, this.height * 0.63], 'right', false, 0.9, restored ? 20 : 0, 'MARA');
+    drawMatureHuman(context, [this.width * 0.38, this.height * 0.69], 'right', false, 0.9, 0, role === 'builder' ? 'BUILDER' : 'EXPLORER');
     context.restore();
   }
 
@@ -111,6 +112,13 @@ export class AtlasRenderer {
   }
 }
 
+/**
+ * Compatibility name for the existing canvas implementation. The public Atlas
+ * adapter uses `FallbackAtlasRenderer`; this alias keeps older callers stable
+ * while the renderer migration is staged.
+ */
+export type LegacyAtlasRenderer = AtlasRenderer;
+
 function drawHarborSkyline(context: CanvasRenderingContext2D, width: number, height: number, restored: boolean): void {
   context.fillStyle = restored ? '#b9c79a' : '#a9a092';
   for (let x = -30; x < width + 80; x += 130) {
@@ -144,25 +152,47 @@ function drawHarborWater(context: CanvasRenderingContext2D, width: number, heigh
   }
 }
 
-function drawHarborShop(context: CanvasRenderingContext2D, x: number, y: number, restored: boolean): void {
-  const width = 230;
-  const height = 160;
+function drawHarborLanternShop(context: CanvasRenderingContext2D, x: number, y: number, restored: boolean): void {
+  const width = 270;
+  const height = 190;
+  context.save();
+  context.lineJoin = 'round';
   context.fillStyle = '#f4ede0';
   context.strokeStyle = '#171411';
   context.lineWidth = 6;
   context.fillRect(x, y, width, height);
   context.strokeRect(x, y, width, height);
-  context.fillStyle = restored ? '#f28b30' : '#6d6256';
-  context.fillRect(x - 16, y - 30, width + 32, 42);
-  context.strokeRect(x - 16, y - 30, width + 32, 42);
-  context.fillStyle = '#171411';
-  context.font = '900 14px ui-monospace, monospace';
-  context.fillText(restored ? 'MARA\'S MARKET / OPEN' : 'MARA\'S MARKET / WAITING', x + 10, y - 3);
-  context.fillStyle = restored ? '#f6c85f' : '#171411';
+  context.fillStyle = restored ? '#f28b30' : '#c67832';
   context.beginPath();
-  context.arc(x + width * 0.68, y + 70, 20, 0, Math.PI * 2);
+  context.moveTo(x - 22, y + 8);
+  context.lineTo(x + width / 2, y - 42);
+  context.lineTo(x + width + 22, y + 8);
+  context.closePath();
   context.fill();
   context.stroke();
+  context.fillStyle = '#171411';
+  context.font = '900 15px ui-monospace, monospace';
+  context.fillText('MARA / LANTERN SHOP', x + 12, y - 5);
+  context.fillStyle = '#d6a649';
+  context.fillRect(x + 24, y + 58, 72, 82);
+  context.strokeRect(x + 24, y + 58, 72, 82);
+  context.fillStyle = restored ? '#f6c85f' : '#6d6256';
+  context.beginPath();
+  context.arc(x + 60, y + 98, 21, 0, Math.PI * 2);
+  context.fill();
+  context.stroke();
+  context.fillStyle = '#f4ede0';
+  context.fillRect(x + 132, y + 58, 104, 82);
+  context.strokeRect(x + 132, y + 58, 104, 82);
+  context.fillStyle = '#171411';
+  context.font = '800 12px ui-monospace, monospace';
+  context.fillText(restored ? 'OPEN' : 'WAITING', x + 153, y + 104);
+  context.fillStyle = '#171411';
+  context.fillRect(x + 103, y + height - 42, 64, 42);
+  context.fillStyle = '#f4ede0';
+  context.font = '900 10px ui-monospace, monospace';
+  context.fillText('NIMIQ PAY', x + 113, y + height - 18);
+  context.restore();
 }
 
 function drawHarborTower(context: CanvasRenderingContext2D, x: number, y: number, height: number, restored: boolean): void {
@@ -208,17 +238,26 @@ function drawHarborFerry(context: CanvasRenderingContext2D, x: number, y: number
   context.strokeRect(x - 30, y - 55, 60, 55);
 }
 
-function drawHarborPerson(context: CanvasRenderingContext2D, x: number, y: number, name: string, color: string): void {
-  context.fillStyle = color;
+function drawHarborWayfinding(context: CanvasRenderingContext2D, width: number, height: number, restored: boolean): void {
+  context.save();
   context.strokeStyle = '#171411';
-  context.lineWidth = 4;
+  context.lineWidth = 10;
+  context.lineCap = 'round';
   context.beginPath();
-  context.arc(x, y - 54, 18, 0, Math.PI * 2);
-  context.fill();
+  context.moveTo(width * 0.08, height * 0.78);
+  context.lineTo(width * 0.28, height * 0.69);
+  context.lineTo(width * 0.48, height * 0.74);
+  context.lineTo(width * 0.82, height * 0.55);
   context.stroke();
-  context.fillRect(x - 20, y - 34, 40, 62);
-  context.strokeRect(x - 20, y - 34, 40, 62);
-  label(context, name, x, y + 48);
+  context.strokeStyle = '#f28b30';
+  context.lineWidth = 4;
+  context.stroke();
+  context.fillStyle = '#171411';
+  context.font = '900 13px ui-monospace, monospace';
+  context.fillText('PAY HARBOR', width * 0.06, height * 0.12);
+  context.fillStyle = restored ? '#5b8f68' : '#f28b30';
+  context.fillText('FOLLOW THE ORANGE WAY', width * 0.06, height * 0.16);
+  context.restore();
 }
 
 function districtPalette(districtId: string): { ground: string; active: string } {
@@ -230,6 +269,17 @@ function districtPalette(districtId: string): { ground: string; active: string }
 }
 
 function drawGarden(context: CanvasRenderingContext2D, width: number, height: number, tick: number, reducedMotion: boolean): void {
+  context.fillStyle = '#c8d3b0';
+  context.fillRect(0, 0, width, height * 0.48);
+  context.fillStyle = '#a7b889';
+  context.beginPath();
+  context.moveTo(0, height * 0.48);
+  context.quadraticCurveTo(width * 0.2, height * 0.25, width * 0.42, height * 0.46);
+  context.quadraticCurveTo(width * 0.68, height * 0.2, width, height * 0.44);
+  context.lineTo(width, height * 0.62);
+  context.lineTo(0, height * 0.62);
+  context.closePath();
+  context.fill();
   context.fillStyle = '#eadfc8';
   context.fillRect(0, height * 0.62, width, height * 0.38);
   context.strokeStyle = '#d5c7aa';
@@ -241,16 +291,51 @@ function drawGarden(context: CanvasRenderingContext2D, width: number, height: nu
     context.lineTo(x - 30, height);
     context.stroke();
   }
-  context.fillStyle = '#b9c79a';
-  context.fillRect(0, height * 0.12, width, height * 0.18);
-  context.fillStyle = '#9eae7c';
-  for (let x = 20; x < width; x += 120) {
+  drawGardenBuilding(context, width * 0.08, height * 0.35, width * 0.16, height * 0.2, '#e5d0a7', 'FIELD OFFICE');
+  drawGardenBuilding(context, width * 0.7, height * 0.31, width * 0.18, height * 0.24, '#b9c79a', 'ROUTE HOUSE');
+  for (let index = 0; index < 7; index += 1) drawGardenTree(context, width * (0.04 + index * 0.15), height * (0.54 + (index % 2) * 0.03), 0.75 + (index % 3) * 0.1);
+  context.fillStyle = '#171411';
+  context.font = '900 11px ui-monospace, monospace';
+  context.fillText('GENESIS GARDEN / PAY HARBOR OUTSKIRTS', 18, height * 0.58);
+}
+
+function drawGardenBuilding(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, color: string, name: string): void {
+  context.save();
+  context.fillStyle = color;
+  context.strokeStyle = '#171411';
+  context.lineWidth = 3;
+  context.fillRect(x, y, width, height);
+  context.strokeRect(x, y, width, height);
+  context.fillStyle = '#c67832';
+  context.beginPath();
+  context.moveTo(x - 8, y);
+  context.lineTo(x + width / 2, y - height * 0.35);
+  context.lineTo(x + width + 8, y);
+  context.closePath();
+  context.fill();
+  context.stroke();
+  context.fillStyle = '#171411';
+  context.fillRect(x + width * 0.12, y + height * 0.32, width * 0.22, height * 0.24);
+  context.fillRect(x + width * 0.66, y + height * 0.32, width * 0.22, height * 0.24);
+  context.font = '900 9px ui-monospace, monospace';
+  context.fillText(name, x + 7, y + height - 8);
+  context.restore();
+}
+
+function drawGardenTree(context: CanvasRenderingContext2D, x: number, y: number, size: number): void {
+  context.save();
+  context.fillStyle = '#6f5338';
+  context.fillRect(x - 5 * size, y - 50 * size, 10 * size, 54 * size);
+  context.fillStyle = '#5b8f68';
+  context.strokeStyle = '#171411';
+  context.lineWidth = 2;
+  for (const [offsetX, offsetY, radius] of [[0, -70, 34], [-23, -48, 24], [23, -48, 24]] as const) {
     context.beginPath();
-    context.moveTo(x, height * 0.3);
-    context.lineTo(x + 42, height * 0.2);
-    context.lineTo(x + 84, height * 0.3);
+    context.arc(x + offsetX * size, y + offsetY * size, radius * size, 0, Math.PI * 2);
     context.fill();
+    context.stroke();
   }
+  context.restore();
 }
 
 function drawPath(context: CanvasRenderingContext2D, point: (x: number, y: number) => [number, number], state: AtlasState): void {
@@ -337,74 +422,127 @@ function drawGate(context: CanvasRenderingContext2D, [x, y]: [number, number], u
   context.restore();
 }
 
-function drawFault(context: CanvasRenderingContext2D, [x, y]: [number, number], radius: number): void {
-  const size = Math.max(28, radius);
+function drawRouteHazard(context: CanvasRenderingContext2D, [x, y]: [number, number], radius: number): void {
+  const size = Math.max(15, Math.min(28, radius * 0.12));
   context.save();
   context.translate(x, y);
   context.fillStyle = '#d55238';
   context.strokeStyle = '#171411';
   context.lineWidth = 3;
   context.beginPath();
-  for (let index = 0; index < 16; index += 1) {
-    const angle = (index / 16) * Math.PI * 2;
-    const distance = index % 2 === 0 ? size : size * 0.55;
-    const px = Math.cos(angle) * distance;
-    const py = Math.sin(angle) * distance;
-    if (index === 0) context.moveTo(px, py);
-    else context.lineTo(px, py);
-  }
-  context.closePath();
+  context.arc(0, 0, size, 0, Math.PI * 2);
   context.fill();
   context.stroke();
-  context.fillStyle = '#171411';
-  context.font = `900 ${Math.max(16, size * 0.35)}px ui-monospace, monospace`;
-  context.textAlign = 'center';
-  context.textBaseline = 'middle';
-  context.fillText('FAULT', 0, 0);
+  context.strokeStyle = '#f4ede0';
+  context.lineWidth = 3;
+  context.beginPath();
+  context.moveTo(-size * 0.35, -size * 0.35);
+  context.lineTo(size * 0.35, size * 0.35);
+  context.moveTo(size * 0.35, -size * 0.35);
+  context.lineTo(-size * 0.35, size * 0.35);
+  context.stroke();
   context.restore();
 }
 
-function drawExplorer(context: CanvasRenderingContext2D, [x, y]: [number, number], facing: 'up' | 'down' | 'left' | 'right', shielded: boolean, scale: number): void {
-  const size = Math.max(26, 420 * scale);
+function drawMatureHuman(context: CanvasRenderingContext2D, [x, y]: [number, number], facing: 'up' | 'down' | 'left' | 'right', shielded: boolean, scale: number, tick: number, name: string): void {
+  const size = Math.max(48, 390 * scale);
+  const walking = tick > 0 && tick % 18 < 9;
+  const sideFacing = facing === 'left' || facing === 'right';
+  const direction = facing === 'left' ? -1 : 1;
   context.save();
   context.translate(x, y);
+  context.lineCap = 'round';
+  context.lineJoin = 'round';
+  context.fillStyle = 'rgba(23, 20, 17, .22)';
+  context.beginPath();
+  context.ellipse(0, size * 0.48, size * 0.42, size * 0.13, 0, 0, Math.PI * 2);
+  context.fill();
   if (shielded) {
     context.strokeStyle = '#4e9ccf';
-    context.lineWidth = 5;
+    context.lineWidth = Math.max(3, size * 0.025);
     context.beginPath();
-    context.arc(0, 0, size * 1.25, 0, Math.PI * 2);
+    context.arc(0, 0, size * 0.62, 0, Math.PI * 2);
     context.stroke();
   }
-  context.fillStyle = '#f4ede0';
+
+  context.strokeStyle = '#25201b';
+  context.lineWidth = Math.max(7, size * 0.095);
+  context.beginPath();
+  context.moveTo(-size * 0.15, size * 0.2);
+  context.lineTo(-size * (0.2 + (walking ? 0.08 : 0)), size * 0.53);
+  context.moveTo(size * 0.15, size * 0.2);
+  context.lineTo(size * (0.2 + (walking ? 0.08 : 0)), size * 0.53);
+  context.stroke();
   context.strokeStyle = '#171411';
-  context.lineWidth = 4;
+  context.lineWidth = Math.max(8, size * 0.11);
   context.beginPath();
-  context.arc(0, -size * 0.55, size * 0.28, 0, Math.PI * 2);
+  context.moveTo(-size * (0.2 + (walking ? 0.08 : 0)), size * 0.53);
+  context.lineTo(-size * (0.05 + (walking ? 0.08 : 0)), size * 0.53);
+  context.moveTo(size * (0.2 + (walking ? 0.08 : 0)), size * 0.53);
+  context.lineTo(size * (0.35 + (walking ? 0.08 : 0)), size * 0.53);
+  context.stroke();
+
+  context.fillStyle = name === 'MARA' ? '#c67832' : '#4e7f9f';
+  context.strokeStyle = '#171411';
+  context.lineWidth = Math.max(4, size * 0.035);
+  context.beginPath();
+  context.moveTo(-size * 0.28, -size * 0.22);
+  context.quadraticCurveTo(0, -size * 0.34, size * 0.28, -size * 0.22);
+  context.lineTo(size * 0.23, size * 0.26);
+  context.quadraticCurveTo(0, size * 0.36, -size * 0.23, size * 0.26);
+  context.closePath();
   context.fill();
   context.stroke();
-  context.fillRect(-size * 0.34, -size * 0.18, size * 0.68, size * 0.76);
-  context.strokeRect(-size * 0.34, -size * 0.18, size * 0.68, size * 0.76);
+  context.fillStyle = '#d6a77d';
+  context.fillRect(-size * 0.07, -size * 0.3, size * 0.14, size * 0.14);
+  context.strokeRect(-size * 0.07, -size * 0.3, size * 0.14, size * 0.14);
+  context.strokeStyle = '#171411';
+  context.lineWidth = Math.max(5, size * 0.055);
   context.beginPath();
-  if (facing === 'left' || facing === 'right') {
-    context.moveTo(-size * 0.48, size * 0.05);
-    context.lineTo(-size * 0.78, size * 0.26);
-    context.moveTo(size * 0.48, size * 0.05);
-    context.lineTo(size * 0.78, size * 0.26);
+  context.moveTo(-size * 0.23, -size * 0.13);
+  context.lineTo(-size * 0.42 * direction, size * 0.1);
+  context.moveTo(size * 0.23, -size * 0.13);
+  context.lineTo(size * 0.42 * direction, size * 0.1);
+  context.stroke();
+  if (name === 'MARA') {
+    context.fillStyle = '#d6a649';
+    context.fillRect(-size * 0.13, size * 0.01, size * 0.26, size * 0.14);
+    context.strokeRect(-size * 0.13, size * 0.01, size * 0.26, size * 0.14);
   } else {
-    context.moveTo(-size * 0.18, size * 0.58);
-    context.lineTo(-size * 0.28, size * 0.96);
-    context.moveTo(size * 0.18, size * 0.58);
-    context.lineTo(size * 0.28, size * 0.96);
+    context.fillStyle = '#f28b30';
+    context.fillRect(-size * 0.04, -size * 0.14, size * 0.08, size * 0.3);
   }
-  context.stroke();
-  context.fillStyle = '#171411';
-  const eyeX = facing === 'left' ? -size * 0.09 : facing === 'right' ? size * 0.09 : 0;
+
+  context.fillStyle = '#d6a77d';
+  context.strokeStyle = '#171411';
+  context.lineWidth = Math.max(3, size * 0.03);
   context.beginPath();
-  context.arc(eyeX, -size * 0.59, size * 0.04, 0, Math.PI * 2);
+  context.ellipse(sideFacing ? direction * size * 0.02 : 0, -size * 0.51, size * 0.21, size * 0.23, 0, 0, Math.PI * 2);
   context.fill();
-  context.fillStyle = '#f28b30';
-  context.fillRect(-size * 0.16, -size * 0.05, size * 0.32, size * 0.25);
-  label(context, 'YOU / HUMAN', 0, size + 22);
+  context.stroke();
+  context.fillStyle = '#3a251c';
+  context.beginPath();
+  context.arc(sideFacing ? direction * size * 0.01 : 0, -size * 0.59, size * 0.2, Math.PI, Math.PI * 2);
+  context.lineTo(direction * size * 0.19, -size * 0.48);
+  context.quadraticCurveTo(0, -size * 0.4, -direction * size * 0.19, -size * 0.48);
+  context.closePath();
+  context.fill();
+  context.fillStyle = '#171411';
+  const eyeX = sideFacing ? direction * size * 0.1 : direction * size * 0.08;
+  context.beginPath();
+  context.arc(eyeX, -size * 0.52, size * 0.025, 0, Math.PI * 2);
+  context.fill();
+  if (!sideFacing) {
+    context.beginPath();
+    context.arc(-eyeX, -size * 0.52, size * 0.025, 0, Math.PI * 2);
+    context.fill();
+  }
+  context.strokeStyle = '#8f493c';
+  context.lineWidth = Math.max(2, size * 0.018);
+  context.beginPath();
+  context.arc(sideFacing ? direction * size * 0.02 : 0, -size * 0.46, size * 0.055, 0.15, Math.PI - 0.15);
+  context.stroke();
+  label(context, name === 'MARA' ? 'MARA / KEEPER' : `YOU / ${name}`, 0, size * 0.72);
   context.restore();
 }
 

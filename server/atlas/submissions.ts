@@ -3,6 +3,7 @@ import type { AtlasAction, AtlasSnapshot } from '../../shared/atlas/state';
 import type { AtlasAssistance, AtlasNetwork, AtlasRole } from '../../shared/atlas/types';
 import type { AtlasMissionDefinition } from '../../shared/atlas/world';
 import type { AtlasTicketService } from './tickets';
+import { ATLAS_MASTERY_DEFAULT_DEFINITION, calculateAtlasMastery, type AtlasMasteryBreakdown } from '../../shared/atlas/mastery';
 
 export interface AtlasSubmissionInput {
   runId: string;
@@ -37,6 +38,7 @@ export interface AtlasVerifiedRun {
   replayHash: string;
   verifiedAt: number;
   status: 'verified';
+  mastery?: AtlasMasteryBreakdown;
   duplicate?: boolean;
 }
 
@@ -121,7 +123,7 @@ export function createAtlasSubmissionService(options: { tickets: AtlasTicketServ
       runs.clear();
       pending.clear();
       for (const stored of (raw as AtlasSubmissionSnapshot).runs) {
-        if (!stored || typeof stored.runId !== 'string' || stored.status !== 'verified' || !Number.isSafeInteger(stored.score) || !/^[a-f0-9]{64}$/.test(stored.replayHash) || !/^[a-f0-9]{64}$/.test(stored.fingerprint)) continue;
+        if (!stored || typeof stored.runId !== 'string' || stored.status !== 'verified' || !Number.isSafeInteger(stored.score) || !/^[a-f0-9]{64}$/.test(stored.replayHash) || !/^[a-f0-9]{64}$/.test(stored.fingerprint) || stored.mastery !== undefined && !validMastery(stored.mastery)) continue;
         const { fingerprint, duplicate: _duplicate, ...run } = stored;
         runs.set(run.runId, { run, fingerprint });
       }
@@ -138,7 +140,7 @@ export function createAtlasSubmissionService(options: { tickets: AtlasTicketServ
     const authoritative = replayAtlasActions(options.mission, input.actions);
     if (stableJson(authoritative) !== stableJson(input.claimedSnapshot)) throw new AtlasSubmissionError('invalid', 'Atlas claimed snapshot differs from authoritative replay.');
     await options.tickets.consume({ ticketId: input.ticketId, actorId: input.actorId, walletAddress: input.walletAddress, runId: input.runId, now: now() });
-    const run: AtlasVerifiedRun = { runId: input.runId, actorId: input.actorId, walletAddress: input.walletAddress, role: input.role, seasonId: input.seasonId, challengeId: input.challengeId, score: scoreAtlasSnapshot(authoritative), correct: authoritative.phase === 'completed', assistance: input.assistance, prizeEligible: input.assistance === 'none', replayHash: input.replayHash, verifiedAt: now(), status: 'verified' };
+    const run: AtlasVerifiedRun = { runId: input.runId, actorId: input.actorId, walletAddress: input.walletAddress, role: input.role, seasonId: input.seasonId, challengeId: input.challengeId, score: scoreAtlasSnapshot(authoritative), correct: authoritative.phase === 'completed', assistance: input.assistance, prizeEligible: input.assistance === 'none', replayHash: input.replayHash, verifiedAt: now(), status: 'verified', mastery: calculateAtlasMastery(authoritative, ATLAS_MASTERY_DEFAULT_DEFINITION) };
     runs.set(input.runId, { run, fingerprint: held.fingerprint });
     pending.delete(input.runId);
     return { ...run };
@@ -166,4 +168,12 @@ function stableJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
   const record = value as Record<string, unknown>;
   return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(',')}}`;
+}
+
+function validMastery(value: unknown): value is AtlasMasteryBreakdown {
+  if (!value || typeof value !== 'object') return false;
+  const mastery = value as AtlasMasteryBreakdown;
+  return [mastery.knowledge, mastery.execution, mastery.safety, mastery.efficiency, mastery.total].every((item) => Number.isSafeInteger(item) && item >= 0)
+    && mastery.knowledge <= 4_000 && mastery.execution <= 3_000 && mastery.safety <= 1_500 && mastery.efficiency <= 1_500 && mastery.total <= 10_000
+    && mastery.total === mastery.knowledge + mastery.execution + mastery.safety + mastery.efficiency;
 }

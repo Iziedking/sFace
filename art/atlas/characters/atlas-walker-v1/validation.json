@@ -1,0 +1,67 @@
+{
+  "asset": "atlas-walker-v1",
+  "version": "1.5.0",
+  "status": "pass",
+  "metrics": {
+    "vertices": 2828,
+    "triangles": 4626,
+    "materials": 8,
+    "bones": 23,
+    "animations": 3,
+    "textureMaps": 0,
+    "glbBytes": 196208,
+    "drawCalls": 8,
+    "npcLod1": {
+      "vertices": 1940,
+      "triangles": 3254,
+      "materials": 7,
+      "bones": 23,
+      "animations": 3,
+      "textureMaps": 0,
+      "glbBytes": 144392,
+      "drawCalls": 7
+    },
+    "npcLod2": {
+      "vertices": 120,
+      "triangles": 164,
+      "materials": 4,
+      "bones": 23,
+      "animations": 3,
+      "textureMaps": 0,
+      "glbBytes": 35640,
+      "drawCalls": 4
+    }
+  },
+  "sha256": "2362b4667e18472bc0efdc2ecead12ee7b5a8f373086ca4e611a292c600ab760",
+  "boundsMeters": {
+    "x": [
+      -0.37460569067093913,
+      0.38135328050676803
+    ],
+    "y": [
+      0.0,
+      1.7600000000000002
+    ],
+    "z": [
+      -0.24199842412040712,
+      0.21248642117889407
+    ]
+  },
+  "checks": {
+    "glbHeader": true,
+    "glbChunks": true,
+    "bufferRanges": true,
+    "skinBinding": true,
+    "runtimeMesh": true,
+    "noEmbeddedImages": true,
+    "triangleBudget": true,
+    "materialBudget": true,
+    "boneBudget": true,
+    "fileBudget": true,
+    "textureFree": true,
+    "animationPresent": true,
+    "heightMatchesSpec": true,
+    "silhouettePreview": true
+  },
+  "provenance": "Original procedural geometry authored for SFACE. No generated images, image-to-3D input, scans, stock models, or external meshes."
+}

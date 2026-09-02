@@ -2,6 +2,8 @@ import { createAtlasState, snapshotAtlasState, type AtlasAction, type AtlasSnaps
 import { stepAtlas } from './step';
 import type { AtlasMissionDefinition } from './world';
 
+export { replayAtlasExpedition, validateAtlasExpeditionTrace } from './expedition';
+
 export function replayAtlasActions(mission: AtlasMissionDefinition, actions: readonly AtlasAction[]): AtlasSnapshot {
   const state = createAtlasState(mission);
   for (const action of canonicalAtlasActions(actions)) stepAtlas(state, action);

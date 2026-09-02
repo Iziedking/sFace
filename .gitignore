@@ -58,6 +58,15 @@ Thumbs.db
 .vscode/
 .idea/
 *.log
+
+# Local procedural-art review and measurement output. The build scripts and
+# source specifications are the reproducible record; these files are local
+# inspection aids and Python bytecode is disposable cache.
+.atlas-3d-baseline.json
+art-review.html
+**/__pycache__/
+*.py[cod]
+
 # Stray dev-server output. Runtime noise, never source.
 *.err
 

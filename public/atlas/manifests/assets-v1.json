@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "mobileBudgetBytes": 262144,
+  "assets": [
+    {
+      "id": "atlas-shell-mark",
+      "path": "/icon.svg",
+      "sha256": "3F48BEAD15FE087938B07F97FFD98BA844D1CDFDCB1E0C7BD1B1C7711B2DBE4D",
+      "bytes": 978,
+      "compressedBytes": 978,
+      "mime": "image/svg+xml",
+      "width": 512,
+      "height": 512,
+      "bundle": "atlas-shell"
+    },
+    {
+      "id": "atlas-harbor-waiting-ambience",
+      "path": "/atlas/audio/harbor-waiting-ambience.ogg",
+      "sha256": "3b899ffb74ce3271a79663d64fdc11510bc90d5fac206e1386bc24a4f6d7fbcc",
+      "bytes": 5101,
+      "compressedBytes": 5101,
+      "mime": "audio/ogg",
+      "width": 1,
+      "height": 1,
+      "bundle": "atlas-harbor"
+    },
+    {
+      "id": "atlas-harbor-restored-ambience",
+      "path": "/atlas/audio/harbor-restored-ambience.ogg",
+      "sha256": "0f894c7def6340ee4fce199c4e1cf424b5270ab89691b6a06d279866f6bc7ade",
+      "bytes": 6686,
+      "compressedBytes": 6686,
+      "mime": "audio/ogg",
+      "width": 1,
+      "height": 1,
+      "bundle": "atlas-harbor"
+    },
+    {
+      "id": "atlas-beacon-confirmation",
+      "path": "/atlas/audio/beacon-confirmation.ogg",
+      "sha256": "a1da0c5411354aae06e63cf23f2ee67159a92a1f0714105a7ade1f8f9147aaa1",
+      "bytes": 5082,
+      "compressedBytes": 5082,
+      "mime": "audio/ogg",
+      "width": 1,
+      "height": 1,
+      "bundle": "atlas-harbor"
+    }
+  ]
+}

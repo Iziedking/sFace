@@ -1,4 +1,5 @@
 import type { AtlasAssistance, AtlasRole } from '../../shared/atlas/types';
+import type { AtlasMasteryBreakdown } from '../../shared/atlas/mastery';
 
 export interface AtlasLeaderboardRun {
   runId: string;
@@ -10,6 +11,7 @@ export interface AtlasLeaderboardRun {
   assistance: AtlasAssistance;
   prizeEligible: boolean;
   replayHash: string;
+  mastery?: AtlasMasteryBreakdown;
 }
 
 export interface AtlasLeaderboardRow extends AtlasLeaderboardRun {
@@ -44,17 +46,18 @@ export function createAtlasLeaderboardService(): AtlasLeaderboardService {
       walletActor.set(walletKey, run.actorId);
       const key = `${run.seasonId}:${run.role}:${run.actorId}`;
       const current = best.get(key);
-      if (!current || run.score > current.score || run.score === current.score && run.runId.localeCompare(current.runId) < 0) best.set(key, { ...run });
+      if (!current || rankScore(run) > rankScore(current) || rankScore(run) === rankScore(current) && run.runId.localeCompare(current.runId) < 0) best.set(key, { ...run });
       const row = (await this.list(run.seasonId, run.role)).find((item) => item.actorId === run.actorId);
       if (!row) throw new AtlasLeaderboardError('invalid', 'Accepted leaderboard run is not readable.');
       return row;
     },
     async list(seasonId, role) {
-      const rows = [...best.values()].filter((run) => run.seasonId === seasonId && run.role === role).sort((left, right) => right.score - left.score || left.actorId.localeCompare(right.actorId) || left.walletAddress.localeCompare(right.walletAddress));
+      const rows = [...best.values()].filter((run) => run.seasonId === seasonId && run.role === role).sort((left, right) => rankScore(right) - rankScore(left) || left.actorId.localeCompare(right.actorId) || left.walletAddress.localeCompare(right.walletAddress));
       let previousScore: number | undefined;
       return rows.map((run, index) => {
-        const rank = previousScore === run.score ? index : index + 1;
-        previousScore = run.score;
+        const score = rankScore(run);
+        const rank = previousScore === score ? index : index + 1;
+        previousScore = score;
         return { ...run, rank };
       });
     },
@@ -63,4 +66,15 @@ export function createAtlasLeaderboardService(): AtlasLeaderboardService {
 
 function validate(run: AtlasLeaderboardRun): void {
   if (!run.runId || !run.actorId || !run.walletAddress || !/^[a-f0-9]{64}$/.test(run.replayHash) || !Number.isSafeInteger(run.score) || run.score < 0) throw new AtlasLeaderboardError('invalid', 'Atlas leaderboard run is malformed.');
+  if (run.mastery !== undefined && !validMastery(run.mastery)) throw new AtlasLeaderboardError('invalid', 'Atlas leaderboard mastery is malformed.');
+}
+
+function rankScore(run: AtlasLeaderboardRun): number {
+  return run.mastery?.total ?? run.score;
+}
+
+function validMastery(value: AtlasMasteryBreakdown): boolean {
+  return [value.knowledge, value.execution, value.safety, value.efficiency, value.total].every((item) => Number.isSafeInteger(item) && item >= 0)
+    && value.knowledge <= 4_000 && value.execution <= 3_000 && value.safety <= 1_500 && value.efficiency <= 1_500 && value.total <= 10_000
+    && value.total === value.knowledge + value.execution + value.safety + value.efficiency;
 }

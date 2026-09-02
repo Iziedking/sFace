@@ -1,0 +1,38 @@
+{
+  "asset": "atlas-walker-v1",
+  "displayName": "Atlas Walker",
+  "version": "1.5.0",
+  "status": "owner-review-replacement",
+  "authorship": "Original procedural geometry authored for SFACE. No generated images, image-to-3D input, scans, stock models, or external meshes.",
+  "design": {
+    "role": "A practical network field guide who can grow into both Explorer and Builder mission kits.",
+    "silhouette": "Adult, upright and lightly tapered; narrow orange field jacket, compact seafoam signal pack, wrist scanner, and slim work boots.",
+    "proportions": "Approximately 5.2 heads tall with a smaller head-to-body ratio, slim limbs, readable hands, and compact equipment.",
+    "surfaceLanguage": "Smooth low-poly rounded anatomy, softened joint transitions, shaped clothing layers, a 23-bone body-and-face rig, a 25-sample planted walk cycle, restrained material response, and no decorative surface noise.",
+    "faceDirection": "Soft tapered oval, shallow cheek volume, gently tapered horizontal eyes, subtle nose and mouth, straight brows, and layered side-swept black hair. East Asian-inspired original character design with no real-person likeness or caricature.",
+    "frontDirection": "+Z"
+  },
+  "palette": {
+    "skin": "#C98C68",
+    "skinShadow": "#A7684F",
+    "ink": "#14110E",
+    "workwear": "#292725",
+    "cream": "#F4EDE0",
+    "orange": "#FF5A1F",
+    "seafoam": "#8FB3A8",
+    "leather": "#65513B"
+  },
+  "mobileBudget": {
+    "maxTriangles": 5200,
+    "maxMaterials": 8,
+    "maxBones": 24,
+    "maxGlbBytes": 524288,
+    "textureMaps": 0,
+    "animationClips": 3
+  },
+  "scaleMeters": {
+    "height": 1.76,
+    "shoulderWidth": 0.72,
+    "bootLength": 0.32
+  }
+}

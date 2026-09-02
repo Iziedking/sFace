@@ -65,6 +65,37 @@ assisted and removes it from prize eligibility. The declared launch allocation
 is 8,000,000,000 Lunas (80,000 NIM); it is not a claim that funds are present or
 that a payout has occurred.
 
+## How to play NIM Atlas
+
+The whole game is one loop: **choose a path → walk to a need → use the Nimiq
+idea → see the district change**.
+
+- **Explorer:** use Mara's shop and approve a readable NIM payment.
+- **Builder:** repair the provider, exact Luna amount, and confirmation path.
+- **Win the scene:** a hash or callback is not enough; the route unlocks only
+  after matching canonical confirmation.
+
+### Why the adventure has Nimiq value
+
+| In the game | The Nimiq idea it makes memorable |
+| --- | --- |
+| Mara's shop | Nimiq Pay asks the person to approve the action. |
+| Payment review | NIM is sent as exact integer Lunas to a named recipient on a named network. |
+| Harbor unlock | Atlas checks canonical chain evidence before treating the item as paid. |
+| Builder repair | A Mini App keeps provider access, user intent, and fulfillment separate. |
+
+These are playable steps, not claims that this build has sent a payment. Read the
+official [Nimiq Provider API](https://nimiq.dev/mini-apps/api-reference/nimiq-provider)
+and [Nimiq Mini Apps guide](https://nimiq.dev/mini-apps/) for the implementation
+behind the lesson.
+
+<div align="center">
+  <img src="docs/shots/atlas-390-pay-harbor.png" width="31%" alt="NIM Atlas Pay Harbor mission with Mara">
+  <img src="docs/shots/atlas-430-payment-review.png" width="31%" alt="NIM Atlas payment review showing TestAlbatross and Lunas">
+  <img src="docs/shots/atlas-390-welcome.png" width="31%" alt="NIM Atlas welcome screen with Explorer and Builder paths">
+  <p><em>Need → check → choose. The in-game How to play page uses the same proof snapshots.</em></p>
+</div>
+
 For local development:
 
 ```bash
@@ -75,6 +106,30 @@ npm run build
 npm run prove:relay
 npm run archive:legacy:dry
 ```
+
+For the Release A preview, build first, serve the preview in another terminal,
+then measure and capture the real browser surface:
+
+```bash
+npm run build
+npm run preview -- --host 127.0.0.1 --port 4173
+node scripts/measure-atlas.mjs --url http://127.0.0.1:4173 --viewports 320x700,390x844,430x932 --minutes 30
+npm run shoot:atlas
+```
+
+The measurement command reports the requested viewport HTTP timings, built shell
+size, compact trace size, replay p95, and a bounded heap sample. It labels those
+as local measurements; it does not turn them into deployed-device claims.
+
+The live Pay Harbor path is intentionally separate from local play. It requires
+a real TestAlbatross recipient configured in the deployment and Nimiq Pay inside
+the Nimiq mobile app. The browser never treats a wallet lookup or transaction
+hash as payment proof: the server must observe matching canonical evidence before
+the lantern can unlock. Until that exact testnet route is owner-approved, the
+public browser remains safe practice mode.
+
+The sections below describe archived Cycle I gameplay and screenshots. They are
+kept for historical context and are not the current NIM Atlas product surface.
 
 The former Rescue Relay gameplay and records remain in the repository as
 historical/internal material. Legacy data in `.data/sface.json` is preserved,

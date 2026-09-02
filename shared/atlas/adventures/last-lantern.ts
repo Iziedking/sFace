@@ -52,6 +52,15 @@ export const LAST_LANTERN = Object.freeze({
   } satisfies LanternPaymentRequest,
 });
 
+export const LAST_LANTERN_CONVERSATION_MILESTONES = Object.freeze({
+  arrival: 'arrived-pay-harbor',
+  shop: 'lantern-inspected',
+  payment: 'payment-verified',
+  restoration: 'harbor-restored',
+} as const);
+
+export type LastLanternConversationMilestone = typeof LAST_LANTERN_CONVERSATION_MILESTONES[keyof typeof LAST_LANTERN_CONVERSATION_MILESTONES];
+
 export type LastLanternAction =
   | { type: 'enter-shop' }
   | { type: 'select-lantern' }

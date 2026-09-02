@@ -104,6 +104,22 @@ export interface AtlasPlayerProgressV2 {
   mastery: number;
 }
 
+export interface AtlasAvatarConfig {
+  face: string;
+  body: string;
+  skin: string;
+  hair: string;
+  workwear: string;
+  accessories: string[];
+  name: string;
+  pronouns: string;
+}
+
+export interface AtlasPlayerProgressV3 extends Omit<AtlasPlayerProgressV2, 'version'> {
+  version: 3;
+  avatar: AtlasAvatarConfig;
+}
+
 export interface AtlasPublishedManifest<T> {
   kind: AtlasManifestKind;
   version: number;

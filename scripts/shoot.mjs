@@ -20,6 +20,7 @@
  *
  * Usage:  npm run dev   (in another terminal)
  *         node scripts/shoot.mjs
+ *         node scripts/shoot-atlas.mjs  (NIM Atlas Release A evidence)
  */
 
 import { spawn } from 'node:child_process';
@@ -575,10 +576,14 @@ async function main() {
   console.log(`\n${captions.length} shots written to docs/shots`);
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+if (process.env.SFACE_ATLAS_SHOTS === '1') {
+  await import('./shoot-atlas.mjs');
+} else {
+  main().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}
 
 /**
  * Turn the guide copies into something worth shipping.

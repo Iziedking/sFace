@@ -1,0 +1,1088 @@
+{
+  "version": 1,
+  "districtId": "beacon-commons",
+  "models": [
+    {
+      "id": "beacon-commons-environment",
+      "url": "/atlas/3d/v1/beacon-commons/environment.glb",
+      "contentType": "model/gltf-binary"
+    },
+    {
+      "id": "atlas-walker-player",
+      "url": "/atlas/3d/v1/characters/atlas-walker-player.glb",
+      "contentType": "model/gltf-binary"
+    },
+    {
+      "id": "atlas-walker-npc-lod1",
+      "url": "/atlas/3d/v1/characters/atlas-walker-npc-lod1.glb",
+      "contentType": "model/gltf-binary"
+    },
+    {
+      "id": "atlas-walker-npc-lod2",
+      "url": "/atlas/3d/v1/characters/atlas-walker-npc-lod2.glb",
+      "contentType": "model/gltf-binary"
+    }
+  ],
+  "instances": [
+    {
+      "id": "beacon-commons-environment-instance",
+      "modelId": "beacon-commons-environment",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "id": "atlas-walker-player-instance",
+      "modelId": "atlas-walker-player",
+      "position": [
+        0,
+        0,
+        4.2
+      ],
+      "rotation": [
+        0,
+        3.14159265359,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    }
+  ],
+  "navigation": {
+    "safeSpawn": [
+      0,
+      0,
+      4.2
+    ],
+    "bounds": {
+      "minX": -9.4,
+      "maxX": 9.4,
+      "minZ": -70.2,
+      "maxZ": 7.2
+    },
+    "cameraHeadingRadians": 3.141592653589793
+  },
+  "anchors": [
+    {
+      "id": "arrival-player",
+      "kind": "arrival",
+      "position": [
+        0,
+        0,
+        4.2
+      ],
+      "radius": 1.2
+    },
+    {
+      "id": "travel-pay-harbor",
+      "kind": "travel",
+      "position": [
+        5.7,
+        0,
+        -9.7
+      ],
+      "radius": 2.5
+    },
+    {
+      "id": "return-pay-harbor",
+      "kind": "travel",
+      "position": [
+        0.2,
+        0,
+        3.2
+      ],
+      "radius": 1.6
+    },
+    {
+      "id": "mission-guide",
+      "kind": "mission",
+      "position": [
+        0.7,
+        0,
+        0.5
+      ],
+      "radius": 1.2
+    },
+    {
+      "id": "community-plaza",
+      "kind": "conversation",
+      "position": [
+        -2.9,
+        0,
+        -5.6
+      ],
+      "radius": 1.8
+    },
+    {
+      "id": "team-workshop",
+      "kind": "work",
+      "position": [
+        5.9,
+        0,
+        -5.7
+      ],
+      "radius": 2
+    },
+    {
+      "id": "district-map",
+      "kind": "travel",
+      "position": [
+        -3.7,
+        0,
+        -11.4
+      ],
+      "radius": 2
+    },
+    {
+      "id": "conversation-guide-market",
+      "kind": "conversation",
+      "position": [
+        0.7,
+        0,
+        0.5
+      ],
+      "radius": 1.2
+    },
+    {
+      "id": "conversation-community-plaza",
+      "kind": "conversation",
+      "position": [
+        -2.9,
+        0,
+        -5.6
+      ],
+      "radius": 1.5
+    },
+    {
+      "id": "conversation-team-pavilion",
+      "kind": "conversation",
+      "position": [
+        -3.7,
+        0,
+        -11.4
+      ],
+      "radius": 1.5
+    },
+    {
+      "id": "work-repair-core",
+      "kind": "work",
+      "position": [
+        3.95,
+        0,
+        -1.35
+      ],
+      "radius": 1.2
+    },
+    {
+      "id": "work-builder-yard",
+      "kind": "work",
+      "position": [
+        5.9,
+        0,
+        -5.7
+      ],
+      "radius": 2
+    },
+    {
+      "id": "work-community-board",
+      "kind": "work",
+      "position": [
+        -2.9,
+        0,
+        -5.6
+      ],
+      "radius": 1.2
+    },
+    {
+      "id": "work-team-table",
+      "kind": "work",
+      "position": [
+        -3.7,
+        0,
+        -11.4
+      ],
+      "radius": 1.4
+    },
+    {
+      "id": "queue-market-entry",
+      "kind": "queue",
+      "position": [
+        -3.2,
+        0,
+        -0.5
+      ],
+      "radius": 1
+    },
+    {
+      "id": "queue-repair-entry",
+      "kind": "queue",
+      "position": [
+        2.5,
+        0,
+        -1.8
+      ],
+      "radius": 1
+    },
+    {
+      "id": "npc-spawn-01",
+      "kind": "arrival",
+      "position": [
+        0.7,
+        0,
+        0.5
+      ],
+      "radius": 0.65
+    },
+    {
+      "id": "npc-spawn-02",
+      "kind": "arrival",
+      "position": [
+        -5.25,
+        0,
+        0.25
+      ],
+      "radius": 0.65
+    },
+    {
+      "id": "npc-spawn-03",
+      "kind": "arrival",
+      "position": [
+        -4.45,
+        0,
+        0.25
+      ],
+      "radius": 0.65
+    },
+    {
+      "id": "npc-spawn-04",
+      "kind": "arrival",
+      "position": [
+        -3.45,
+        0,
+        -1.15
+      ],
+      "radius": 0.65
+    },
+    {
+      "id": "npc-spawn-05",
+      "kind": "arrival",
+      "position": [
+        -3.2,
+        0,
+        -2
+      ],
+      "radius": 0.65
+    },
+    {
+      "id": "npc-spawn-06",
+      "kind": "arrival",
+      "position": [
+        3.25,
+        0,
+        -0.45
+      ],
+      "radius": 0.65
+    },
+    {
+      "id": "npc-spawn-07",
+      "kind": "arrival",
+      "position": [
+        4.6,
+        0,
+        -0.55
+      ],
+      "radius": 0.65
+    },
+    {
+      "id": "npc-spawn-08",
+      "kind": "arrival",
+      "position": [
+        2,
+        0,
+        -3.7
+      ],
+      "radius": 0.65
+    },
+    {
+      "id": "npc-spawn-09",
+      "kind": "arrival",
+      "position": [
+        -1.2,
+        0,
+        -4.6
+      ],
+      "radius": 0.65
+    },
+    {
+      "id": "npc-spawn-10",
+      "kind": "arrival",
+      "position": [
+        -3.6,
+        0,
+        -9.8
+      ],
+      "radius": 0.65
+    },
+    {
+      "id": "npc-spawn-11",
+      "kind": "arrival",
+      "position": [
+        3,
+        0,
+        -7.4
+      ],
+      "radius": 0.65
+    },
+    {
+      "id": "npc-spawn-12",
+      "kind": "arrival",
+      "position": [
+        -0.4,
+        0,
+        -7
+      ],
+      "radius": 0.65
+    },
+    {
+      "id": "npc-spawn-13",
+      "kind": "arrival",
+      "position": [
+        2.1,
+        0,
+        -14
+      ],
+      "radius": 0.65
+    },
+    {
+      "id": "npc-spawn-14",
+      "kind": "arrival",
+      "position": [
+        -2,
+        0,
+        -24
+      ],
+      "radius": 0.65
+    },
+    {
+      "id": "npc-spawn-15",
+      "kind": "arrival",
+      "position": [
+        4,
+        0,
+        -39
+      ],
+      "radius": 0.65
+    },
+    {
+      "id": "npc-spawn-16",
+      "kind": "arrival",
+      "position": [
+        -6,
+        0,
+        -51
+      ],
+      "radius": 0.65
+    },
+    {
+      "id": "npc-spawn-17",
+      "kind": "arrival",
+      "position": [
+        2,
+        0,
+        -62
+      ],
+      "radius": 0.65
+    }
+  ],
+  "paths": [
+    {
+      "id": "walk-main-street",
+      "points": [
+        [
+          0,
+          0,
+          4.2
+        ],
+        [
+          0.7,
+          0,
+          0.5
+        ],
+        [
+          2.2,
+          0,
+          -3.2
+        ],
+        [
+          2,
+          0,
+          -9.5
+        ],
+        [
+          -3.2,
+          0,
+          -13
+        ],
+        [
+          -3.2,
+          0,
+          -21.7
+        ],
+        [
+          0.6,
+          0,
+          -24.5
+        ],
+        [
+          2,
+          0,
+          -29.2
+        ],
+        [
+          3.4,
+          0,
+          -33.5
+        ],
+        [
+          1.4,
+          0,
+          -41
+        ],
+        [
+          -1.2,
+          0,
+          -49.5
+        ],
+        [
+          0.8,
+          0,
+          -58
+        ],
+        [
+          2,
+          0,
+          -68
+        ]
+      ],
+      "purpose": "walk",
+      "speed": 1.8
+    },
+    {
+      "id": "queue-market",
+      "points": [
+        [
+          -3.2,
+          0,
+          -2
+        ],
+        [
+          -3.2,
+          0,
+          -1.1
+        ],
+        [
+          -3.4,
+          0,
+          0.15
+        ],
+        [
+          -5.25,
+          0,
+          0.25
+        ]
+      ],
+      "purpose": "queue",
+      "speed": 0.65
+    },
+    {
+      "id": "queue-builder-yard",
+      "points": [
+        [
+          2,
+          0,
+          -3.7
+        ],
+        [
+          2.7,
+          0,
+          -2.4
+        ],
+        [
+          3.25,
+          0,
+          -0.45
+        ],
+        [
+          4.6,
+          0,
+          -0.55
+        ]
+      ],
+      "purpose": "queue",
+      "speed": 0.65
+    },
+    {
+      "id": "conversation-loop",
+      "points": [
+        [
+          0.7,
+          0,
+          0.5
+        ],
+        [
+          -2.9,
+          0,
+          -5.6
+        ],
+        [
+          -2.3,
+          0,
+          -8.8
+        ],
+        [
+          -2.3,
+          0,
+          -14.2
+        ],
+        [
+          -3.2,
+          0,
+          -15.2
+        ],
+        [
+          -3.2,
+          0,
+          -21.7
+        ],
+        [
+          1.2,
+          0,
+          -24
+        ],
+        [
+          -1.4,
+          0,
+          -36
+        ],
+        [
+          1,
+          0,
+          -48
+        ]
+      ],
+      "purpose": "conversation",
+      "speed": 1.1
+    },
+    {
+      "id": "walk-outer-ring",
+      "points": [
+        [
+          -7.6,
+          0,
+          -13.5
+        ],
+        [
+          -13.3,
+          0,
+          -15.5
+        ],
+        [
+          -13.3,
+          0,
+          -44
+        ],
+        [
+          -10,
+          0,
+          -55
+        ],
+        [
+          -8,
+          0,
+          -58
+        ],
+        [
+          0,
+          0,
+          -60
+        ],
+        [
+          2,
+          0,
+          -68
+        ]
+      ],
+      "purpose": "walk",
+      "speed": 1.5
+    }
+  ],
+  "colliders": [
+    {
+      "id": "obstruction-market",
+      "shape": "box",
+      "position": [
+        -5.6,
+        1.4,
+        -4.2
+      ],
+      "size": [
+        3.6,
+        2.8,
+        7.8
+      ]
+    },
+    {
+      "id": "obstruction-workshop",
+      "shape": "box",
+      "position": [
+        5.9,
+        1.45,
+        -5.7
+      ],
+      "size": [
+        4.8,
+        2.9,
+        4.2
+      ]
+    },
+    {
+      "id": "obstruction-team-table",
+      "shape": "capsule",
+      "position": [
+        -3.7,
+        0.8,
+        -11.4
+      ],
+      "size": [
+        1.9,
+        1.6,
+        1.9
+      ]
+    },
+    {
+      "id": "obstruction-team-pavilion-post-1",
+      "shape": "capsule",
+      "position": [
+        -6.1,
+        1.8,
+        -13.1
+      ],
+      "size": [
+        0.2,
+        3.6,
+        0.2
+      ]
+    },
+    {
+      "id": "obstruction-team-pavilion-post-2",
+      "shape": "capsule",
+      "position": [
+        -1.3,
+        1.8,
+        -13.1
+      ],
+      "size": [
+        0.2,
+        3.6,
+        0.2
+      ]
+    },
+    {
+      "id": "obstruction-team-pavilion-post-3",
+      "shape": "capsule",
+      "position": [
+        -6.1,
+        1.8,
+        -9.7
+      ],
+      "size": [
+        0.2,
+        3.6,
+        0.2
+      ]
+    },
+    {
+      "id": "obstruction-team-pavilion-post-4",
+      "shape": "capsule",
+      "position": [
+        -1.3,
+        1.8,
+        -9.7
+      ],
+      "size": [
+        0.2,
+        3.6,
+        0.2
+      ]
+    },
+    {
+      "id": "obstruction-transit",
+      "shape": "box",
+      "position": [
+        5.7,
+        1.9,
+        -12.6
+      ],
+      "size": [
+        6.2,
+        3.8,
+        4
+      ]
+    },
+    {
+      "id": "obstruction-signal-tower",
+      "shape": "capsule",
+      "position": [
+        0,
+        3.2,
+        -16.2
+      ],
+      "size": [
+        4.8,
+        7.4,
+        4.8
+      ]
+    },
+    {
+      "id": "obstruction-north-quarter",
+      "shape": "box",
+      "position": [
+        0,
+        1.3,
+        -19.8
+      ],
+      "size": [
+        4.8,
+        2.6,
+        2.4
+      ]
+    },
+    {
+      "id": "obstruction-south-west",
+      "shape": "box",
+      "position": [
+        -8.8,
+        1.4,
+        -27
+      ],
+      "size": [
+        4.4,
+        2.8,
+        3.8
+      ]
+    },
+    {
+      "id": "obstruction-south-east",
+      "shape": "box",
+      "position": [
+        8.4,
+        1.4,
+        -27.2
+      ],
+      "size": [
+        4.8,
+        2.8,
+        4
+      ]
+    },
+    {
+      "id": "obstruction-tea-house",
+      "shape": "box",
+      "position": [
+        -7.8,
+        1.5,
+        3.9
+      ],
+      "size": [
+        3.62,
+        3.4,
+        3.18
+      ]
+    },
+    {
+      "id": "obstruction-map-house",
+      "shape": "box",
+      "position": [
+        -8,
+        1.5,
+        -10.7
+      ],
+      "size": [
+        4.02,
+        3.4,
+        3.58
+      ]
+    },
+    {
+      "id": "obstruction-relay-house",
+      "shape": "box",
+      "position": [
+        7.9,
+        1.5,
+        2.2
+      ],
+      "size": [
+        3.82,
+        3.4,
+        3.38
+      ]
+    },
+    {
+      "id": "obstruction-ferry-house",
+      "shape": "box",
+      "position": [
+        8.1,
+        1.5,
+        -10
+      ],
+      "size": [
+        3.72,
+        3.4,
+        3.18
+      ]
+    },
+    {
+      "id": "obstruction-north-block-west",
+      "shape": "box",
+      "position": [
+        -10.5,
+        1.1,
+        -19.6
+      ],
+      "size": [
+        4,
+        2.3,
+        3.4
+      ]
+    },
+    {
+      "id": "obstruction-north-block-east",
+      "shape": "box",
+      "position": [
+        9.2,
+        1.1,
+        -19.8
+      ],
+      "size": [
+        4.4,
+        2.3,
+        3.6
+      ]
+    },
+    {
+      "id": "obstruction-street-block-1",
+      "shape": "box",
+      "position": [
+        -5.4,
+        3,
+        4.8
+      ],
+      "size": [
+        3.2,
+        6,
+        4.6
+      ]
+    },
+    {
+      "id": "obstruction-street-block-2",
+      "shape": "box",
+      "position": [
+        5.4,
+        3,
+        4
+      ],
+      "size": [
+        3.2,
+        6,
+        4.6
+      ]
+    },
+    {
+      "id": "obstruction-street-block-3",
+      "shape": "box",
+      "position": [
+        -5.5,
+        3,
+        -17.6
+      ],
+      "size": [
+        3.2,
+        6,
+        4.6
+      ]
+    },
+    {
+      "id": "obstruction-street-block-4",
+      "shape": "box",
+      "position": [
+        5.5,
+        3,
+        -20.8
+      ],
+      "size": [
+        3.2,
+        6,
+        4.6
+      ]
+    },
+    {
+      "id": "obstruction-street-block-5",
+      "shape": "box",
+      "position": [
+        -5.4,
+        3,
+        -29.2
+      ],
+      "size": [
+        3.2,
+        6,
+        4.6
+      ]
+    },
+    {
+      "id": "obstruction-street-block-6",
+      "shape": "box",
+      "position": [
+        5.5,
+        3,
+        -32
+      ],
+      "size": [
+        3.2,
+        6,
+        4.6
+      ]
+    },
+    {
+      "id": "obstruction-street-block-7",
+      "shape": "box",
+      "position": [
+        -5.4,
+        3,
+        -41.8
+      ],
+      "size": [
+        3.2,
+        6,
+        4.6
+      ]
+    },
+    {
+      "id": "obstruction-street-block-8",
+      "shape": "box",
+      "position": [
+        5.4,
+        3,
+        -44.2
+      ],
+      "size": [
+        3.2,
+        6,
+        4.6
+      ]
+    },
+    {
+      "id": "obstruction-street-block-9",
+      "shape": "box",
+      "position": [
+        -5.5,
+        3,
+        -54.5
+      ],
+      "size": [
+        3.2,
+        6,
+        4.6
+      ]
+    },
+    {
+      "id": "obstruction-street-block-10",
+      "shape": "box",
+      "position": [
+        5.5,
+        3,
+        -57
+      ],
+      "size": [
+        3.2,
+        6,
+        4.6
+      ]
+    },
+    {
+      "id": "obstruction-street-block-11",
+      "shape": "box",
+      "position": [
+        -5.4,
+        3,
+        -66
+      ],
+      "size": [
+        3.2,
+        6,
+        4.6
+      ]
+    },
+    {
+      "id": "obstruction-street-block-12",
+      "shape": "box",
+      "position": [
+        5.4,
+        3,
+        -64
+      ],
+      "size": [
+        3.2,
+        6,
+        4.6
+      ]
+    }
+  ],
+  "emitters": [
+    {
+      "id": "ambient-beacon",
+      "kind": "ambient",
+      "position": [
+        0,
+        4,
+        -16
+      ],
+      "intensity": 0.8
+    },
+    {
+      "id": "lantern-market",
+      "kind": "lantern",
+      "position": [
+        -5.6,
+        2.7,
+        -4.2
+      ],
+      "intensity": 1
+    },
+    {
+      "id": "restoration-signal",
+      "kind": "restoration",
+      "position": [
+        0,
+        6.2,
+        -16.2
+      ],
+      "intensity": 0.6
+    }
+  ]
+}

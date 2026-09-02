@@ -11,6 +11,15 @@ export interface AtlasAction {
   system?: 'active' | 'paused' | 'hidden';
 }
 
+export interface AtlasPosition {
+  x: number;
+  y: number;
+}
+
+export function isAtlasSimulationPaused(action: Pick<AtlasAction, 'system'>): boolean {
+  return action.system === 'paused' || action.system === 'hidden';
+}
+
 export interface AtlasRuntimeRelay {
   id: string;
   x: number;

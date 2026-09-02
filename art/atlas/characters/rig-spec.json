@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "status": "approval-board-only",
+  "rendering": "adult 3D rig rendered to optimized 2D sprite atlases",
+  "camera": "illustrated 2.5D isometric",
+  "directions": 8,
+  "animationFrames": {
+    "idle": 4,
+    "walk": 8,
+    "interact": 6,
+    "celebrate": 8
+  },
+  "expressionSet": ["neutral", "speaking", "concern", "concentration", "relief", "celebration"],
+  "constraints": [
+    "adult proportions",
+    "practical workwear",
+    "no superhero costume",
+    "no copied real-person identity",
+    "no token or wallet logo clothing",
+    "silhouette remains readable at 320 CSS pixels"
+  ],
+  "conversionGate": "owner approval required before rigging or sprite export"
+}

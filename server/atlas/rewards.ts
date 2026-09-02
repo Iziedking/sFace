@@ -1,4 +1,5 @@
 import type { AtlasDailyPoolClose, AtlasRewardPeriod, AtlasTrackRewardAllocation } from '../../shared/atlas/rewards';
+import type { AtlasAssistance, AtlasRole } from '../../shared/atlas/types';
 
 export type AtlasRewardLedgerEntry = AtlasDailyCloseEntry | AtlasTrackAllocationEntry;
 
@@ -35,6 +36,29 @@ export interface AtlasRewardLedger {
   appendTrackAllocation(allocation: AtlasTrackRewardAllocation): AtlasTrackAllocationEntry;
   entries(): AtlasRewardLedgerEntry[];
   summary(): AtlasRewardLedgerSummary;
+}
+
+export interface AtlasCompetitionSummary {
+  role: AtlasRole;
+  bestVerifiedScore: number | null;
+  eligibility: 'eligible' | 'assisted' | 'not-verified';
+  dailyObligation: {
+    status: 'estimating' | 'pending' | 'verified-paid' | 'unawarded';
+    amountLuna: number | null;
+  };
+}
+
+export function createAtlasCompetitionSummary(input: {
+  role: AtlasRole;
+  bestVerifiedScore: number | null;
+  assistance: AtlasAssistance;
+  daily: { accepted: boolean; closed: boolean; amountLuna: number | null; payoutVerified: boolean };
+}): AtlasCompetitionSummary {
+  if (input.bestVerifiedScore !== null && (!Number.isSafeInteger(input.bestVerifiedScore) || input.bestVerifiedScore < 0)) throw new Error('Competition score is malformed.');
+  if (input.daily.amountLuna !== null && (!Number.isSafeInteger(input.daily.amountLuna) || input.daily.amountLuna < 0)) throw new Error('Competition obligation is malformed.');
+  const eligibility = input.assistance === 'none' && input.bestVerifiedScore !== null ? 'eligible' : input.assistance === 'none' ? 'not-verified' : 'assisted';
+  const status = !input.daily.closed ? 'estimating' : !input.daily.accepted ? 'unawarded' : input.daily.payoutVerified ? 'verified-paid' : 'pending';
+  return { role: input.role, bestVerifiedScore: input.bestVerifiedScore, eligibility, dailyObligation: { status, amountLuna: input.daily.amountLuna } };
 }
 
 export function createAtlasRewardLedger(): AtlasRewardLedger {

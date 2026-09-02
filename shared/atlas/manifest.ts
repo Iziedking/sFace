@@ -1,6 +1,7 @@
 import type { AtlasCurriculum, AtlasSource, AtlasTrial } from './types';
 
 const REVIEWED_AT = '2026-08-25';
+export const ATLAS_PROVIDER_API_REVIEWED_AT = '2026-08-26';
 const providerSource = source('https://nimiq.dev/mini-apps/api-reference/nimiq-provider', 'Nimiq Provider API');
 const miniAppsSource = source('https://nimiq.dev/mini-apps/', 'Nimiq Mini Apps');
 const webClientSource = source('https://nimiq.dev/web-client/getting-started', 'Nimiq Web Client getting started');

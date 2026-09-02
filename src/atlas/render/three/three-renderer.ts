@@ -1,0 +1,671 @@
+import { AmbientLight, BoxGeometry, Color, CylinderGeometry, DirectionalLight, DoubleSide, Fog, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PerspectiveCamera, PointLight, Scene, SphereGeometry, TorusGeometry, WebGLRenderer } from 'three';
+import type { AtlasLivingWorldSnapshot } from '../../../../shared/atlas/living-world';
+import type { AtlasQualityTier } from '../../../../shared/atlas/city/types';
+import type { AtlasCitizenPresentation } from '../../../../shared/atlas/city/crowd';
+import { BEACON_COMMONS_CROWD } from '../../../../shared/atlas/city/crowd';
+import { projectAtlasCitizenMotion, resolveAtlasCitizenSpacing, routeAtlasCitizenPath, type AtlasCitizenMotionProjection } from '../../../../shared/atlas/city/citizen-motion';
+import type { AtlasCityPlayerState } from '../../../../shared/atlas/city/player';
+import { parseAtlasCityScene, type AtlasCitySceneV1 } from '../../../../shared/atlas/city/types';
+import type { AtlasCityInteractionPresentation, AtlasRendererOptions, AtlasRendererStats, AtlasSceneRenderer } from '../contracts';
+import { detectThreeCapability } from './capability';
+import { AtlasCameraRig } from './camera-rig';
+import {
+  atlasCitizenAnimationState,
+  atlasCitizenDetailLevel,
+  atlasCitizenFacialCue,
+  createAtlasCharacterAnimator,
+  type AtlasCharacterAnimator,
+} from './character-animation';
+import { AtlasGltfResourceCache } from './gltf-loader';
+import type { AtlasGltfHandle } from './gltf-loader';
+
+// Keep the authored character proportions intact while giving the city more breathing room on mobile.
+const PLAYER_WORLD_SCALE = 0.46;
+const NPC_WORLD_SCALE = 0.38;
+
+interface AtlasNpcSlot {
+  readonly id: string;
+  readonly lod1Root: Group;
+  readonly lod2Root: Group;
+  readonly lod1Animator: AtlasCharacterAnimator;
+  readonly lod2Animator: AtlasCharacterAnimator;
+  readonly spawn: readonly [number, number, number];
+  readonly lastPosition: { x: number; z: number };
+  readonly displayPosition: { x: number; z: number };
+}
+
+export class ThreeAtlasRenderer implements AtlasSceneRenderer {
+  private renderer: WebGLRenderer | null = null;
+  private scene: Scene | null = null;
+  private camera: PerspectiveCamera | null = null;
+  private canvas: HTMLCanvasElement | null = null;
+  private loadedDistrict: string | null = null;
+  private qualityTier: AtlasQualityTier = 'balanced';
+  private cameraRig: AtlasCameraRig | null = null;
+  private gltfCache: AtlasGltfResourceCache | null = null;
+  private assetManager: AtlasRendererOptions['assetManager'] | null = null;
+  private readonly districtHandles = new Map<string, AtlasGltfHandle[]>();
+  private readonly districtSignalLights = new Map<string, Array<{ light: PointLight; baseIntensity: number }>>();
+  private districtScene: AtlasCitySceneV1 | null = null;
+  private routedPaths = new Map<string, AtlasCitySceneV1['paths'][number]>();
+  private playerRoot: Object3D | null = null;
+  private playerAnimator: AtlasCharacterAnimator | null = null;
+  private relayRoot: Group | null = null;
+  private relayParent: Object3D | null = null;
+  private stationVisuals: Array<{ root: Group; light: Mesh; ring: Mesh; mast: Mesh; beam: Mesh }> = [];
+  private missionMarker: Group | null = null;
+  private missionMarkerAnchorId: string | null = null;
+  private harborActivityVisuals: {
+    root: Group;
+    marketSignal: Mesh;
+    ferryHull: Mesh;
+    ferryLight: Mesh;
+    towerHalo: Mesh;
+  } | null = null;
+  private npcSlots: AtlasNpcSlot[] = [];
+  private lastAnimationTick: number | null = null;
+
+  async initialize(host: HTMLElement, options: AtlasRendererOptions): Promise<void> {
+    if (this.renderer) throw new Error('Three Atlas renderer is already initialized.');
+    const canvas = document.createElement('canvas');
+    const capability = detectThreeCapability(canvas);
+    if (!capability.supported) throw new Error(`Three Atlas renderer unavailable: ${capability.reason}.`);
+
+    const renderer = new WebGLRenderer({
+      canvas,
+      antialias: false,
+      powerPreference: 'high-performance',
+    });
+    renderer.setPixelRatio(clampResolution(options.maxPixelRatio ?? options.resolution));
+    renderer.setSize(clampDimension(host.clientWidth), clampDimension(host.clientHeight), false);
+    renderer.setClearColor(new Color(0xf4ede0), 1);
+
+    const scene = new Scene();
+    scene.background = new Color(0xf4ede0);
+    scene.fog = new Fog(0xe7e4da, 24, 62);
+    scene.add(new AmbientLight(0xfff8ed, 1.4));
+    const sun = new DirectionalLight(0xffd3a8, 1.8);
+    sun.position.set(4, 8, 3);
+    scene.add(sun);
+
+    const camera = new PerspectiveCamera(50, aspect(host.clientWidth, host.clientHeight), 0.1, 200);
+    const cameraRig = new AtlasCameraRig(camera);
+    host.append(canvas);
+    this.renderer = renderer;
+    this.scene = scene;
+    this.camera = camera;
+    this.canvas = canvas;
+    this.cameraRig = cameraRig;
+    this.assetManager = options.assetManager ?? null;
+    this.gltfCache = options.assetManager ? new AtlasGltfResourceCache({ assetManager: options.assetManager }) : null;
+    this.setQuality(options.qualityTier ?? 'balanced');
+  }
+
+  async loadDistrict(districtId: string): Promise<void> {
+    this.requireRenderer();
+    if (this.districtHandles.has(districtId)) {
+      this.loadedDistrict = districtId;
+      return;
+    }
+    if (this.gltfCache && this.scene) {
+      const acquired: AtlasGltfHandle[] = [];
+      try {
+        const scenePath = `/atlas/3d/v1/${districtId}/scene.json`;
+        const sceneDefinition = parseAtlasCityScene(JSON.parse(new TextDecoder().decode(await this.optionsAssetManager().loadBytes(scenePath))) as unknown);
+        const modelUrls = new Map(sceneDefinition.models.map((model) => [model.id, model.url]));
+        const environmentModel = modelUrls.get(`${districtId}-environment`);
+        const playerModel = modelUrls.get('atlas-walker-player');
+        const npcLod1Model = modelUrls.get('atlas-walker-npc-lod1');
+        const npcLod2Model = modelUrls.get('atlas-walker-npc-lod2');
+        if (!environmentModel || !playerModel || !npcLod1Model || !npcLod2Model) throw new Error(`Atlas district ${districtId} is missing a required model.`);
+        const environment = await this.gltfCache.acquire(environmentModel);
+        acquired.push(environment);
+        this.prepareRuntimeMaterials(environment.root);
+        const player = await this.gltfCache.acquire(playerModel);
+        acquired.push(player);
+        this.prepareRuntimeMaterials(player.root);
+        this.applyInstanceTransform(player.root, sceneDefinition.instances.find((instance) => instance.modelId === 'atlas-walker-player'));
+        player.root.scale.multiplyScalar(PLAYER_WORLD_SCALE);
+        this.playerRoot = player.root;
+        this.playerAnimator = createAtlasCharacterAnimator(player.root, player.animations, { facialPhase: 0.17 });
+        this.scene.add(environment.root, player.root);
+        this.createPayHarborInteractionVisuals(districtId, sceneDefinition);
+        const npcAnchors = new Map(sceneDefinition.anchors.filter((anchor) => anchor.id.startsWith('npc-spawn-')).map((anchor) => [anchor.id, anchor]));
+        const districtCrowd = BEACON_COMMONS_CROWD.filter((citizen) => npcAnchors.has(citizen.spawnAnchorId));
+        const npcHandles = await Promise.all(districtCrowd.map(async (citizen) => {
+          const anchor = npcAnchors.get(citizen.spawnAnchorId);
+          if (!anchor) throw new Error(`Atlas district ${districtId} is missing NPC spawn anchor ${citizen.spawnAnchorId}.`);
+          const [lod1, lod2] = await Promise.all([this.gltfCache!.acquire(npcLod1Model), this.gltfCache!.acquire(npcLod2Model)]);
+          return { citizen, anchor, lod1, lod2 };
+        }));
+        acquired.push(...npcHandles.flatMap(({ lod1, lod2 }) => [lod1, lod2]));
+        this.npcSlots = npcHandles.map(({ citizen, anchor, lod1, lod2 }) => {
+          const lod1Root = lod1.root as Group;
+          const lod2Root = lod2.root as Group;
+          const appearance = citizenAppearance(citizen.id, citizen.role);
+          this.prepareRuntimeMaterials(lod1Root, appearance);
+          this.prepareRuntimeMaterials(lod2Root, appearance);
+          for (const root of [lod1Root, lod2Root]) {
+            root.visible = false;
+            root.scale.setScalar(NPC_WORLD_SCALE * appearance.scale);
+            root.position.set(anchor.position[0], anchor.position[1], anchor.position[2]);
+            this.scene!.add(root);
+          }
+          return {
+            id: citizen.id,
+            lod1Root,
+            lod2Root,
+            lod1Animator: createAtlasCharacterAnimator(lod1Root, lod1.animations, { facialPhase: (stableHash(citizen.id) % 1000) / 1000 }),
+            lod2Animator: createAtlasCharacterAnimator(lod2Root, lod2.animations, { facialPhase: (stableHash(citizen.id) % 1000) / 1000 }),
+            spawn: anchor.position,
+            lastPosition: { x: anchor.position[0], z: anchor.position[2] },
+            displayPosition: { x: anchor.position[0], z: anchor.position[2] },
+          };
+        });
+        const signalLights = sceneDefinition.emitters
+          .filter((emitter) => emitter.kind === 'lantern' || emitter.kind === 'restoration')
+          .map((emitter) => {
+            const light = new PointLight(emitter.kind === 'restoration' ? 0xf28b30 : 0xffd36a, emitter.intensity * 0.12, 10, 2);
+            light.position.set(emitter.position[0], emitter.position[1], emitter.position[2]);
+            this.scene!.add(light);
+            return { light, baseIntensity: emitter.intensity };
+          });
+        this.districtSignalLights.set(districtId, signalLights);
+        this.districtScene = sceneDefinition;
+        this.routedPaths = new Map(sceneDefinition.paths.map((path) => [path.id, routeAtlasCitizenPath(path, sceneDefinition.colliders)]));
+        this.districtHandles.set(districtId, acquired);
+      } catch (error) {
+        this.stopCharacterAnimations();
+        for (const { light } of this.districtSignalLights.get(districtId) ?? []) light.removeFromParent();
+        this.districtSignalLights.delete(districtId);
+        for (const handle of [...acquired].reverse()) handle.release();
+        this.npcSlots = [];
+        this.lastAnimationTick = null;
+        this.playerRoot = null;
+        this.districtScene = null;
+        this.routedPaths.clear();
+        throw error;
+      }
+    }
+    this.loadedDistrict = districtId;
+  }
+
+  render(snapshot: AtlasLivingWorldSnapshot, crowd: readonly AtlasCitizenPresentation[] = [], player?: AtlasCityPlayerState, interaction?: AtlasCityInteractionPresentation): void {
+    const renderer = this.requireRenderer();
+    if (!this.scene || !this.camera) throw new Error('Three Atlas renderer scene is not initialized.');
+    const deltaSeconds = this.animationDeltaSeconds(snapshot.simulation.tick);
+    this.presentPlayer(player, deltaSeconds);
+    this.presentCrowd(crowd, snapshot.simulation.tick, deltaSeconds);
+    this.presentRestorationLights(snapshot.restoration, snapshot.simulation.tick);
+    this.presentInteractionVisuals(snapshot.restoration, interaction, snapshot.simulation.tick);
+    this.cameraRig?.update({
+      width: this.canvas?.clientWidth ?? 1,
+      height: this.canvas?.clientHeight ?? 1,
+      deltaSeconds,
+      playerPosition: this.playerRoot?.position,
+      playerFacing: player?.facing,
+      playerHeadingRadians: player?.headingRadians,
+      cameraHeadingRadians: player?.cameraHeadingRadians,
+      playerMoving: player?.moving,
+      playerRunning: player?.pace === 'run',
+      colliders: this.districtScene?.colliders,
+    });
+    renderer.render(this.scene, this.camera);
+  }
+
+  resize(width: number, height: number, resolution: number): void {
+    const renderer = this.renderer;
+    const camera = this.camera;
+    if (!renderer || !camera) return;
+    const safeWidth = clampDimension(width);
+    const safeHeight = clampDimension(height);
+    this.cameraRig?.resize(safeWidth, safeHeight);
+    renderer.setPixelRatio(clampResolution(resolution));
+    renderer.setSize(safeWidth, safeHeight, false);
+  }
+
+  setQuality(tier: AtlasQualityTier): void {
+    this.qualityTier = tier;
+    if (this.renderer) this.renderer.setPixelRatio(this.pixelRatioForTier());
+  }
+
+  stats(): AtlasRendererStats {
+    const info = this.renderer?.info;
+    return {
+      kind: 'three',
+      drawCalls: info?.render.calls ?? 0,
+      triangles: info?.render.triangles ?? 0,
+      geometries: info?.memory.geometries ?? 0,
+      textures: info?.memory.textures ?? 0,
+    };
+  }
+
+  async releaseDistrict(districtId: string): Promise<void> {
+    const handles = this.districtHandles.get(districtId);
+    if (!handles) return;
+    if (this.loadedDistrict === districtId) this.stopCharacterAnimations();
+    if (this.loadedDistrict === districtId) this.clearInteractionVisuals();
+    for (const handle of [...handles].reverse()) handle.release();
+    for (const { light } of this.districtSignalLights.get(districtId) ?? []) light.removeFromParent();
+    this.districtSignalLights.delete(districtId);
+    this.districtHandles.delete(districtId);
+    if (this.loadedDistrict === districtId) {
+      this.districtScene = null;
+      this.routedPaths.clear();
+      this.playerRoot = null;
+      this.lastAnimationTick = null;
+      this.npcSlots = [];
+    }
+    if (this.loadedDistrict === districtId) this.loadedDistrict = null;
+  }
+
+  async destroy(): Promise<void> {
+    const renderer = this.renderer;
+    const canvas = this.canvas;
+    this.stopCharacterAnimations();
+    this.clearInteractionVisuals();
+    this.renderer = null;
+    this.scene = null;
+    this.camera = null;
+    this.canvas = null;
+    this.loadedDistrict = null;
+    this.districtScene = null;
+    this.routedPaths.clear();
+    this.playerRoot = null;
+    this.lastAnimationTick = null;
+    this.npcSlots = [];
+    for (const handles of this.districtHandles.values()) for (const handle of [...handles].reverse()) handle.release();
+    this.districtHandles.clear();
+    this.districtSignalLights.clear();
+    this.cameraRig = null;
+    this.gltfCache = null;
+    this.assetManager = null;
+    renderer?.dispose();
+    canvas?.remove();
+  }
+
+  private requireRenderer(): WebGLRenderer {
+    if (!this.renderer) throw new Error('Three Atlas renderer is not initialized.');
+    return this.renderer;
+  }
+
+  private pixelRatioForTier(): number {
+    return this.qualityTier === 'low' ? 0.7 : this.qualityTier === 'balanced' ? 0.85 : 1;
+  }
+
+  private optionsAssetManager(): Pick<NonNullable<AtlasRendererOptions['assetManager']>, 'loadBytes'> {
+    const manager = this.assetManager;
+    if (!manager) throw new Error('Atlas 3D assets are unavailable.');
+    return manager;
+  }
+
+  private applyInstanceTransform(root: Object3D, instance: AtlasCitySceneV1['instances'][number] | undefined): void {
+    if (!instance) return;
+    root.position.set(...instance.position);
+    root.rotation.set(...instance.rotation);
+    root.scale.set(...instance.scale);
+  }
+
+  private prepareRuntimeMaterials(root: Object3D, appearance?: CitizenAppearance): void {
+    root.traverse((object) => {
+      if (!(object instanceof Mesh)) return;
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      const tinted = materials.map((material) => {
+        const clone = material.clone();
+        material.side = DoubleSide;
+        clone.side = DoubleSide;
+        const color = appearance?.colors[clone.name];
+        const tintable = clone as typeof clone & { color?: Color };
+        if (color && tintable.color instanceof Color) tintable.color.set(color);
+        clone.needsUpdate = true;
+        return clone;
+      });
+      object.material = Array.isArray(object.material) ? tinted : tinted[0]!;
+    });
+  }
+
+  private presentCrowd(crowd: readonly AtlasCitizenPresentation[], tick: number, deltaSeconds: number): void {
+    if (!this.districtScene) return;
+    const byId = new Map(crowd.map((citizen) => [citizen.id, citizen]));
+    const projected: Array<{
+      readonly slot: AtlasNpcSlot;
+      readonly citizen: AtlasCitizenPresentation;
+      readonly motion: AtlasCitizenMotionProjection;
+    }> = [];
+    for (const [slotIndex, slot] of this.npcSlots.entries()) {
+      const citizen = byId.get(slot.id);
+      slot.lod1Root.visible = false;
+      slot.lod2Root.visible = false;
+      if (!citizen?.visible) continue;
+      const namedPath = this.districtScene.paths.find((candidate) => candidate.id === citizen.pathId);
+      const fallbackPath = this.districtScene.paths[slotIndex % this.districtScene.paths.length];
+      const path = (namedPath ? this.routedPaths.get(namedPath.id) : undefined) ?? (fallbackPath ? this.routedPaths.get(fallbackPath.id) : undefined) ?? namedPath ?? fallbackPath;
+      const motion: AtlasCitizenMotionProjection = path
+        ? projectAtlasCitizenMotion({
+            active: citizen.active,
+            activity: citizen.activity,
+            elapsedSeconds: tick / 30,
+            phase: citizen.animationPhase,
+            path,
+            spawn: slot.spawn,
+          })
+        : { position: slot.spawn, headingRadians: 0, moving: false, pace: 'idle', speedUnitsPerSecond: 0 };
+      projected.push({ slot, citizen, motion });
+    }
+    const separated = resolveAtlasCitizenSpacing(
+      projected.map(({ slot, citizen, motion }) => ({ id: citizen.id, motion, previousPosition: slot.lastPosition })),
+      this.playerRoot ? { x: this.playerRoot.position.x, z: this.playerRoot.position.z } : undefined,
+      this.districtScene.colliders,
+    );
+    for (const [index, { slot, citizen }] of projected.entries()) {
+      const motion = separated[index]!;
+      const position = motion.position;
+      slot.lastPosition.x = position[0];
+      slot.lastPosition.z = position[2];
+      const presentationBlend = 1 - Math.exp(-Math.max(8, motion.moving ? 12 : 7) * deltaSeconds);
+      slot.displayPosition.x += (position[0] - slot.displayPosition.x) * presentationBlend;
+      slot.displayPosition.z += (position[2] - slot.displayPosition.z) * presentationBlend;
+      const distanceFromPlayer = this.playerRoot ? Math.hypot(position[0] - this.playerRoot.position.x, position[2] - this.playerRoot.position.z) : Number.POSITIVE_INFINITY;
+      const detailLevel = atlasCitizenDetailLevel(this.qualityTier, citizen.active, distanceFromPlayer);
+      const root = detailLevel === 'near' ? slot.lod1Root : slot.lod2Root;
+      root.visible = true;
+      for (const characterRoot of [slot.lod1Root, slot.lod2Root]) {
+        characterRoot.position.set(slot.displayPosition.x, position[1] + (citizen.activity === 'celebrating' ? Math.sin(tick / 6) * 0.045 : 0), slot.displayPosition.z);
+        characterRoot.rotation.y = dampRadians(characterRoot.rotation.y, motion.headingRadians, 1 - Math.exp(-9 * deltaSeconds));
+      }
+      const animator = root === slot.lod1Root ? slot.lod1Animator : slot.lod2Animator;
+      if (citizen.active || this.qualityTier !== 'low') {
+        const requestedPace = motion.pace === 'run' ? 'run' : 'walk';
+        const animationState = atlasCitizenAnimationState(motion.moving, requestedPace);
+        const speedScale = citizenAnimationSpeed(animationState, motion.speedUnitsPerSecond);
+        animator.update(animationState, deltaSeconds, speedScale, atlasCitizenFacialCue(citizen.activity));
+      }
+    }
+  }
+
+  private presentRestorationLights(restoration: AtlasLivingWorldSnapshot['restoration'], tick: number): void {
+    const lights = this.loadedDistrict ? this.districtSignalLights.get(this.loadedDistrict) ?? [] : [];
+    const pulse = 0.58 + Math.sin(tick / 7) * 0.18;
+    for (const { light, baseIntensity } of lights) {
+      if (restoration === 'restored') light.intensity = baseIntensity * 2.4;
+      else if (restoration === 'confirming') light.intensity = baseIntensity * pulse;
+      else light.intensity = baseIntensity * 0.12;
+    }
+  }
+
+  private presentPlayer(player: AtlasCityPlayerState | undefined, deltaSeconds: number): void {
+    const root = this.playerRoot;
+    if (!root || !player) return;
+    root.position.set(player.x, 0, player.z);
+    root.rotation.y = player.headingRadians;
+    const facialCue = player.pace === 'run' ? 'focused' : 'neutral';
+    this.playerAnimator?.update(player.pace, deltaSeconds, playerAnimationSpeed(player), facialCue);
+  }
+
+  private animationDeltaSeconds(tick: number): number {
+    const previous = this.lastAnimationTick;
+    this.lastAnimationTick = tick;
+    return previous === null ? 1 / 30 : Math.min(0.25, Math.max(0, tick - previous) / 30);
+  }
+
+  private stopCharacterAnimations(): void {
+    this.playerAnimator?.stop();
+    for (const slot of this.npcSlots) {
+      slot.lod1Animator.stop();
+      slot.lod2Animator.stop();
+    }
+    this.playerAnimator = null;
+  }
+
+  private createPayHarborInteractionVisuals(districtId: string, scene: AtlasCitySceneV1): void {
+    this.clearInteractionVisuals();
+    if (districtId !== 'pay-harbor' || !this.scene || !this.playerRoot) return;
+
+    const relay = new Group();
+    relay.name = 'atlas-builder-relay-handheld';
+    relay.add(
+      new Mesh(new CylinderGeometry(0.07, 0.09, 0.42, 8), new MeshStandardMaterial({ color: 0xe08a38, roughness: 0.72 })),
+      new Mesh(new SphereGeometry(0.12, 8, 6), new MeshStandardMaterial({ color: 0x82b9b1, roughness: 0.55 })),
+    );
+    relay.rotation.z = Math.PI * 0.45;
+    const hand = findAttachmentSocket(this.playerRoot);
+    this.relayParent = hand ?? this.playerRoot;
+    this.relayParent.add(relay);
+    relay.position.set(hand ? 0.06 : 0.22, hand ? 0.02 : 0.55, hand ? 0 : 0.05);
+    relay.visible = false;
+    this.relayRoot = relay;
+
+    const stations = scene.anchors.filter((anchor) => /^station-[1-6]-install$/.test(anchor.id));
+    this.stationVisuals = stations.map((anchor) => {
+      const root = new Group();
+      root.name = `atlas-builder-station-${anchor.id}`;
+      root.position.set(anchor.position[0], anchor.position[1], anchor.position[2]);
+      const pedestal = new Mesh(new CylinderGeometry(0.28, 0.34, 0.12, 8), new MeshStandardMaterial({ color: 0x9a876f, roughness: 0.86 }));
+      pedestal.position.y = 0.06;
+      const light = new Mesh(new SphereGeometry(0.12, 8, 6), new MeshStandardMaterial({ color: 0x8f8777, roughness: 0.5 }));
+      light.position.y = 0.28;
+      const ring = new Mesh(new TorusGeometry(0.2, 0.025, 6, 12), new MeshStandardMaterial({ color: 0x746653, roughness: 0.66 }));
+      ring.rotation.x = Math.PI * 0.5;
+      ring.position.y = 0.2;
+      const mast = new Mesh(new CylinderGeometry(0.035, 0.05, 0.42, 6), new MeshStandardMaterial({ color: 0x746653, roughness: 0.72 }));
+      mast.position.y = 0.42;
+      const beam = new Mesh(new BoxGeometry(0.12, 0.045, 0.48), new MeshBasicMaterial({ color: 0x8f8777 }));
+      beam.position.y = 0.67;
+      beam.visible = false;
+      root.add(pedestal, light, ring, mast, beam);
+      this.scene!.add(root);
+      return { root, light, ring, mast, beam };
+    });
+
+    this.harborActivityVisuals = createHarborActivityVisuals(this.scene, scene);
+  }
+
+  private presentInteractionVisuals(restoration: AtlasLivingWorldSnapshot['restoration'], interaction: AtlasCityInteractionPresentation | undefined, tick: number): void {
+    if (!this.relayRoot) return;
+    const isPayHarbor = interaction?.districtId === 'pay-harbor' && this.loadedDistrict === 'pay-harbor';
+    const relayVisible = isPayHarbor && interaction?.relayCarried === true;
+    this.relayRoot.visible = relayVisible;
+    if (relayVisible) this.relayRoot.rotation.y = Math.sin(tick / 10) * 0.08;
+
+    if (isPayHarbor && interaction?.targetAnchorId) {
+      this.presentMissionMarker(interaction.targetAnchorId, tick);
+    } else if (this.missionMarker) {
+      this.missionMarker.visible = false;
+    }
+
+    const completedStations = restoration === 'restored' ? this.stationVisuals.length : Math.max(0, Math.min(this.stationVisuals.length, interaction?.builderStationIndex ?? 0));
+    for (const [index, station] of this.stationVisuals.entries()) {
+      const complete = index < completedStations;
+      const active = !complete && isPayHarbor && interaction?.relayCarried === true && index === completedStations;
+      const color = complete ? 0x82b9b1 : active ? 0xe08a38 : 0x8f8777;
+      const ringColor = complete ? 0xd6b56c : active ? 0xf2c15f : 0x746653;
+      const lightMaterial = station.light.material as MeshStandardMaterial;
+      const ringMaterial = station.ring.material as MeshStandardMaterial;
+      const mastMaterial = station.mast.material as MeshStandardMaterial;
+      const beamMaterial = station.beam.material as MeshBasicMaterial;
+      lightMaterial.color.setHex(color);
+      ringMaterial.color.setHex(ringColor);
+      mastMaterial.color.setHex(complete ? 0x4f746f : 0x746653);
+      beamMaterial.color.setHex(complete ? 0x82b9b1 : 0xf2c15f);
+      station.light.scale.setScalar(active ? 1 + Math.sin(tick / 8) * 0.08 : complete ? 1.08 : 0.86);
+      station.beam.visible = complete || active;
+      station.beam.scale.setScalar(active ? 1 + Math.sin(tick / 8) * 0.12 : complete ? 1 : 0.82);
+      station.root.visible = isPayHarbor;
+    }
+    this.presentHarborActivity(restoration, isPayHarbor, tick, completedStations);
+  }
+
+  private clearInteractionVisuals(): void {
+    if (this.relayRoot) {
+      this.relayParent?.remove(this.relayRoot);
+      disposeObject(this.relayRoot);
+    }
+    for (const station of this.stationVisuals) {
+      station.root.removeFromParent();
+      disposeObject(station.root);
+    }
+    this.relayRoot = null;
+    this.relayParent = null;
+    this.stationVisuals = [];
+    if (this.missionMarker) {
+      this.missionMarker.removeFromParent();
+      disposeObject(this.missionMarker);
+    }
+    this.missionMarker = null;
+    this.missionMarkerAnchorId = null;
+    if (this.harborActivityVisuals) {
+      this.harborActivityVisuals.root.removeFromParent();
+      disposeObject(this.harborActivityVisuals.root);
+    }
+    this.harborActivityVisuals = null;
+  }
+
+  private presentMissionMarker(anchorId: string, tick: number): void {
+    if (!this.scene || !this.districtScene) return;
+    const anchor = this.districtScene.anchors.find((candidate) => candidate.id === anchorId);
+    if (!anchor) return;
+    if (!this.missionMarker || this.missionMarkerAnchorId !== anchorId) {
+      if (this.missionMarker) {
+        this.missionMarker.removeFromParent();
+        disposeObject(this.missionMarker);
+      }
+      const marker = new Group();
+      marker.name = `atlas-mission-marker-${anchorId}`;
+      const ring = new Mesh(new TorusGeometry(0.36, 0.035, 6, 16), new MeshBasicMaterial({ color: 0xf28b30 }));
+      ring.rotation.x = Math.PI * 0.5;
+      const stem = new Mesh(new CylinderGeometry(0.025, 0.025, 0.55, 6), new MeshBasicMaterial({ color: 0xf28b30 }));
+      stem.position.y = 0.28;
+      const cap = new Mesh(new SphereGeometry(0.08, 6, 4), new MeshBasicMaterial({ color: 0xf2c15f }));
+      cap.position.y = 0.58;
+      marker.add(ring, stem, cap);
+      this.scene.add(marker);
+      this.missionMarker = marker;
+      this.missionMarkerAnchorId = anchorId;
+    }
+    this.missionMarker.visible = true;
+    this.missionMarker.position.set(anchor.position[0], anchor.position[1] + 0.04, anchor.position[2]);
+    this.missionMarker.scale.setScalar(0.9 + Math.sin(tick / 8) * 0.06);
+  }
+
+  private presentHarborActivity(restoration: AtlasLivingWorldSnapshot['restoration'], isPayHarbor: boolean, tick: number, completedStations: number): void {
+    const visuals = this.harborActivityVisuals;
+    if (!visuals) return;
+    visuals.root.visible = isPayHarbor;
+    if (!isPayHarbor) return;
+    const activeColor = restoration === 'restored' || completedStations > 0 ? 0x82b9b1 : restoration === 'confirming' ? 0xf2c15f : 0x8f8777;
+    const signalMaterial = visuals.marketSignal.material as MeshStandardMaterial;
+    const ferryMaterial = visuals.ferryHull.material as MeshStandardMaterial;
+    const ferryLightMaterial = visuals.ferryLight.material as MeshBasicMaterial;
+    const haloMaterial = visuals.towerHalo.material as MeshBasicMaterial;
+    signalMaterial.color.setHex(activeColor);
+    ferryMaterial.color.setHex(restoration === 'restored' ? 0xe08a38 : 0x70675c);
+    ferryLightMaterial.color.setHex(activeColor);
+    haloMaterial.color.setHex(restoration === 'restored' ? 0xf2c15f : activeColor);
+    const pulse = restoration === 'confirming' ? 1 + Math.sin(tick / 7) * 0.1 : restoration === 'restored' ? 1.08 : 0.9 + Math.min(0.12, completedStations * 0.02);
+    visuals.marketSignal.scale.setScalar(pulse);
+    visuals.ferryLight.scale.setScalar(restoration === 'restored' ? 1.12 : pulse);
+    visuals.towerHalo.scale.setScalar(restoration === 'restored' ? 1.08 + Math.sin(tick / 10) * 0.05 : 0.82);
+    visuals.towerHalo.rotation.z = tick / 180;
+  }
+}
+
+function findAttachmentSocket(root: Object3D): Object3D | null {
+  let socket: Object3D | null = null;
+  root.traverse((object) => {
+    if (socket) return;
+    const name = object.name.toLowerCase();
+    if (name.includes('hand') || name.includes('wrist')) socket = object;
+  });
+  return socket;
+}
+
+function disposeObject(root: Object3D): void {
+  root.traverse((object) => {
+    if (!(object instanceof Mesh)) return;
+    object.geometry.dispose();
+    const materials = Array.isArray(object.material) ? object.material : [object.material];
+    for (const material of materials) material.dispose();
+  });
+}
+
+function createHarborActivityVisuals(scene: Scene, district: AtlasCitySceneV1): NonNullable<ThreeAtlasRenderer['harborActivityVisuals']> {
+  const findAnchor = (id: string): AtlasCitySceneV1['anchors'][number] => {
+    const anchor = district.anchors.find((candidate) => candidate.id === id);
+    if (!anchor) throw new Error(`Pay Harbor is missing activity anchor ${id}.`);
+    return anchor;
+  };
+  const marketAnchor = findAnchor('lantern-counter');
+  const ferryAnchor = findAnchor('ferry-boarding');
+  const towerAnchor = findAnchor('celebration-harbor-tower');
+  const root = new Group();
+  root.name = 'atlas-pay-harbor-activity-state';
+
+  const marketSignal = new Mesh(new SphereGeometry(0.16, 8, 6), new MeshStandardMaterial({ color: 0x8f8777, roughness: 0.6 }));
+  marketSignal.position.set(marketAnchor.position[0], marketAnchor.position[1] + 1.05, marketAnchor.position[2]);
+  const ferryHull = new Mesh(new BoxGeometry(0.9, 0.15, 0.34), new MeshStandardMaterial({ color: 0x70675c, roughness: 0.8 }));
+  ferryHull.position.set(ferryAnchor.position[0], ferryAnchor.position[1] + 0.16, ferryAnchor.position[2]);
+  const ferryLight = new Mesh(new SphereGeometry(0.1, 8, 6), new MeshBasicMaterial({ color: 0x8f8777 }));
+  ferryLight.position.set(ferryAnchor.position[0], ferryAnchor.position[1] + 0.42, ferryAnchor.position[2]);
+  const towerHalo = new Mesh(new TorusGeometry(0.75, 0.045, 6, 18), new MeshBasicMaterial({ color: 0x8f8777 }));
+  towerHalo.position.set(towerAnchor.position[0], towerAnchor.position[1] + 1.18, towerAnchor.position[2]);
+  towerHalo.rotation.x = Math.PI * 0.5;
+  root.add(marketSignal, ferryHull, ferryLight, towerHalo);
+  scene.add(root);
+  return { root, marketSignal, ferryHull, ferryLight, towerHalo };
+}
+
+interface CitizenAppearance {
+  readonly colors: Readonly<Record<string, string>>;
+  readonly scale: number;
+}
+
+const CITIZEN_APPEARANCE_PALETTES: readonly CitizenAppearance[] = [
+  { colors: { orange: '#2f7890', workwear: '#d4d9cf', seafoam: '#e08a38', ink: '#2c2530' }, scale: 0.94 },
+  { colors: { orange: '#bd5b32', workwear: '#3f5364', seafoam: '#d8bd73', ink: '#30252a' }, scale: 1.02 },
+  { colors: { orange: '#477c62', workwear: '#a8b6a8', seafoam: '#cf7840', ink: '#26333a' }, scale: 0.98 },
+  { colors: { orange: '#d18b37', workwear: '#5b6674', seafoam: '#78a7a1', ink: '#282631' }, scale: 1.06 },
+];
+
+function citizenAppearance(id: string, role: AtlasCitizenPresentation['role']): CitizenAppearance {
+  const roleOffset = role === 'nimiq-team-guide' || role === 'nimiq-team-builder' ? 1 : 0;
+  return CITIZEN_APPEARANCE_PALETTES[(stableHash(id) + roleOffset) % CITIZEN_APPEARANCE_PALETTES.length]!;
+}
+
+function stableHash(value: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) hash = Math.imul(hash ^ value.charCodeAt(index), 16777619);
+  return hash >>> 0;
+}
+
+function playerAnimationSpeed(player: AtlasCityPlayerState): number {
+  if (player.pace === 'walk') return clampNumber(player.speedUnitsPerSecond / 1.02, 0.52, 1.12);
+  if (player.pace === 'run') return clampNumber(player.speedUnitsPerSecond / 2.28, 0.82, 1.16);
+  return 1;
+}
+
+function citizenAnimationSpeed(state: 'idle' | 'walk' | 'run', speedUnitsPerSecond: number): number {
+  if (state === 'walk') return clampNumber(speedUnitsPerSecond / 0.62, 0.62, 1.42);
+  if (state === 'run') return clampNumber(speedUnitsPerSecond / 1.42, 0.92, 1.45);
+  return 1;
+}
+
+function clampNumber(value: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, value));
+}
+
+function dampRadians(current: number, target: number, amount: number): number {
+  const delta = Math.atan2(Math.sin(target - current), Math.cos(target - current));
+  return current + delta * clampNumber(amount, 0, 1);
+}
+
+function clampDimension(value: number): number {
+  return Number.isFinite(value) ? Math.max(1, Math.round(value)) : 1;
+}
+
+function clampResolution(value: number): number {
+  return Number.isFinite(value) ? Math.min(2, Math.max(0.5, value)) : 1;
+}
+
+function aspect(width: number, height: number): number {
+  return clampDimension(width) / clampDimension(height);
+}

@@ -1,0 +1,42 @@
+{
+  "asset": "beacon-commons-native-art-candidate",
+  "version": "1.4.0",
+  "status": "pass",
+  "output": "preview-gameplay-portrait.png",
+  "sha256": "22ecc7b277ac54888ec0438515150f27f2b9694bdb65176ad018223fa69efc6b",
+  "metrics": {
+    "trianglesRendered": 28786,
+    "meshParts": 438,
+    "overviewTrianglesRendered": 28811,
+    "glbBytes": 261144,
+    "vertices": 8278,
+    "triangles": 9228,
+    "materials": 9,
+    "reviewGlbBytes": 661812,
+    "reviewGlbDrawCalls": 11,
+    "visibleCharacters": 17,
+    "activities": 7,
+    "landmarks": 7,
+    "imageBytes": 251308,
+    "overviewBytes": 185336
+  },
+  "checks": {
+    "portraitResolution": true,
+    "overviewResolution": true,
+    "populationTarget": true,
+    "activityTarget": true,
+    "landmarkTarget": true,
+    "proceduralSourcePresent": true,
+    "renderHasGeometry": true,
+    "mobileBlockoutBudget": true,
+    "outputPresent": true,
+    "overviewPresent": true,
+    "glbPresent": true,
+    "glbBudget": true,
+    "qualityTierPopulationOrder": true,
+    "qualityTierSimulationOrder": true,
+    "qualityTierRenderScaleOrder": true,
+    "interactionNeverDegrades": true
+  },
+  "provenance": "Original native procedural geometry. No generated image, image-to-3D input, stock model, scan, external mesh, or texture is used."
+}

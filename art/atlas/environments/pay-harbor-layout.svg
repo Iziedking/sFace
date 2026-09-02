@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" role="img" aria-labelledby="title desc">
+  <title id="title">Pay Harbor living-world layout</title>
+  <desc id="desc">Editable vector world board showing Mara's lantern shop, a curved market route, payment gate, working ferry, residents and harbor beacon.</desc>
+  <rect width="1200" height="800" fill="#f4ede0"/>
+
+  <!-- Water has broad hand-drawn bands instead of synthetic effects. -->
+  <path d="M563 318C752 260 987 262 1200 309V800H442C436 673 469 528 563 318Z" fill="#8fc8c2"/>
+  <path d="M601 351C773 302 989 303 1200 346M574 432C765 379 985 384 1200 430M544 525C760 464 990 481 1200 523M514 628C750 562 987 582 1200 624M485 724C732 663 980 681 1200 718" fill="none" stroke="#f4ede0" stroke-width="9" opacity=".82"/>
+  <path d="M605 381C778 343 1002 345 1178 383M564 478C752 431 978 444 1160 480M527 577C732 527 960 544 1148 578" fill="none" stroke="#6ea9a3" stroke-width="4" opacity=".45"/>
+
+  <!-- Main walking route, wide enough to read as playable space. -->
+  <path d="M69 731C130 559 224 428 359 347C468 281 585 257 694 273L788 360C663 373 551 418 461 492C374 563 306 666 268 800H42Z" fill="#eadfc8" stroke="#14110e" stroke-width="9" stroke-linejoin="round"/>
+  <path d="M100 735C161 577 250 455 371 383C467 325 563 304 655 312M254 798C290 683 351 590 433 522C521 449 625 409 744 392" fill="none" stroke="#b9aa92" stroke-width="5"/>
+  <path d="M148 642L348 653M200 552L410 571M278 463L479 493M381 384L558 426" fill="none" stroke="#b9aa92" stroke-width="5" opacity=".8"/>
+  <path d="M104 703C164 691 218 694 275 715M180 598C246 590 304 597 360 619M266 503C331 500 383 509 438 535M368 420C427 422 481 436 527 459" fill="none" stroke="#d0c2a7" stroke-width="4"/>
+
+  <!-- Mara's market shop anchors the starting corner. -->
+  <g id="mara-shop" stroke="#14110e" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M0 179L278 150L371 210L84 248Z" fill="#ff5a1f" stroke-width="9"/>
+    <path d="M0 239L86 249L86 577L0 565Z" fill="#3b5554" stroke-width="9"/>
+    <path d="M86 249L347 215L347 590L86 577Z" fill="#476462" stroke-width="9"/>
+    <path d="M128 287L309 266L309 420L128 438Z" fill="#eadfc8" stroke-width="8"/>
+    <path d="M151 309L286 293L286 389L151 404Z" fill="#171411" stroke-width="7"/>
+    <path d="M176 310L263 300L263 363L176 374Z" fill="#8fb3a8" stroke-width="5"/>
+    <path d="M86 457L348 438L348 591L86 577Z" fill="#65513b" stroke-width="8"/>
+    <path d="M108 512L326 499M144 454L146 580M274 445L276 584" fill="none" stroke="#8a7156" stroke-width="4" opacity=".75"/>
+    <path d="M65 213L82 249M148 194L163 239M230 176L247 226M307 174L322 216" fill="none" stroke-width="5" opacity=".45"/>
+    <path d="M104 137L255 119L284 153L132 171Z" fill="#f4ede0" stroke-width="7"/>
+    <text x="137" y="151" fill="#14110e" font-family="ui-monospace, monospace" font-size="19" font-weight="800" letter-spacing="4" transform="rotate(-7 137 151)">MARA / LIGHTS</text>
+
+    <!-- Mara at work behind the counter. -->
+    <path d="M192 370C207 348 237 343 257 358C276 373 275 404 257 421L249 449H196L188 419C176 401 179 385 192 370Z" fill="#b4744d" stroke-width="6"/>
+    <path d="M185 385C178 355 198 329 228 328C250 327 271 342 278 363C257 362 242 354 230 342C219 361 205 375 185 385Z" fill="#171411" stroke-width="6"/>
+    <path d="M190 421C207 439 241 442 262 421L272 466H180Z" fill="#292725" stroke-width="6"/>
+    <path d="M186 420C205 436 247 438 267 416L263 442C240 455 207 452 193 441Z" fill="#ff5a1f" stroke-width="5"/>
+    <path d="M207 392C212 388 218 388 223 392M242 391C247 387 253 388 258 393M219 410C231 417 244 416 252 407" fill="none" stroke-width="3"/>
+
+    <!-- Last Lantern at the shop edge. -->
+    <path d="M327 274V238C327 216 343 200 364 200C386 200 401 216 401 238V274" fill="none" stroke-width="7"/>
+    <path d="M316 267H412L400 378H328Z" fill="#171411" stroke-width="8"/>
+    <path d="M337 288H391L385 352H343Z" fill="#ffd9c4" stroke-width="5"/>
+    <path d="M364 304C345 323 352 344 364 352C377 343 383 323 364 304Z" fill="#ff5a1f" stroke-width="4"/>
+    <path d="M305 378H423" fill="none" stroke-width="8"/>
+    <path d="M310 254C288 238 271 225 249 217" fill="none" stroke-width="5" opacity=".4"/>
+  </g>
+
+  <!-- Payment inspection gate sits on the route, not in a detached UI. -->
+  <g id="inspection-gate" stroke="#14110e" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M523 254V367M709 270V361" fill="none" stroke-width="9"/>
+    <path d="M495 244L695 260L724 298L522 281Z" fill="#ff5a1f" stroke-width="9"/>
+    <path d="M566 259L629 264L614 304L552 298Z" fill="#f4ede0" stroke-width="6"/>
+    <path d="M577 276L608 278M592 263L590 293" fill="none" stroke-width="5"/>
+    <path d="M530 367C579 388 658 390 707 361" fill="none" stroke="#65513b" stroke-width="6"/>
+    <path d="M535 316C571 333 660 338 701 317" fill="none" stroke="#8a7156" stroke-width="4" stroke-dasharray="10 12"/>
+  </g>
+
+  <!-- Beacon tower is monumental but still visibly maintained by people. -->
+  <g id="beacon" stroke="#14110e" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M866 60H1022L1055 340H822Z" fill="#687777" stroke-width="9"/>
+    <path d="M842 340H1037L1071 389H808Z" fill="#3b5554" stroke-width="9"/>
+    <path d="M875 61L897 15H992L1013 61Z" fill="#ff5a1f" stroke-width="8"/>
+    <path d="M888 61H1000V133H888Z" fill="#3b5554" stroke-width="8"/>
+    <path d="M919 76H971V121H919Z" fill="#ffd9c4" stroke-width="6"/>
+    <path d="M945 83C929 98 934 114 945 120C955 113 961 98 945 83Z" fill="#ff5a1f" stroke-width="4"/>
+    <path d="M875 176H1009M858 248H1025" fill="none" stroke="#596565" stroke-width="6"/>
+    <path d="M919 181H958V238H919Z" fill="#292725" stroke-width="7"/>
+    <path d="M809 389H1070" fill="none" stroke-width="9"/>
+    <path d="M1029 209L1082 192L1095 238L1040 251Z" fill="#8fb3a8" stroke-width="6"/>
+    <path d="M1059 197L1065 173" fill="none" stroke-width="6"/>
+  </g>
+
+  <!-- Ferry and dock: a destination that looks usable. -->
+  <g id="ferry" stroke="#14110e" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M770 558L1100 550L1149 616L1092 721L810 722L749 614Z" fill="#292725" stroke-width="9"/>
+    <path d="M792 514H1051L1100 550L770 558Z" fill="#f4ede0" stroke-width="8"/>
+    <path d="M833 456H1016L1051 514H792Z" fill="#eadfc8" stroke-width="8"/>
+    <path d="M857 478H907V512H857ZM929 478H980V512H929Z" fill="#8fc8c2" stroke-width="6"/>
+    <path d="M1016 456L1071 493L1051 514Z" fill="#ff5a1f" stroke-width="8"/>
+    <path d="M831 456L842 424H1000L1016 456" fill="none" stroke-width="8"/>
+    <path d="M872 424V389M971 424V389" fill="none" stroke-width="7"/>
+    <path d="M795 618C878 591 1002 591 1127 619" fill="none" stroke="#65513b" stroke-width="11"/>
+    <path d="M826 676C908 652 1009 653 1109 676" fill="none" stroke="#514231" stroke-width="6"/>
+    <circle cx="847" cy="630" r="27" fill="#65513b" stroke-width="7"/>
+    <circle cx="1060" cy="630" r="27" fill="#65513b" stroke-width="7"/>
+    <path d="M765 723C858 748 1024 746 1110 718" fill="none" stroke="#6ea9a3" stroke-width="7"/>
+  </g>
+
+  <!-- Residents are compact adult silhouettes with role-specific posture. -->
+  <g id="residents" stroke="#14110e" stroke-linecap="round" stroke-linejoin="round">
+    <g id="player" transform="translate(470 440)">
+      <ellipse cx="0" cy="-48" rx="18" ry="22" fill="#a8653f" stroke-width="5"/>
+      <path d="M-18-57C-15-77 7-82 20-66C9-65 1-70-5-76C-9-66-12-61-18-57Z" fill="#171411" stroke-width="5"/>
+      <path d="M-22-25C-8-38 10-38 24-25L19 37H-15Z" fill="#ff5a1f" stroke-width="6"/>
+      <path d="M-11 37L-15 84M11 37L15 84M-19-12L-45 24M22-12L44 14" fill="none" stroke-width="7"/>
+      <path d="M-24 86H-6M6 86H24" fill="none" stroke-width="8"/>
+    </g>
+    <g id="dock-worker" transform="translate(617 548)">
+      <ellipse cx="0" cy="-42" rx="17" ry="20" fill="#955b3c" stroke-width="5"/>
+      <path d="M-20-19C-7-30 10-30 22-18L17 36H-16Z" fill="#8fb3a8" stroke-width="6"/>
+      <path d="M-10 36L-13 76M9 36L13 76M-18-6L-41 22M20-5L42 18" fill="none" stroke-width="6"/>
+      <path d="M-21 78H-6M5 78H21" fill="none" stroke-width="7"/>
+      <path d="M-13-48C-5-64 16-60 19-44" fill="#171411" stroke-width="5"/>
+    </g>
+    <g id="courier" transform="translate(384 592)">
+      <ellipse cx="0" cy="-40" rx="16" ry="19" fill="#b4744d" stroke-width="5"/>
+      <path d="M-18-18C-6-29 10-28 20-16L18 34H-15Z" fill="#292725" stroke-width="6"/>
+      <path d="M-9 34L-12 72M8 34L11 72M-16-5L-36 24M18-4L38 20" fill="none" stroke-width="6"/>
+      <path d="M18 0L46 9L42 35L20 30Z" fill="#65513b" stroke-width="5"/>
+      <path d="M-20 74H-6M4 74H19" fill="none" stroke-width="7"/>
+    </g>
+  </g>
+
+  <!-- Foreground mooring gear gives depth and a physical edge to the map. -->
+  <g id="foreground" stroke="#14110e" stroke-linecap="round">
+    <path d="M34 780V693M315 800V724" fill="none" stroke-width="12"/>
+    <path d="M34 744C138 704 228 714 315 770" fill="none" stroke="#65513b" stroke-width="13"/>
+    <path d="M35 713C148 675 248 692 342 752" fill="none" stroke="#8a7156" stroke-width="4"/>
+  </g>
+</svg>

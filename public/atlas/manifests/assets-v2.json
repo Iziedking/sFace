@@ -1,0 +1,167 @@
+{
+  "version": 2,
+  "mobileBudgetBytes": 262144,
+  "assets": [
+    {
+      "id": "atlas-shell-mark",
+      "path": "/icon.svg",
+      "sha256": "3F48BEAD15FE087938B07F97FFD98BA844D1CDFDCB1E0C7BD1B1C7711B2DBE4D",
+      "bytes": 978,
+      "compressedBytes": 978,
+      "mime": "image/svg+xml",
+      "width": 512,
+      "height": 512,
+      "bundle": "atlas-shell"
+    },
+    {
+      "id": "atlas-harbor-waiting-ambience",
+      "path": "/atlas/audio/harbor-waiting-ambience.ogg",
+      "sha256": "3b899ffb74ce3271a79663d64fdc11510bc90d5fac206e1386bc24a4f6d7fbcc",
+      "bytes": 5101,
+      "compressedBytes": 5101,
+      "mime": "audio/ogg",
+      "width": 1,
+      "height": 1,
+      "bundle": "atlas-harbor"
+    },
+    {
+      "id": "atlas-harbor-restored-ambience",
+      "path": "/atlas/audio/harbor-restored-ambience.ogg",
+      "sha256": "0f894c7def6340ee4fce199c4e1cf424b5270ab89691b6a06d279866f6bc7ade",
+      "bytes": 6686,
+      "compressedBytes": 6686,
+      "mime": "audio/ogg",
+      "width": 1,
+      "height": 1,
+      "bundle": "atlas-harbor"
+    },
+    {
+      "id": "atlas-beacon-confirmation",
+      "path": "/atlas/audio/beacon-confirmation.ogg",
+      "sha256": "a1da0c5411354aae06e63cf23f2ee67159a92a1f0714105a7ade1f8f9147aaa1",
+      "bytes": 5082,
+      "compressedBytes": 5082,
+      "mime": "audio/ogg",
+      "width": 1,
+      "height": 1,
+      "bundle": "atlas-harbor"
+    },
+    {
+      "id": "pay-harbor-environment",
+      "path": "/atlas/3d/v1/pay-harbor/environment.glb",
+      "sha256": "aa3ece3d5faf533b039534f96745e764f16041b5bfc71b63807636ec2a82f6b2",
+      "bytes": 230148,
+      "compressedBytes": 230148,
+      "mime": "model/gltf-binary",
+      "width": 1,
+      "height": 1,
+      "bundle": "atlas-pay-harbor",
+      "quality": [
+        "low",
+        "balanced",
+        "high"
+      ],
+      "sourceFile": "art/atlas/environments/pay-harbor-v1/build_scene.py",
+      "sourceSha256": "871abd10ada278c596330853bfd5515f578514808a32b7ca40ee66e585d28a6c",
+      "sourceStatus": "owner-approved-procedural"
+    },
+    {
+      "id": "pay-harbor-scene",
+      "path": "/atlas/3d/v1/pay-harbor/scene.json",
+      "sha256": "2e40ecdd9ae57e669f0f2b935c6edbed305d0a5ffef864007321278af43f0692",
+      "bytes": 9364,
+      "compressedBytes": 9364,
+      "mime": "application/json",
+      "width": 1,
+      "height": 1,
+      "bundle": "atlas-pay-harbor"
+    },
+    {
+      "id": "atlas-walker-player",
+      "path": "/atlas/3d/v1/characters/atlas-walker-player.glb",
+      "sha256": "2362b4667e18472bc0efdc2ecead12ee7b5a8f373086ca4e611a292c600ab760",
+      "bytes": 196208,
+      "compressedBytes": 196208,
+      "mime": "model/gltf-binary",
+      "width": 1,
+      "height": 1,
+      "bundle": "atlas-character",
+      "quality": [
+        "low",
+        "balanced",
+        "high"
+      ],
+      "sourceFile": "art/atlas/characters/atlas-walker-v1/build_character.py",
+      "sourceSha256": "602435deb86396f07649b091405b070793e1b16250733f7c5575bfa9dee26ffd",
+      "sourceStatus": "owner-approved-procedural"
+    },
+    {
+      "id": "atlas-walker-npc-lod1",
+      "path": "/atlas/3d/v1/characters/atlas-walker-npc-lod1.glb",
+      "sha256": "42da79da3a3540bcaad0e42f3027be4d08aec177e00485cbfd0a2f61f0eb4c06",
+      "bytes": 144392,
+      "compressedBytes": 144392,
+      "mime": "model/gltf-binary",
+      "width": 1,
+      "height": 1,
+      "bundle": "atlas-character",
+      "quality": [
+        "low",
+        "balanced",
+        "high"
+      ],
+      "sourceFile": "art/atlas/characters/atlas-walker-v1/build_character.py",
+      "sourceSha256": "602435deb86396f07649b091405b070793e1b16250733f7c5575bfa9dee26ffd",
+      "sourceStatus": "owner-approved-procedural"
+    },
+    {
+      "id": "atlas-walker-npc-lod2",
+      "path": "/atlas/3d/v1/characters/atlas-walker-npc-lod2.glb",
+      "sha256": "b87d72124920d1f0b4633e093152865ebf496b336b8c105eba214cea1a0ddad0",
+      "bytes": 35640,
+      "compressedBytes": 35640,
+      "mime": "model/gltf-binary",
+      "width": 1,
+      "height": 1,
+      "bundle": "atlas-character",
+      "quality": [
+        "low",
+        "balanced",
+        "high"
+      ],
+      "sourceFile": "art/atlas/characters/atlas-walker-v1/build_character.py",
+      "sourceSha256": "602435deb86396f07649b091405b070793e1b16250733f7c5575bfa9dee26ffd",
+      "sourceStatus": "owner-approved-procedural"
+    },
+    {
+      "id": "beacon-commons-environment",
+      "path": "/atlas/3d/v1/beacon-commons/environment.glb",
+      "sha256": "dea4e25837a1534d790ca15e6b5ad4345cc904dfa258c0061290958fdc2eda0a",
+      "bytes": 261144,
+      "compressedBytes": 261144,
+      "mime": "model/gltf-binary",
+      "width": 1,
+      "height": 1,
+      "bundle": "atlas-beacon-commons",
+      "quality": [
+        "low",
+        "balanced",
+        "high"
+      ],
+      "sourceFile": "art/atlas/environments/beacon-commons-v1/build_scene.py",
+      "sourceSha256": "d8e37cb41abc8ba8e32205fd6ebfdd69dca6bcf7aa8c6d50ccf7381f4bef9c22",
+      "sourceStatus": "owner-approved-procedural"
+    },
+    {
+      "id": "beacon-commons-scene",
+      "path": "/atlas/3d/v1/beacon-commons/scene.json",
+      "sha256": "190ae0526d16efe1e932852f1cf2bb96579e60a232a6ac5f5f459e6faa78c345",
+      "bytes": 16321,
+      "compressedBytes": 16321,
+      "mime": "application/json",
+      "width": 1,
+      "height": 1,
+      "bundle": "atlas-beacon-commons"
+    }
+  ]
+}

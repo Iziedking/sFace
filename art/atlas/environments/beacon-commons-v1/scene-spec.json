@@ -1,0 +1,44 @@
+{
+  "asset": "beacon-commons-native-art-candidate",
+  "version": "1.4.0",
+  "status": "owner-review-iteration",
+  "seed": 27082026,
+  "camera": {
+    "type": "third-person-over-shoulder",
+    "aspect": "9:16",
+    "fieldOfViewDegrees": 60,
+    "positionMeters": [0.52, 2.62, 8.95],
+    "targetMeters": [0.0, 1.42, 0.1],
+    "targetPlayerScreenHeightPercent": 28
+  },
+  "population": {
+    "visibleCharacters": 17,
+    "roles": ["player", "community-guide", "merchant", "customer", "builder", "carrier", "nimiq-team", "transit-traveller"],
+    "activities": ["walking", "talking", "queueing", "trading", "repairing", "carrying", "planning"]
+  },
+  "landmarks": ["signal-tower", "community-market", "builder-yard", "nimiq-team-pavilion", "city-transit", "outer-ring", "far-commons-sign"],
+  "mobilePerformance": {
+    "baseFrameRate": 30,
+    "qualityProfiles": {
+      "low": {"visibleNpcs": 8, "activeNpcs": 4, "renderScale": 0.7, "farNpcLod": "240-triangle"},
+      "balanced": {"visibleNpcs": 12, "activeNpcs": 6, "renderScale": 0.85, "farNpcLod": "480-triangle"},
+      "high": {"visibleNpcs": 17, "activeNpcs": 10, "renderScale": 1.0, "farNpcLod": "800-triangle"}
+    },
+    "adaptiveOrder": ["particles", "shadow-detail", "far-npc-lod", "far-animation-rate", "render-scale"],
+    "neverReduced": ["touch-target-size", "mission-npc-visibility", "interaction-readability"]
+  },
+  "palette": {
+    "cream": "#F4EDE0",
+    "paper": "#EADFC8",
+    "ink": "#14110E",
+    "charcoal": "#292725",
+    "orange": "#FF5A1F",
+    "seafoam": "#8FB3A8",
+    "water": "#8FC8C2",
+    "leather": "#65513B",
+    "plant": "#6F8E6E",
+    "skin": "#D9A27F",
+    "skinShadow": "#B97758"
+  },
+  "authorship": "Original native procedural geometry. No generated image, image-to-3D input, stock model, scan, external mesh, or texture is used."
+}

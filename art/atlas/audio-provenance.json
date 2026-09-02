@@ -1,0 +1,13 @@
+[
+  {
+    "id": "atlas-harbor-audio-cues",
+    "authorOrTool": "scripts/generate-atlas-audio.mjs with FFmpeg libvorbis",
+    "creationDate": "2026-08-26",
+    "sourceFile": "scripts/generate-atlas-audio.mjs",
+    "license": "MIT",
+    "consentStatus": "not-applicable / procedural tones only",
+    "realPersonLikeness": false,
+    "approvedDerivativeUse": true,
+    "notes": "Deterministic oscillator-inspired tones; no voice, likeness, or third-party recording."
+  }
+]

@@ -7,6 +7,8 @@ import type { AtlasCurriculum } from '../../shared/atlas/types';
 import { toPublicAtlasOrder, type AtlasOrder, type AtlasOrderStore } from './orders';
 import type { AtlasBeaconService } from './beacon';
 import type { AtlasChainReader } from './chain';
+import type { AtlasEchoService } from './echoes';
+import type { AtlasCompetitionSummary } from './rewards';
 
 export interface AtlasOrderCatalog {
   itemId: 'harbor-lantern';
@@ -25,6 +27,8 @@ export interface AtlasApi {
   }>;
   curriculum(): Promise<AtlasCurriculum>;
   beacon?: () => Promise<Awaited<ReturnType<AtlasBeaconService['read']>>>;
+  echoes?: () => Promise<Awaited<ReturnType<AtlasEchoService['read']>>>;
+  competition?: () => Promise<AtlasCompetitionSummary[]>;
   orders?: AtlasOrderStore;
   orderCatalog?: AtlasOrderCatalog;
   chain?: AtlasChainReader;
@@ -36,6 +40,8 @@ export function createAtlasApi(options: {
   now?: () => Date;
   orders?: AtlasOrderStore;
   beacon?: AtlasBeaconService;
+  echoes?: AtlasEchoService;
+  competition?: () => Promise<AtlasCompetitionSummary[]>;
   orderCatalog?: AtlasOrderCatalog;
   chain?: AtlasChainReader;
 }): AtlasApi {
@@ -54,6 +60,8 @@ export function createAtlasApi(options: {
       return structuredClone(curriculum);
     },
     beacon: options.beacon ? () => options.beacon!.read() : undefined,
+    echoes: options.echoes ? () => options.echoes!.read() : undefined,
+    competition: options.competition,
     orders: options.orders,
     orderCatalog: options.orderCatalog,
     chain: options.chain,
@@ -77,6 +85,16 @@ export function mountAtlasRoutes(options: {
     if (!options.api.beacon) { response.status(503).json({ ok: false, error: 'Atlas Beacon is unavailable.' }); return; }
     response.setHeader('cache-control', 'no-store');
     response.json({ ok: true, data: await options.api.beacon() });
+  });
+  options.app.get('/atlas/api/echoes', options.limit(120, 40), async (_request, response) => {
+    if (!options.api.echoes) { response.status(503).json({ ok: false, error: 'Atlas Echoes are unavailable.' }); return; }
+    response.setHeader('cache-control', 'no-store');
+    response.json({ ok: true, data: await options.api.echoes() });
+  });
+  options.app.get('/atlas/api/competition', options.limit(120, 40), async (_request, response) => {
+    if (!options.api.competition) { response.status(503).json({ ok: false, error: 'Atlas competition is unavailable.' }); return; }
+    response.setHeader('cache-control', 'no-store');
+    response.json({ ok: true, data: await options.api.competition() });
   });
   options.app.post('/atlas/api/orders', options.limit(30, 10), async (request, response) => {
     if (!options.api.orders) { response.status(503).json({ ok: false, error: 'Atlas orders are unavailable.' }); return; }

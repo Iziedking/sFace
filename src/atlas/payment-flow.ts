@@ -28,6 +28,11 @@ export interface AtlasPaymentResult {
 
 type PaymentApi = Pick<AtlasApiClient, 'createOrder' | 'submitTransactionLookup'> & Partial<Pick<AtlasApiClient, 'cancelOrder'>>;
 
+/**
+ * Compatibility helper for callers that only need the pre-controller submit
+ * boundary. The browser app uses AtlasPaymentController so retries and
+ * fulfillment remain attached to one recoverable order state machine.
+ */
 export async function executeAtlasPayment(options: AtlasPaymentRequest & { wallet: AtlasWalletAdapter; api: PaymentApi }): Promise<AtlasPaymentResult> {
   assertReviewedPayment(options);
 

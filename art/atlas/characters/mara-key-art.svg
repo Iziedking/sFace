@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 900" role="img" aria-labelledby="title desc">
+  <title id="title">Mara, keeper of the Last Lantern</title>
+  <desc id="desc">Editable vector key art of an adult harbor shopkeeper leaning across a worn counter beside the Last Lantern.</desc>
+  <rect width="1000" height="900" fill="#f4ede0"/>
+  <path d="M54 98H946" fill="none" stroke="#14110e" stroke-width="3" opacity=".16"/>
+  <text x="54" y="82" fill="#65513b" font-family="ui-monospace, monospace" font-size="17" font-weight="700" letter-spacing="4">PAY HARBOR / MARA / KEEPER 07</text>
+
+  <!-- Shop architecture, deliberately imperfect and lived-in. -->
+  <g id="stall" stroke="#14110e" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M603 147H928V766H603Z" fill="#3b5554" stroke-width="9"/>
+    <path d="M568 158H962L910 103H625Z" fill="#ff5a1f" stroke-width="9"/>
+    <path d="M603 219H928" fill="none" stroke="#8fb3a8" stroke-width="8" opacity=".55"/>
+    <path d="M603 290H928M603 361H928M603 432H928" fill="none" stroke="#8fb3a8" stroke-width="5" opacity=".22"/>
+    <path d="M627 120L638 158M699 105L706 158M780 105L781 158M860 109L852 158M922 121L910 158" fill="none" stroke-width="5" opacity=".5"/>
+    <path d="M672 517H866L850 743H687Z" fill="#8fb3a8" stroke-width="8"/>
+    <path d="M699 552H838M695 611H834M691 670H830" fill="none" stroke="#3b5554" stroke-width="5" opacity=".55"/>
+    <path d="M654 743H882" fill="none" stroke-width="9"/>
+  </g>
+
+  <ellipse cx="422" cy="804" rx="294" ry="25" fill="#ded2ba"/>
+
+  <!-- Mara: late-forties adult proportions, grounded stance, asymmetric workwear. -->
+  <g id="mara" stroke="#14110e" stroke-linecap="round" stroke-linejoin="round">
+    <!-- legs and boots -->
+    <path d="M303 540C334 530 374 532 399 547L387 691L352 778H256L279 665Z" fill="#34312d" stroke-width="9"/>
+    <path d="M399 547C428 531 469 532 493 546L514 665L498 778H404L392 690Z" fill="#292725" stroke-width="9"/>
+    <path d="M279 665L387 691M392 690L514 665" fill="none" stroke="#171411" stroke-width="5" opacity=".65"/>
+    <path d="M256 778C283 753 328 751 352 778L348 810H239C238 794 244 785 256 778Z" fill="#514231" stroke-width="8"/>
+    <path d="M404 778C431 752 476 752 498 778L509 810H391C390 795 395 785 404 778Z" fill="#514231" stroke-width="8"/>
+    <path d="M252 795H343M403 795H500" fill="none" stroke="#8a7156" stroke-width="4"/>
+
+    <!-- back arm, rolled sleeve, hand resting on counter -->
+    <path d="M477 331C524 346 562 377 589 420L553 451L458 389Z" fill="#eadfc8" stroke-width="9"/>
+    <path d="M589 420L625 465L593 493L553 451Z" fill="#b4744d" stroke-width="7"/>
+    <path d="M625 465C644 471 657 485 652 499C646 514 624 514 607 502L593 493Z" fill="#b4744d" stroke-width="7"/>
+    <path d="M613 480L635 488M606 489L629 498" fill="none" stroke-width="3"/>
+
+    <!-- torso, shirt, apron and repair marks -->
+    <path d="M283 316C315 288 360 278 410 284C459 290 496 318 509 356L497 551C442 578 338 577 278 548L267 368C264 346 270 328 283 316Z" fill="#eadfc8" stroke-width="9"/>
+    <path d="M302 352C344 332 437 333 480 353L485 562C440 587 345 586 294 560Z" fill="#292725" stroke-width="8"/>
+    <path d="M302 352L329 404L390 379L447 408L480 353" fill="none" stroke="#171411" stroke-width="6"/>
+    <path d="M323 368L336 515M456 369L443 517" fill="none" stroke="#65513b" stroke-width="15"/>
+    <circle cx="337" cy="439" r="16" fill="#65513b" stroke-width="6"/>
+    <circle cx="451" cy="443" r="16" fill="#65513b" stroke-width="6"/>
+    <path d="M337 455L339 506L327 520M451 459L448 508L461 521" fill="none" stroke-width="5"/>
+    <path d="M348 477L399 483L395 538L342 531Z" fill="#65513b" stroke-width="6"/>
+    <path d="M354 488L389 527M389 488L350 526" fill="none" stroke="#ff5a1f" stroke-width="4"/>
+    <path d="M304 543C350 559 448 562 491 544" fill="none" stroke-width="7"/>
+    <path d="M327 559L332 589M452 559L447 589" fill="none" stroke-width="5"/>
+    <path d="M292 386C307 393 318 393 329 389M466 390C478 393 487 393 497 387" fill="none" stroke="#b9aa92" stroke-width="4"/>
+
+    <!-- forward arm holding a paper receipt, not a floating UI panel -->
+    <path d="M284 332C244 350 210 384 184 425L219 454L300 385Z" fill="#eadfc8" stroke-width="9"/>
+    <path d="M184 425L155 471L188 496L219 454Z" fill="#b4744d" stroke-width="7"/>
+    <path d="M155 471C139 487 142 506 156 515C171 525 188 513 188 496Z" fill="#b4744d" stroke-width="7"/>
+    <path d="M152 487L168 499M160 478L178 490" fill="none" stroke-width="3"/>
+    <path d="M153 473L118 433" fill="none" stroke-width="7"/>
+    <g transform="rotate(-10 92 385)">
+      <path d="M58 327H129V432L114 422L99 432L85 422L70 432L58 422Z" fill="#f4ede0" stroke-width="7"/>
+      <path d="M73 348H113M73 365H109M73 382H115M73 399H101" fill="none" stroke-width="4"/>
+      <circle cx="111" cy="407" r="7" fill="#ff5a1f" stroke="none"/>
+    </g>
+
+    <!-- neck, orange scarf, adult face and hand-shaped hair -->
+    <g transform="translate(380 340) scale(.78) translate(-380 -340)">
+    <path d="M333 290L337 247L419 248L422 300C401 321 357 318 333 290Z" fill="#b4744d" stroke-width="7"/>
+    <path d="M295 289C331 316 426 320 459 284L448 340C410 361 335 356 306 334Z" fill="#ff5a1f" stroke-width="8"/>
+    <path d="M302 143C311 104 344 80 387 85C431 90 457 126 452 178L443 226C435 267 403 287 363 283C326 280 300 253 297 216Z" fill="#b4744d" stroke-width="8"/>
+    <path d="M298 169C285 132 300 96 331 77C362 58 407 63 436 91C451 106 459 125 459 143C430 142 407 130 391 110C372 134 341 151 298 153Z" fill="#171411" stroke-width="8"/>
+    <path d="M321 87C311 62 328 42 350 40C363 56 365 75 357 91M360 77C363 50 385 38 406 47C415 67 411 84 398 99M400 81C413 59 436 62 448 77C447 96 436 108 422 114" fill="#171411" stroke-width="8"/>
+    <path d="M314 184C331 171 351 173 365 184M395 185C412 174 431 178 442 191" fill="none" stroke-width="6"/>
+    <path d="M324 189C333 195 345 195 353 188M404 190C413 196 425 196 433 190" fill="none" stroke-width="3"/>
+    <circle cx="340" cy="189" r="3.5" fill="#14110e" stroke="none"/>
+    <circle cx="419" cy="191" r="3.5" fill="#14110e" stroke="none"/>
+    <path d="M381 187C377 208 373 222 365 232C375 237 387 237 394 232" fill="none" stroke-width="5"/>
+    <path d="M337 251C357 264 389 265 414 246" fill="none" stroke-width="5"/>
+    <path d="M304 238C321 276 419 291 443 230" fill="none" stroke="#171411" stroke-width="10" opacity=".35"/>
+    <path d="M445 198C460 194 467 207 461 220C457 231 448 233 443 230" fill="#b4744d" stroke-width="6"/>
+    </g>
+  </g>
+
+  <!-- Last Lantern, built as an object with weight and wear. -->
+  <g id="last-lantern" stroke="#14110e" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M716 361V320C716 285 743 258 778 258C813 258 840 285 840 320V361" fill="none" stroke-width="8"/>
+    <path d="M702 355H854L838 507H718Z" fill="#171411" stroke-width="9"/>
+    <path d="M730 382H826L817 477H740Z" fill="#ffd9c4" stroke-width="7"/>
+    <path d="M778 405C750 431 759 462 778 474C798 462 806 432 778 405Z" fill="#ff5a1f" stroke-width="5"/>
+    <path d="M728 355L716 507M828 355L840 507" fill="none" stroke="#514231" stroke-width="4" opacity=".7"/>
+    <path d="M687 507H870" fill="none" stroke-width="9"/>
+    <path d="M729 531C765 542 805 542 842 530" fill="none" stroke="#65513b" stroke-width="5"/>
+  </g>
+
+  <!-- Counter foreground places Mara inside a space instead of on a sheet. -->
+  <g id="counter" stroke="#14110e" stroke-linejoin="round">
+    <path d="M36 573H949L923 628H54Z" fill="#eadfc8" stroke-width="9"/>
+    <path d="M54 628H923L903 792H76Z" fill="#65513b" stroke-width="9"/>
+    <path d="M94 628L102 792M317 628L319 792M545 628L543 792M768 628L760 792" fill="none" stroke="#3f3328" stroke-width="5" opacity=".7"/>
+    <path d="M77 697C247 677 385 716 540 692C685 670 805 701 914 682" fill="none" stroke="#8a7156" stroke-width="5"/>
+    <path d="M55 752C223 734 370 765 529 748C671 733 787 761 907 739" fill="none" stroke="#8a7156" stroke-width="4" opacity=".75"/>
+  </g>
+</svg>
