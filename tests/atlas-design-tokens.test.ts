@@ -58,7 +58,7 @@ describe('Atlas design tokens', () => {
     // `color: white` sat in .atlas-builder-success through two palette passes:
     // the hex rule does not match a keyword and neither did the rgba rule.
     const outsideRoot = css.replace(rootBlock, '');
-    const strays = [...outsideRoot.matchAll(/:\s*(white|black|red|green|blue|orange|gray|grey)/g)].map((match) => match[1]);
+    const strays = [...outsideRoot.matchAll(/:\s*(white|black|red|green|blue|orange|gray|grey)\b/g)].map((match) => match[1]);
     expect(strays, `colour keywords outside :root: ${[...new Set(strays)].join(', ')}`).toHaveLength(0);
   });
 
