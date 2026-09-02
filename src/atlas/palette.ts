@@ -31,28 +31,28 @@ export const ATLAS_WORLD_PALETTE = Object.freeze({
   leather: 0x65513b,
 
   // Environment surfaces.
-  paper: 0xeadfc8,
-  water: 0x8fc8c2,
-  plant: 0x6f8e6e,
+  paper: 0xdfe6f5,
+  water: 0x4cc9f0,
+  plant: 0x06d6a0,
 
   // Atmosphere.
-  sky: 0xf4ede0,
-  haze: 0xe7e4da,
-  ambientLight: 0xfff8ed,
-  sunLight: 0xffd3a8,
+  sky: 0x4cc9f0,
+  haze: 0xa8dcf0,
+  ambientLight: 0xf2f8ff,
+  sunLight: 0xfff3d6,
 
   // Restoration signals and lantern stations.
-  restorationEmitter: 0xf28b30,
-  guidanceEmitter: 0xffd36a,
-  lanternUnlit: 0x8f8777,
-  lanternLit: 0xf2c15f,
-  lanternComplete: 0x82b9b1,
-  lanternMast: 0x746653,
-  lanternMastComplete: 0x4f746f,
-  lanternPedestal: 0x9a876f,
-  stationWarm: 0xe08a38,
-  stationDim: 0x70675c,
-  stationGold: 0xd6b56c,
+  restorationEmitter: 0xff477e,
+  guidanceEmitter: 0xffd166,
+  lanternUnlit: 0x6b7398,
+  lanternLit: 0xffd166,
+  lanternComplete: 0x06d6a0,
+  lanternMast: 0x4a5280,
+  lanternMastComplete: 0x06d6a0,
+  lanternPedestal: 0x5b6490,
+  stationWarm: 0xff9f1c,
+  stationDim: 0x4a5280,
+  stationGold: 0xffd166,
 });
 
 export type AtlasWorldColour = keyof typeof ATLAS_WORLD_PALETTE;
@@ -85,36 +85,84 @@ export const ATLAS_CITIZEN_WARDROBE = Object.freeze([
  * nothing but that renderer. Same file, so the palette is still in one place.
  */
 export const ATLAS_FALLBACK_PALETTE = Object.freeze({
-  line: '#171411',
-  ground: '#f4ede0',
-  groundDim: '#c9bdac',
-  groundBuilder: '#e1e6df',
-  groundRaised: '#eadfc8',
-  sandLight: '#e8dfcf',
-  sandWarm: '#e5d0a7',
-  sandDeep: '#d5c7aa',
-  active: '#f28b30',
-  activeDim: '#c67832',
-  relayScanned: '#f6c85f',
-  beaconGold: '#d6a649',
-  muted: '#6d6256',
-  settled: '#5b8f68',
-  rescued: '#5bb98c',
-  selection: '#4e7f9f',
-  warn: '#d55238',
-  builderPath: '#b9c79a',
-  foliageLight: '#c8d3b0',
-  foliageMid: '#a7b889',
-  waterLight: '#b8ced9',
-  waterDeep: '#4e9ccf',
-  routeQuiet: '#8a9295',
-  stone: '#a9a092',
-  slate: '#53626b',
-  skinWarm: '#d6a77d',
-  clay: '#8f493c',
-  timber: '#6f5338',
-  timberDark: '#3a251c',
-  shadow: '#25201b',
+  line: '#f7f9ff',
+  ground: '#101430',
+  groundDim: '#1a2044',
+  groundBuilder: '#1e2a52',
+  groundRaised: '#20264c',
+  sandLight: '#2a3160',
+  sandWarm: '#333a6e',
+  sandDeep: '#3b4276',
+  active: '#ff477e',
+  activeDim: '#d81e5b',
+  relayScanned: '#ffd166',
+  beaconGold: '#ffb703',
+  muted: '#a6b0d6',
+  settled: '#06d6a0',
+  rescued: '#4ade80',
+  selection: '#4cc9f0',
+  warn: '#ff9f1c',
+  builderPath: '#a78bfa',
+  foliageLight: '#5eead4',
+  foliageMid: '#06d6a0',
+  waterLight: '#7dd3fc',
+  waterDeep: '#4cc9f0',
+  routeQuiet: '#5b6490',
+  stone: '#6b7398',
+  slate: '#4a5280',
+  skinWarm: '#c98c68',
+  clay: '#f472b6',
+  timber: '#8b5cf6',
+  timberDark: '#4c1d95',
+  shadow: '#060818',
 });
 
 export type AtlasFallbackColour = keyof typeof ATLAS_FALLBACK_PALETTE;
+
+/*
+ * The stylesheet's colour tokens, mirrored.
+ *
+ * CSS cannot import TypeScript, so atlas.css declares these itself and
+ * atlas-palette.test.ts asserts the two agree. The mirror exists so a recolour
+ * is one reviewed change in one file rather than a hunt through a 47 KB
+ * stylesheet, and so anything needing a UI colour in TypeScript reads it from
+ * here instead of hardcoding a second copy.
+ *
+ * Keys omit the leading '--'. Non-colour tokens such as --atlas-line stay out;
+ * this map is the palette, not the whole of :root.
+ */
+export const ATLAS_UI_TOKENS = Object.freeze({
+  'atlas-paper': 'rgba(16, 20, 44, .82)',
+  'atlas-raised': 'rgba(32, 38, 76, .78)',
+  'atlas-ink': '#f7f9ff',
+  'atlas-muted': '#a6b0d6',
+  'atlas-label': '#b9c2ea',
+  'atlas-label-dim': '#8f9ac4',
+  'atlas-signal': '#ff477e',
+  'atlas-signal-deep': '#d81e5b',
+  'atlas-warn': '#ff9f1c',
+  'atlas-verified': '#06d6a0',
+  'atlas-selected': '#4cc9f0',
+  'atlas-explorer': '#ffd166',
+  'atlas-builder': '#a78bfa',
+  'atlas-inert': '#4a5280',
+  'atlas-city-ground': '#1a2044',
+  'atlas-map-quiet': '#5b6490',
+  'atlas-map-panel': 'rgba(32, 38, 76, .78)',
+  'atlas-pace-walk': '#06d6a0',
+  'atlas-pace-run': '#ffd166',
+  'atlas-ready': '#4cc9f0',
+  'atlas-hud-dim': '#a6b0d6',
+  'atlas-mission-surface': 'rgb(var(--atlas-paper-rgb) / .9)',
+  'atlas-mission-line': 'rgb(var(--atlas-ink-rgb) / .18)',
+  'atlas-mission-shadow': 'rgb(var(--atlas-shadow-rgb) / .5)',
+  'atlas-paper-rgb': '16 20 44',
+  'atlas-ink-rgb': '247 249 255',
+  'atlas-signal-rgb': '255 71 126',
+  'atlas-explorer-rgb': '255 209 102',
+  'atlas-shadow-rgb': '6 8 24',
+  'atlas-raised-rgb': '32 38 76',
+  'atlas-map-panel-rgb': '32 38 76',
+});
+
+export type AtlasUiToken = keyof typeof ATLAS_UI_TOKENS;

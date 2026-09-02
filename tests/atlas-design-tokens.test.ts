@@ -45,6 +45,22 @@ describe('Atlas design tokens', () => {
     expect(strays, `hex literals outside :root: ${[...new Set(strays)].join(', ')}`).toHaveLength(0);
   });
 
+  it('keeps every rgba colour inside :root too', () => {
+    // The hex rule above never caught these, so six alphas of the old cream
+    // and the old signal orange sat in the HUD untokenized. Alpha belongs at
+    // the use site via rgb(var(--token) / <alpha>); the channels do not.
+    const outsideRoot = css.replace(rootBlock, '');
+    const strays = [...outsideRoot.matchAll(/rgba?\(\s*\d+[\s,]/g)].map((match) => match[0]);
+    expect(strays, `${strays.length} rgba literals outside :root`).toHaveLength(0);
+  });
+
+  it('publishes channel triples so alpha can vary without a new colour', () => {
+    for (const token of ['--atlas-paper-rgb', '--atlas-ink-rgb', '--atlas-signal-rgb', '--atlas-explorer-rgb', '--atlas-shadow-rgb']) {
+      expect(rootBlock, `missing ${token}`).toContain(`${token}:`);
+      expect(rootBlock).toMatch(new RegExp(`${token}:\\s*\\d+ \\d+ \\d+`));
+    }
+  });
+
   it('provides one shared screen-reader utility', () => {
     expect(css).toContain('.sr-only');
   });

@@ -30,11 +30,17 @@ describe('approved living-city game entry', () => {
     expect(app).not.toContain('${activeCitizens} MOVING');
   });
 
-  it('keeps the mission HUD light enough to belong to the warm city palette', () => {
-    expect(css).toContain('--atlas-mission-surface: rgba(244, 237, 224, .96)');
+  it('keeps the mission HUD on the palette rather than a slab of its own', () => {
+    // This used to assert the surface was cream at .96, because the product was
+    // ink on warm paper. It is now translucent dark glass over a live city, so
+    // the light-surface intent is gone deliberately. What still matters, and is
+    // what the assertion was protecting all along, is that the HUD takes its
+    // surface and its text from tokens instead of hardcoding a panel colour.
+    expect(css).toMatch(/--atlas-mission-surface: rgb\(var\(--atlas-paper-rgb\) \/ \.9\)/);
     expect(css).toContain('background: var(--atlas-mission-surface)');
     expect(css).toContain('color: var(--atlas-ink)');
-    expect(css).not.toContain('background: rgba(23, 20, 17, .92)');
+    const outsideRoot = css.replace(css.slice(css.indexOf(':root {'), css.indexOf('}', css.indexOf(':root {')) + 1), '');
+    expect(outsideRoot).not.toMatch(/background:\s*rgba?\(\s*\d/);
   });
 
   it('streams Pay Harbor into the same playable 3D runtime', () => {

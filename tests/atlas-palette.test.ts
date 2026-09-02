@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { ATLAS_CITIZEN_WARDROBE, ATLAS_WORLD_PALETTE, worldColourCss } from '../src/atlas/palette';
+import { ATLAS_CITIZEN_WARDROBE, ATLAS_UI_TOKENS, ATLAS_WORLD_PALETTE, worldColourCss } from '../src/atlas/palette';
 import { ATLAS_PALETTE } from '../src/atlas/render/three/palette';
 
 describe('Atlas world palette', () => {
@@ -80,5 +80,70 @@ describe('Atlas renderers carry no colour of their own', () => {
       const source = readFileSync(new URL(`../src/atlas/${relative}`, import.meta.url), 'utf8');
       expect(source, `${relative} does not import the palette`).toMatch(/from '\.\.?\/(\.\.\/)?palette'/);
     }
+  });
+});
+
+describe('Atlas UI tokens mirror the stylesheet', () => {
+  const css = readFileSync(new URL('../src/atlas/atlas.css', import.meta.url), 'utf8');
+  const rootBlock = css.slice(css.indexOf(':root {'), css.indexOf('}', css.indexOf(':root {')) + 1);
+
+  function declaredInCss(): Map<string, string> {
+    const declared = new Map<string, string>();
+    for (const match of rootBlock.matchAll(/--([a-z0-9-]+):\s*([^;]+);/g)) {
+      declared.set(match[1]!, match[2]!.trim());
+    }
+    return declared;
+  }
+
+  it('declares every UI token in :root with the same value', () => {
+    // CSS cannot import TypeScript, so the two are mirrored rather than
+    // generated. This guard is what makes the mirror trustworthy: without it
+    // the palette drifts silently, exactly as the world palette already did
+    // against the art spec.
+    const declared = declaredInCss();
+    for (const [name, value] of Object.entries(ATLAS_UI_TOKENS)) {
+      expect(declared.has(name), `--${name} is missing from :root`).toBe(true);
+      expect(declared.get(name), `--${name} disagrees with the palette module`).toBe(value);
+    }
+  });
+
+  it('leaves no colour token in :root unaccounted for', () => {
+    const colourish = /^(#|rgb|hsl|\d+ \d+ \d+$)/;
+    for (const [name, value] of declaredInCss()) {
+      if (!colourish.test(value)) continue;
+      expect(ATLAS_UI_TOKENS, `--${name} is a colour with no entry in ATLAS_UI_TOKENS`).toHaveProperty(name);
+    }
+  });
+});
+
+describe('Atlas candy palette', () => {
+  it('marks the single next action in magenta', () => {
+    expect(ATLAS_UI_TOKENS['atlas-signal']).toBe('#ff477e');
+    expect(ATLAS_UI_TOKENS['atlas-signal-deep']).toBe('#d81e5b');
+  });
+
+  it('demotes orange from the accent to the warning role', () => {
+    // Orange was the accent. It is now what a refusal or a locked gate wears,
+    // so no screen shows two colours competing to be the next action.
+    expect(ATLAS_UI_TOKENS['atlas-warn']).toBe('#ff9f1c');
+    expect(Object.values(ATLAS_UI_TOKENS)).not.toContain('#f28b30');
+  });
+
+  it('turns the page into glass over a world rather than paper', () => {
+    expect(ATLAS_UI_TOKENS['atlas-paper']).toMatch(/^rgba\(/);
+    expect(ATLAS_UI_TOKENS['atlas-ink']).toBe('#f7f9ff');
+  });
+
+  it('recolours the world accent to match the UI accent', () => {
+    // Two accents is what the one-accent rule exists to prevent, and the world
+    // is on screen at the same time as the UI.
+    expect(ATLAS_WORLD_PALETTE.restorationEmitter).toBe(0xff477e);
+  });
+
+  it('keeps the theme colour agreeing with the page ground', () => {
+    const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+    const manifest = JSON.parse(readFileSync(new URL('../public/manifest.webmanifest', import.meta.url), 'utf8')) as { theme_color: string };
+    expect(html).toContain('content="#101430"');
+    expect(manifest.theme_color).toBe('#101430');
   });
 });
