@@ -1,4 +1,4 @@
-import { AmbientLight, BoxGeometry, Color, CylinderGeometry, DirectionalLight, DoubleSide, Fog, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PerspectiveCamera, PointLight, Scene, SphereGeometry, TorusGeometry, WebGLRenderer } from 'three';
+import { BoxGeometry, Color, CylinderGeometry, DoubleSide, PCFSoftShadowMap, Fog, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PerspectiveCamera, PointLight, Scene, SphereGeometry, TorusGeometry, WebGLRenderer } from 'three';
 import type { AtlasLivingWorldSnapshot } from '../../../../shared/atlas/living-world';
 import type { AtlasQualityTier } from '../../../../shared/atlas/city/types';
 import { ATLAS_CITIZEN_WARDROBE, ATLAS_WORLD_PALETTE } from '../../palette';
@@ -10,6 +10,11 @@ import { parseAtlasCityScene, type AtlasCitySceneV1 } from '../../../../shared/a
 import type { AtlasCityInteractionPresentation, AtlasRendererOptions, AtlasRendererStats, AtlasSceneRenderer } from '../contracts';
 import { detectThreeCapability } from './capability';
 import { AtlasCameraRig } from './camera-rig';
+import { createAtlasLighting, type AtlasLighting } from './lighting';
+import { atlasHorizonColour, createAtlasSkyTexture } from './sky';
+import { toAtlasToonMaterial } from './toon';
+import { createBlobShadow, shadowPlanForTier } from './shadows';
+import { attachAtlasOutline, outlinesEnabledForTier } from './outline';
 import {
   atlasCitizenAnimationState,
   atlasCitizenDetailLevel,
@@ -43,6 +48,8 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
   private loadedDistrict: string | null = null;
   private qualityTier: AtlasQualityTier = 'balanced';
   private cameraRig: AtlasCameraRig | null = null;
+  private lighting: AtlasLighting | null = null;
+  private readonly blobShadows: Mesh[] = [];
   private gltfCache: AtlasGltfResourceCache | null = null;
   private assetManager: AtlasRendererOptions['assetManager'] | null = null;
   private readonly districtHandles = new Map<string, AtlasGltfHandle[]>();
@@ -80,14 +87,20 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
     renderer.setPixelRatio(clampResolution(options.maxPixelRatio ?? options.resolution));
     renderer.setSize(clampDimension(host.clientWidth), clampDimension(host.clientHeight), false);
     renderer.setClearColor(new Color(ATLAS_WORLD_PALETTE.sky), 1);
+    renderer.shadowMap.type = PCFSoftShadowMap;
 
     const scene = new Scene();
-    scene.background = new Color(ATLAS_WORLD_PALETTE.sky);
-    scene.fog = new Fog(ATLAS_WORLD_PALETTE.haze, 24, 62);
-    scene.add(new AmbientLight(ATLAS_WORLD_PALETTE.ambientLight, 1.4));
-    const sun = new DirectionalLight(ATLAS_WORLD_PALETTE.sunLight, 1.8);
-    sun.position.set(4, 8, 3);
-    scene.add(sun);
+    const sky = createAtlasSkyTexture((width, height) => {
+      const element = document.createElement('canvas');
+      element.width = width;
+      element.height = height;
+      return element;
+    });
+    scene.background = sky ?? new Color(ATLAS_WORLD_PALETTE.sky);
+    scene.fog = new Fog(atlasHorizonColour(), 24, 62);
+    const lighting = createAtlasLighting();
+    scene.add(lighting.hemisphere);
+    scene.add(lighting.sun);
 
     const camera = new PerspectiveCamera(50, aspect(host.clientWidth, host.clientHeight), 0.1, 200);
     const cameraRig = new AtlasCameraRig(camera);
@@ -97,6 +110,7 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
     this.camera = camera;
     this.canvas = canvas;
     this.cameraRig = cameraRig;
+    this.lighting = lighting;
     this.assetManager = options.assetManager ?? null;
     this.gltfCache = options.assetManager ? new AtlasGltfResourceCache({ assetManager: options.assetManager }) : null;
     this.setQuality(options.qualityTier ?? 'balanced');
@@ -125,6 +139,8 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
         const player = await this.gltfCache.acquire(playerModel);
         acquired.push(player);
         this.prepareRuntimeMaterials(player.root);
+        if (outlinesEnabledForTier(this.qualityTier)) attachAtlasOutline(player.root);
+        this.attachContactShadow(player.root);
         this.applyInstanceTransform(player.root, sceneDefinition.instances.find((instance) => instance.modelId === 'atlas-walker-player'));
         player.root.scale.multiplyScalar(PLAYER_WORLD_SCALE);
         this.playerRoot = player.root;
@@ -150,6 +166,8 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
             root.visible = false;
             root.scale.setScalar(NPC_WORLD_SCALE * appearance.scale);
             root.position.set(anchor.position[0], anchor.position[1], anchor.position[2]);
+            if (outlinesEnabledForTier(this.qualityTier)) attachAtlasOutline(root);
+            this.attachContactShadow(root);
             this.scene!.add(root);
           }
           return {
@@ -227,7 +245,15 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
 
   setQuality(tier: AtlasQualityTier): void {
     this.qualityTier = tier;
-    if (this.renderer) this.renderer.setPixelRatio(this.pixelRatioForTier());
+    if (!this.renderer) return;
+    this.renderer.setPixelRatio(this.pixelRatioForTier());
+    const plan = shadowPlanForTier(tier);
+    this.renderer.shadowMap.enabled = plan.mapEnabled;
+    for (const blob of this.blobShadows) blob.visible = plan.blobs;
+    if (!this.lighting) return;
+    this.lighting.sun.castShadow = plan.mapEnabled;
+    this.lighting.sun.shadow.mapSize.setScalar(plan.mapSize);
+    this.lighting.sun.shadow.camera.far = 60;
   }
 
   stats(): AtlasRendererStats {
@@ -307,9 +333,26 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
     root.scale.set(...instance.scale);
   }
 
+  /*
+   * One flat disc under a character, so it reads as standing on the ground
+   * rather than hovering over it. Attached at every tier and toggled by
+   * setQuality: the high tier hides it because a real shadow map has taken
+   * over, and every cheaper tier shows it because contact matters more than
+   * accuracy.
+   */
+  private attachContactShadow(root: Object3D): void {
+    const blob = createBlobShadow();
+    blob.visible = shadowPlanForTier(this.qualityTier).blobs;
+    this.blobShadows.push(blob);
+    root.add(blob);
+  }
+
   private prepareRuntimeMaterials(root: Object3D, appearance?: CitizenAppearance): void {
     root.traverse((object) => {
       if (!(object instanceof Mesh)) return;
+      // Free unless shadowMap.enabled, which only the high tier turns on.
+      object.castShadow = true;
+      object.receiveShadow = true;
       const materials = Array.isArray(object.material) ? object.material : [object.material];
       const tinted = materials.map((material) => {
         const clone = material.clone();
@@ -318,8 +361,13 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
         const color = appearance?.colors[clone.name];
         const tintable = clone as typeof clone & { color?: Color };
         if (color && tintable.color instanceof Color) tintable.color.set(color);
-        clone.needsUpdate = true;
-        return clone;
+        // Tint first, then band. toAtlasToonMaterial copies the colour across,
+        // so doing it in the other order would shade the untinted colour and
+        // throw the wardrobe away.
+        const toon = toAtlasToonMaterial(clone);
+        toon.side = DoubleSide;
+        toon.needsUpdate = true;
+        return toon;
       });
       object.material = Array.isArray(object.material) ? tinted : tinted[0]!;
     });
