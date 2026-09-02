@@ -44,7 +44,10 @@ try {
     await clickText(cdp, 'How to play');
     await capture(cdp, `${viewport.name}-how-to-play`);
     await clickText(cdp, 'Atlas home');
-    await clickText(cdp, 'Meet Mara');
+    // Renamed from "Meet Mara" when every screen was given one primary action.
+    // The capture script was not updated, so shoot:atlas had been failing at
+    // this step ever since; it is not part of `npm run check`, so nothing said.
+    await clickText(cdp, 'Start 60-second run');
     await capture(cdp, `${viewport.name}-pay-harbor`);
     await clickText(cdp, 'Enter Pay Harbor shop');
     await clickText(cdp, 'Inspect the harbor lantern');
@@ -66,10 +69,24 @@ async function capture(cdp, name) {
   await writeFile(join(publicOut, `atlas-${name}.png`), image);
 }
 
-async function clickText(cdp, text) {
-  const clicked = await cdp.eval(`(() => { const button = [...document.querySelectorAll('button')].find((item) => item.textContent.trim() === ${JSON.stringify(text)}); if (!button) return false; button.click(); return true; })()`);
-  if (!clicked) throw new Error(`Atlas capture could not find button: ${text}`);
-  await wait(80);
+/*
+ * Poll for the button rather than assuming it is already there.
+ *
+ * Returning to the welcome screen resets cityLoadState to 'loading' and
+ * re-streams the district, and while that is in flight the screen renders its
+ * loading splash, which has no run button on it. A flat 80 ms wait was a race
+ * that the capture lost as soon as the district got big enough, and because
+ * shoot:atlas is not part of `npm run check`, nothing reported it.
+ */
+async function clickText(cdp, text, timeoutMs = 15_000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const clicked = await cdp.eval(`(() => { const button = [...document.querySelectorAll('button')].find((item) => item.textContent.trim() === ${JSON.stringify(text)}); if (!button) return false; button.click(); return true; })()`);
+    if (clicked) break;
+    if (Date.now() > deadline) throw new Error(`Atlas capture could not find button after ${timeoutMs} ms: ${text}`);
+    await wait(150);
+  }
+  await wait(120);
 }
 
 async function waitForApp(cdp) {
