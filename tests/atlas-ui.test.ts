@@ -28,7 +28,9 @@ describe('NIM Atlas public first district UI', () => {
     expect(css).toContain('@media (min-width: 390px)');
     expect(css).toContain('@media (min-width: 430px)');
     expect(css).toContain('scrollbar-width: thin');
-    expect(css).toContain('scrollbar-color: var(--atlas-orange) var(--atlas-paper)');
+    // Was --atlas-orange. Tokens are named for their role now, because a token
+    // named for its colour cannot tell you where it belongs.
+    expect(css).toContain('scrollbar-color: var(--atlas-signal) var(--atlas-paper)');
     expect(css).toContain('.atlas-panel::-webkit-scrollbar');
     expect(css).toContain('width: 7px');
   });

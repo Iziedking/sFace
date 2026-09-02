@@ -16,7 +16,14 @@ describe('NIM Atlas release-quality UI contract', () => {
     const welcome = app.slice(app.indexOf('private renderWelcome'), app.indexOf('private renderBeaconStatus'));
     expect(welcome).toContain('atlas-home-grid');
     expect(welcome).toContain('atlas-quick-grid');
-    expect(welcome.indexOf("actionButton('Meet Mara'")).toBeLessThan(welcome.indexOf("actionButton('Open Living Knowledge Book'"));
+    // This previously compared two labels that no longer existed, so both sides
+    // were -1 and the ordering was never actually checked. Both indexes are now
+    // asserted to be real before they are compared.
+    const primaryAction = welcome.indexOf("actionButton('Start 60-second run'");
+    const secondaryAction = welcome.indexOf("ghostButton('Open Living Knowledge Book'");
+    expect(primaryAction, 'primary adventure action missing').toBeGreaterThan(-1);
+    expect(secondaryAction, 'secondary knowledge action missing').toBeGreaterThan(-1);
+    expect(primaryAction).toBeLessThan(secondaryAction);
     expect(welcome).not.toContain('this.renderLeaderboards()');
     expect(welcome).not.toContain('this.renderShopCatalog()');
     expect(css).toContain('.atlas-home-grid');

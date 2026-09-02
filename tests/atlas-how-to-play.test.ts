@@ -14,7 +14,7 @@ describe('NIM Atlas clarity pass', () => {
     expect((guide.match(/number: '/g) ?? []).length).toBe(4);
     expect(guide.length).toBeLessThan(4_500);
     expect(app).toContain('openHowToPlay');
-    expect(app).toContain("actionButton('How to play'");
+    expect(app).toContain("ghostButton('How to play'");
   });
 
   it('keeps the landing screen focused on the first human need', () => {
