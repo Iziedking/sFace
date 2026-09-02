@@ -31,7 +31,7 @@
   border: none;
   border-radius: var(--atlas-radius-pill);
   background: var(--atlas-signal);
-  color: var(--atlas-ink);
+  color: var(--atlas-on-accent);
   font: 700 15px/1.1 system-ui, sans-serif;
   letter-spacing: .01em;
   box-shadow: var(--atlas-glow);
@@ -60,7 +60,7 @@
 }
 
 .atlas-round.atlas-round-small { min-width: 48px; min-height: 48px; font-size: 17px; }
-.atlas-round.atlas-round-signal { background: var(--atlas-signal); }
+.atlas-round.atlas-round-signal { background: var(--atlas-signal); color: var(--atlas-on-accent); }
 .atlas-round:active { transform: translate(0, 2px); }
 
 .atlas-glass:focus-visible,

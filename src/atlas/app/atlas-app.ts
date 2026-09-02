@@ -870,6 +870,24 @@ export class AtlasApp {
     host?.remove();
   }
 
+  /*
+   * Screenshot capture entry.
+   *
+   * The guide images in docs/shots and public/atlas/screenshots are produced by
+   * scripts/shoot-atlas.mjs, and two of them document the lantern screen, which
+   * is reachable only by walking to Mara in the 3D city. The capture used to
+   * assume one click from home reached it; that stopped being true when the
+   * welcome screen was given a single primary action pointing at Beacon
+   * Commons, and the capture has been failing there ever since.
+   *
+   * Asking for the screen directly is honest about what the tool needs, and
+   * cheaper than teaching a screenshot script to play the game. main.ts only
+   * hands this out when the page is opened with ?capture=1.
+   */
+  openLanternForCapture(): void {
+    this.startLantern();
+  }
+
   private startLantern = (): void => {
     void this.stopLivingCity();
     this.canvas.hidden = false;

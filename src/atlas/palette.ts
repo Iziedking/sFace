@@ -146,6 +146,7 @@ export const ATLAS_UI_TOKENS = Object.freeze({
   'atlas-explorer': '#ffd166',
   'atlas-builder': '#a78bfa',
   'atlas-inert': '#4a5280',
+  'atlas-on-accent': '#101430',
   'atlas-city-ground': '#1a2044',
   'atlas-map-quiet': '#5b6490',
   'atlas-map-panel': 'rgba(32, 38, 76, .78)',

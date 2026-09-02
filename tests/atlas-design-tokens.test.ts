@@ -54,6 +54,14 @@ describe('Atlas design tokens', () => {
     expect(strays, `${strays.length} rgba literals outside :root`).toHaveLength(0);
   });
 
+  it('keeps named colour keywords out of the stylesheet', () => {
+    // `color: white` sat in .atlas-builder-success through two palette passes:
+    // the hex rule does not match a keyword and neither did the rgba rule.
+    const outsideRoot = css.replace(rootBlock, '');
+    const strays = [...outsideRoot.matchAll(/:\s*(white|black|red|green|blue|orange|gray|grey)/g)].map((match) => match[1]);
+    expect(strays, `colour keywords outside :root: ${[...new Set(strays)].join(', ')}`).toHaveLength(0);
+  });
+
   it('publishes channel triples so alpha can vary without a new colour', () => {
     for (const token of ['--atlas-paper-rgb', '--atlas-ink-rgb', '--atlas-signal-rgb', '--atlas-explorer-rgb', '--atlas-shadow-rgb']) {
       expect(rootBlock, `missing ${token}`).toContain(`${token}:`);

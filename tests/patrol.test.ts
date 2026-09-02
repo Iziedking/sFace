@@ -109,13 +109,28 @@ describe('they are not hunting you until they see you', () => {
   });
 
   it('never patrols into a building', () => {
+    /*
+     * Collect, then assert once.
+     *
+     * This used to call expect() per enemy per frame: 600 frames times the
+     * live patrol count, which ran in about six to eight seconds under a loaded
+     * worker and intermittently blew vitest's 5 s default timeout. It passed
+     * alone and failed in the full suite, which reads as flakiness and is not —
+     * the simulation is seeded and deterministic. One assertion at the end also
+     * reports which frame and where, instead of only the first offending pair.
+     */
     const state = city();
-    for (let i = 0; i < 600; i++) {
+    const violations: string[] = [];
+    for (let frame = 0; frame < 600; frame += 1) {
       step(state, 1 / 60, STILL);
       for (const enemy of state.enemies) {
-        if (enemy.alive) expect(solidAt(state.city!, enemy.x, enemy.y)).toBe(false);
+        if (!enemy.alive) continue;
+        if (solidAt(state.city!, enemy.x, enemy.y)) {
+          violations.push(`frame ${frame} at ${enemy.x.toFixed(1)},${enemy.y.toFixed(1)}`);
+        }
       }
     }
+    expect(violations).toEqual([]);
   });
 });
 

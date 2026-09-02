@@ -38,16 +38,21 @@ try {
 
   for (const viewport of viewports) {
     await cdp.send('Emulation.setDeviceMetricsOverride', { width: viewport.width, height: viewport.height, deviceScaleFactor: 1, mobile: true });
-    await cdp.send('Page.navigate', { url: origin });
+    // ?capture=1 asks main.ts for the capture hook; see openLanternForCapture.
+    await cdp.send('Page.navigate', { url: `${origin}?capture=1` });
     await waitForApp(cdp);
     await capture(cdp, `${viewport.name}-welcome`);
     await clickText(cdp, 'How to play');
     await capture(cdp, `${viewport.name}-how-to-play`);
     await clickText(cdp, 'Atlas home');
-    // Renamed from "Meet Mara" when every screen was given one primary action.
-    // The capture script was not updated, so shoot:atlas had been failing at
-    // this step ever since; it is not part of `npm run check`, so nothing said.
-    await clickText(cdp, 'Start 60-second run');
+    /*
+     * The lantern screen is several gameplay steps deep: the welcome screen's
+     * one primary action opens Beacon Commons, and Mara is reached by walking
+     * there. This used to click a button that went straight to her, which
+     * stopped existing when the screen was given a single primary action, so
+     * the capture asks for the screen instead of trying to play the game.
+     */
+    await openLantern(cdp);
     await capture(cdp, `${viewport.name}-pay-harbor`);
     await clickText(cdp, 'Enter Pay Harbor shop');
     await clickText(cdp, 'Inspect the harbor lantern');
@@ -60,6 +65,12 @@ try {
 } finally {
   chrome.kill();
 }
+}
+
+async function openLantern(cdp) {
+  const opened = await cdp.eval('(() => { const app = window.atlasCapture; if (!app) return false; app.openLanternForCapture(); return true; })()');
+  if (!opened) throw new Error('Atlas capture hook missing: load the page with ?capture=1.');
+  await wait(200);
 }
 
 async function capture(cdp, name) {

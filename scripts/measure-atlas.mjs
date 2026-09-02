@@ -66,15 +66,35 @@ if (result.traceBytes > 64 * 1024) fail(`Atlas normal trace exceeds its 64 KiB b
 if (result.p95ReplayMs >= 100) fail(`Atlas replay p95 exceeds 100 ms: ${result.p95ReplayMs}.`);
 if (result.p95FrameMs >= 34) fail(`Atlas browser frame p95 exceeds 34 ms: ${result.p95FrameMs}.`);
 
+/*
+ * The shell is what index.html loads eagerly: its module entry, its stylesheet,
+ * and anything modulepreloaded beside them.
+ *
+ * This used to sum every .js and .css in dist/assets, which counted the
+ * dynamically imported scene-graph chunk — three.js, about 259 KB gzipped — as
+ * if it were shell. vite.config.ts says the opposite in as many words: three.js
+ * sits behind `await import('../render/scene-graph')` so a phone that never
+ * opens the city never downloads it. The budget had therefore been failing
+ * since the 3D city landed, and because measure:atlas is not part of
+ * `npm run check`, nothing reported it.
+ */
 async function measureShell() {
   const directory = join(root, 'dist/assets');
-  const files = await readdir(directory);
-  const shellFiles = files.filter((file) => /\.(?:js|css)$/.test(file));
+  const html = await readFile(join(root, 'dist/index.html'), 'utf8');
+  const referenced = [...html.matchAll(/(?:src|href)="\/assets\/([^"]+)"/g)].map((match) => match[1]);
+  const shellFiles = [...new Set(referenced)].filter((file) => /\.(?:js|css)$/.test(file) && existsSync(join(directory, file)));
+  if (shellFiles.length === 0) throw new Error('Atlas shell measurement found no eagerly loaded assets in dist/index.html.');
   const sizes = await Promise.all(shellFiles.map(async (file) => {
     const contents = await readFile(join(directory, file));
     return { file, bytes: contents.byteLength, gzipBytes: gzipSync(contents).byteLength };
   }));
-  return { files: sizes, rawBytes: sizes.reduce((total, item) => total + item.bytes, 0), gzipBytes: sizes.reduce((total, item) => total + item.gzipBytes, 0) };
+  const deferred = (await readdir(directory)).filter((file) => /\.(?:js|css)$/.test(file) && !shellFiles.includes(file));
+  return {
+    files: sizes,
+    deferredFileCount: deferred.length,
+    rawBytes: sizes.reduce((total, item) => total + item.bytes, 0),
+    gzipBytes: sizes.reduce((total, item) => total + item.gzipBytes, 0),
+  };
 }
 
 function measureDistrictBundles(value) {
