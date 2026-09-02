@@ -41,3 +41,62 @@ describe('NIM Atlas living-world browser boundary', () => {
     expect(app).toContain('createCompetitionView');
   });
 });
+
+describe('Atlas city HUD wears the kit', () => {
+  const sheet = readFileSync(new URL('../src/atlas/atlas.css', import.meta.url), 'utf8');
+
+  it('makes the top bar controls glass capsules', () => {
+    const bar = sheet.slice(sheet.indexOf('.atlas-brand, .atlas-integrity, .atlas-pause {'));
+    expect(bar.slice(0, bar.indexOf('}'))).toContain('var(--atlas-radius-pill)');
+  });
+
+  it('drops the box around the objective so it reads as world text', () => {
+    // In every reference game the objective is scrimmed text with a glyph, not
+    // a card. The card is what makes it look like a dashboard widget.
+    const toolkit = sheet.slice(sheet.indexOf('.atlas-living-city-play-shell .atlas-toolkit {'));
+    const block = toolkit.slice(0, toolkit.indexOf('}'));
+    expect(block).toContain('background: none');
+    expect(block).toContain('var(--atlas-scrim)');
+  });
+
+  it('keeps the HUD layout and its breakpoints untouched', () => {
+    // Carried from the UI brief: the layout works, it is responsive, and it was
+    // expensive. This task restyles it and must not move it.
+    expect(sheet).toContain('.atlas-living-city-play-shell { position: relative; width: 100%;');
+    expect(sheet).toContain('@media (max-width: 520px)');
+    expect(sheet).toContain('@media (max-width: 360px)');
+  });
+});
+
+describe('Atlas world is always behind the screens', () => {
+  const sheet = readFileSync(new URL('../src/atlas/atlas.css', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/atlas/app/atlas-app.ts', import.meta.url), 'utf8');
+
+  it('gives the city stage its ground unconditionally', () => {
+    // The ground used to arrive with .is-playing, which only two of the nine
+    // screens ever added. Every other screen sat on a bare stage behind an
+    // opaque panel, so the world may as well not have been running.
+    const stage = sheet.slice(sheet.indexOf('#atlas-city-stage {'), sheet.indexOf('}', sheet.indexOf('#atlas-city-stage {')));
+    expect(stage).toContain('background: var(--atlas-city-ground)');
+  });
+
+  it('no longer switches the world on per screen', () => {
+    expect(sheet).not.toContain('#atlas-city-stage.is-playing');
+    expect([...source.matchAll(/classList\.add\('is-playing'\)/g)]).toHaveLength(0);
+    expect([...source.matchAll(/classList\.remove\('is-playing'\)/g)]).toHaveLength(0);
+  });
+
+  it('keeps the falloff at the edges of the world', () => {
+    // The vignette rode on .is-playing. Dropping the class without moving it
+    // would have quietly flattened the edges of every frame.
+    expect(sheet).toContain('#atlas-city-stage::after');
+    expect(sheet).toContain('linear-gradient(90deg, rgb(var(--atlas-shadow-rgb)');
+  });
+
+  it('keeps the stage behind the interface and out of the tab order', () => {
+    const stage = sheet.slice(sheet.indexOf('#atlas-city-stage {'), sheet.indexOf('}', sheet.indexOf('#atlas-city-stage {')));
+    expect(stage).toContain('z-index: 0');
+    expect(stage).toContain('pointer-events: none');
+    expect(source).toContain("host.setAttribute('aria-hidden', 'true')");
+  });
+});

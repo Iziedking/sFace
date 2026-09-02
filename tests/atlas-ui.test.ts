@@ -30,7 +30,11 @@ describe('NIM Atlas public first district UI', () => {
     expect(css).toContain('scrollbar-width: thin');
     // Was --atlas-orange. Tokens are named for their role now, because a token
     // named for its colour cannot tell you where it belongs.
-    expect(css).toContain('scrollbar-color: var(--atlas-signal) var(--atlas-paper)');
+    // The track was --atlas-paper, which is now translucent glass rather than
+    // opaque paper; painting a second translucent navy over the panel read as
+    // a smear. The thumb still carries the signal colour, which is the half of
+    // this that was ever load-bearing.
+    expect(css).toContain('scrollbar-color: var(--atlas-signal) transparent');
     expect(css).toContain('.atlas-panel::-webkit-scrollbar');
     expect(css).toContain('width: 7px');
   });

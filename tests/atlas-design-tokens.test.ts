@@ -114,3 +114,30 @@ describe('Atlas action hierarchy and briefing sheets', () => {
     expect(app).toContain("element('section', 'atlas-panel atlas-welcome atlas-home atlas-landing-shell')");
   });
 });
+
+describe('Atlas surfaces speak the kit', () => {
+  it('gives panels glass and a radius instead of a hard ink offset', () => {
+    const panel = css.slice(css.indexOf('.atlas-panel {'), css.indexOf('}', css.indexOf('.atlas-panel {')));
+    expect(panel).toContain('var(--atlas-radius)');
+    expect(panel).toContain('backdrop-filter');
+    expect(panel).not.toMatch(/box-shadow:\s*\d+px \d+px 0/);
+  });
+
+  it('makes the primary action a pill that still presses', () => {
+    // Anchored to a line start: '.atlas-primary {' also matches inside
+    // '.atlas-quick-grid .atlas-primary {', which is a size override, not the
+    // rule that defines the control.
+    const start = css.indexOf('\n.atlas-primary {') + 1;
+    const primary = css.slice(start, css.indexOf('}', start));
+    expect(primary).toContain('var(--atlas-radius-pill)');
+    expect(css).toContain('.atlas-primary:active');
+    expect(css).toMatch(/\.atlas-primary:active\s*\{[^}]*translate/);
+  });
+
+  it('retires the monospace micro-labels', () => {
+    // 9 to 11px uppercase mono eyebrows are the loudest generic-dashboard tell
+    // in the build. Mono stays reserved for evidence a player can go and check.
+    const microLabels = [...css.matchAll(/font:\s*\d+\s+(?:8|9|10|11)px\/[^;]*monospace/g)];
+    expect(microLabels, `${microLabels.length} monospace micro-labels remain`).toHaveLength(0);
+  });
+});

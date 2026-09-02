@@ -1,0 +1,73 @@
+/*
+ * The shell kit.
+ *
+ * Three primitives that every surface is built from. Depth here is glass and a
+ * soft glow, not the hard ink offset the poster idiom used, because these sit
+ * over a live 3D world rather than on paper. The one thing kept from legacy
+ * sface is the press displacement: a button that physically moves is the only
+ * game-feel the product ever had, and it costs nothing.
+ *
+ * No colour is written here. Every value is a token from atlas.css :root, so
+ * a recolour never has to come back into this file.
+ */
+.atlas-glass {
+  border: 1px solid rgb(var(--atlas-ink-rgb) / .14);
+  border-radius: var(--atlas-radius);
+  background: var(--atlas-paper);
+  backdrop-filter: var(--atlas-glass-blur);
+  box-shadow: var(--atlas-glow);
+  color: var(--atlas-ink);
+}
+
+/* Without blur, a translucent panel over a moving world is unreadable. Trade
+   the glass for an opaque surface rather than losing the text. */
+@supports not (backdrop-filter: blur(1px)) {
+  .atlas-glass { background: rgb(var(--atlas-paper-rgb) / .97); }
+}
+
+.atlas-pill {
+  min-height: 48px;
+  padding: 12px 22px;
+  border: none;
+  border-radius: var(--atlas-radius-pill);
+  background: var(--atlas-signal);
+  color: var(--atlas-ink);
+  font: 700 15px/1.1 system-ui, sans-serif;
+  letter-spacing: .01em;
+  box-shadow: var(--atlas-glow);
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.atlas-pill:active { transform: translate(0, 2px); box-shadow: 0 3px 10px rgb(var(--atlas-shadow-rgb) / .34); }
+.atlas-pill:disabled { background: var(--atlas-inert); color: var(--atlas-muted); box-shadow: none; cursor: not-allowed; }
+.atlas-pill.atlas-pill-ghost { background: var(--atlas-raised); color: var(--atlas-ink); }
+
+.atlas-round {
+  min-width: 64px;
+  min-height: 64px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgb(var(--atlas-ink-rgb) / .18);
+  border-radius: var(--atlas-radius-pill);
+  background: var(--atlas-raised);
+  backdrop-filter: var(--atlas-glass-blur);
+  color: var(--atlas-ink);
+  font: 700 22px/1 system-ui, sans-serif;
+  box-shadow: var(--atlas-glow);
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+
+.atlas-round.atlas-round-small { min-width: 48px; min-height: 48px; font-size: 17px; }
+.atlas-round.atlas-round-signal { background: var(--atlas-signal); }
+.atlas-round:active { transform: translate(0, 2px); }
+
+.atlas-glass:focus-visible,
+.atlas-pill:focus-visible,
+.atlas-round:focus-visible { outline: 3px solid var(--atlas-selected); outline-offset: 3px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .atlas-pill, .atlas-round { transition: none; }
+  .atlas-pill:active, .atlas-round:active { transform: none; }
+}
