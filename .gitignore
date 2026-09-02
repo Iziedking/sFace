@@ -115,6 +115,7 @@ id_rsa*
 .shoot-profile/
 .atlas-shoot-profile/
 .atlas-measure-profile/
+.atlas-contrast-profile/
 
 # The launch video's working directory: captured frames, encoded shots, the
 # narration clips and the export. Hundreds of megabytes of PNGs and MP4s that

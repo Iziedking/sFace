@@ -115,11 +115,21 @@ npm run build
 npm run preview -- --host 127.0.0.1 --port 4173
 node scripts/measure-atlas.mjs --url http://127.0.0.1:4173 --viewports 320x700,390x844,430x932 --minutes 30
 npm run shoot:atlas
+npm run verify:atlas:contrast
 ```
 
 The measurement command reports the requested viewport HTTP timings, built shell
 size, compact trace size, replay p95, and a bounded heap sample. It labels those
 as local measurements; it does not turn them into deployed-device claims.
+
+`verify:atlas:contrast` walks every screen a player can reach and fails the run
+if any text falls below the WCAG AA floor, measuring what the browser actually
+painted rather than what the stylesheet declares. It exists because the source
+level guards cannot see inherited colour or surfaces stacked translucently over
+one another: when the palette was inverted from ink-on-cream to light-on-glass,
+eight surfaces became unreadable, two of them at ratios of 1.01 and 1.04, while
+every test stayed green. It needs a browser and a served build, so it sits
+beside `shoot:atlas` rather than inside `npm run check`.
 
 The live Pay Harbor path is intentionally separate from local play. It requires
 a real TestAlbatross recipient configured in the deployment and Nimiq Pay inside
