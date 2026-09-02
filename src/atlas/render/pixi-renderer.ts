@@ -1,4 +1,5 @@
 import { Application, Container, Graphics, Text } from 'pixi.js';
+import { ATLAS_WORLD_PALETTE } from '../palette';
 import type { AtlasLivingWorldSnapshot } from '../../../shared/atlas/living-world';
 import type { PayHarborSceneProjection } from '../scenes/pay-harbor';
 import type { AtlasSceneRenderer, AtlasRendererOptions } from './contracts';
@@ -51,7 +52,7 @@ class PixiRendererBackendImpl implements PixiRendererBackend {
       autoStart: false,
       autoDensity: true,
       antialias: true,
-      backgroundColor: 0xf4ede0,
+      backgroundColor: ATLAS_WORLD_PALETTE.sky,
       preference: 'webgl',
       resolution: clampResolution(options.resolution),
     });
@@ -72,9 +73,9 @@ class PixiRendererBackendImpl implements PixiRendererBackend {
   render(snapshot: AtlasLivingWorldSnapshot): void {
     if (!this.application || !this.scene) throw new Error('Pixi Atlas renderer is not initialized.');
     this.clearScene();
-    const background = new Graphics().rect(0, 0, this.width, this.height).fill({ color: 0xf4ede0 });
+    const background = new Graphics().rect(0, 0, this.width, this.height).fill({ color: ATLAS_WORLD_PALETTE.sky });
     this.scene.addChild(background);
-    const route = new Graphics().rect(this.width * 0.08, this.height * 0.72, this.width * 0.84, Math.max(18, this.height * 0.06)).fill({ color: 0xeadfc8 });
+    const route = new Graphics().rect(this.width * 0.08, this.height * 0.72, this.width * 0.84, Math.max(18, this.height * 0.06)).fill({ color: ATLAS_WORLD_PALETTE.paper });
     this.scene.addChild(route);
     const entities = [...snapshot.entities]
       .filter((entity) => entity.active)
@@ -82,8 +83,8 @@ class PixiRendererBackendImpl implements PixiRendererBackend {
     for (const entity of entities) this.scene.addChild(createEntityNode(entity.id, entity.kind, entity.x, entity.y, this.width, this.height));
     const player = new Graphics()
       .circle((snapshot.player.x / 2_400) * this.width, (snapshot.player.y / 1_400) * this.height, Math.max(12, this.width * 0.018))
-      .fill({ color: 0xff5a1f })
-      .stroke({ width: 3, color: 0x14110e });
+      .fill({ color: ATLAS_WORLD_PALETTE.orange })
+      .stroke({ width: 3, color: ATLAS_WORLD_PALETTE.ink });
     this.scene.addChild(player);
   }
 
@@ -118,10 +119,10 @@ class PixiRendererBackendImpl implements PixiRendererBackend {
   private renderEmptyState(): void {
     if (!this.scene) return;
     this.clearScene();
-    const background = new Graphics().rect(0, 0, this.width, this.height).fill({ color: 0xf4ede0 });
+    const background = new Graphics().rect(0, 0, this.width, this.height).fill({ color: ATLAS_WORLD_PALETTE.sky });
     const title = new Text({
       text: 'NIM ATLAS / LOADING PAY HARBOR',
-      style: { fill: 0x14110e, fontFamily: 'ui-monospace, monospace', fontSize: 16, fontWeight: '700' },
+      style: { fill: ATLAS_WORLD_PALETTE.ink, fontFamily: 'ui-monospace, monospace', fontSize: 16, fontWeight: '700' },
     });
     title.x = 24;
     title.y = 24;
@@ -133,9 +134,9 @@ function createEntityNode(id: string, kind: string, x: number, y: number, width:
   const node = new Container();
   node.x = (x / 2_400) * width;
   node.y = (y / 1_400) * height;
-  const color = kind === 'light' ? 0xff5a1f : kind === 'transport' ? 0x8fc8c2 : kind === 'resident' ? 0x8fb3a8 : 0x65513b;
-  const marker = new Graphics().circle(0, 0, Math.max(10, width * 0.014)).fill({ color }).stroke({ width: 2, color: 0x14110e });
-  const label = new Text({ text: id.replace(/-/g, ' ').toUpperCase(), style: { fill: 0x14110e, fontFamily: 'ui-monospace, monospace', fontSize: 9 } });
+  const color = kind === 'light' ? ATLAS_WORLD_PALETTE.orange : kind === 'transport' ? ATLAS_WORLD_PALETTE.water : kind === 'resident' ? ATLAS_WORLD_PALETTE.seafoam : ATLAS_WORLD_PALETTE.leather;
+  const marker = new Graphics().circle(0, 0, Math.max(10, width * 0.014)).fill({ color }).stroke({ width: 2, color: ATLAS_WORLD_PALETTE.ink });
+  const label = new Text({ text: id.replace(/-/g, ' ').toUpperCase(), style: { fill: ATLAS_WORLD_PALETTE.ink, fontFamily: 'ui-monospace, monospace', fontSize: 9 } });
   label.x = Math.max(10, width * 0.014) + 6;
   label.y = -6;
   node.addChild(marker, label);

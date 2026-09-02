@@ -1,6 +1,7 @@
 import { AmbientLight, BoxGeometry, Color, CylinderGeometry, DirectionalLight, DoubleSide, Fog, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PerspectiveCamera, PointLight, Scene, SphereGeometry, TorusGeometry, WebGLRenderer } from 'three';
 import type { AtlasLivingWorldSnapshot } from '../../../../shared/atlas/living-world';
 import type { AtlasQualityTier } from '../../../../shared/atlas/city/types';
+import { ATLAS_CITIZEN_WARDROBE, ATLAS_WORLD_PALETTE } from '../../palette';
 import type { AtlasCitizenPresentation } from '../../../../shared/atlas/city/crowd';
 import { BEACON_COMMONS_CROWD } from '../../../../shared/atlas/city/crowd';
 import { projectAtlasCitizenMotion, resolveAtlasCitizenSpacing, routeAtlasCitizenPath, type AtlasCitizenMotionProjection } from '../../../../shared/atlas/city/citizen-motion';
@@ -78,13 +79,13 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
     });
     renderer.setPixelRatio(clampResolution(options.maxPixelRatio ?? options.resolution));
     renderer.setSize(clampDimension(host.clientWidth), clampDimension(host.clientHeight), false);
-    renderer.setClearColor(new Color(0xf4ede0), 1);
+    renderer.setClearColor(new Color(ATLAS_WORLD_PALETTE.sky), 1);
 
     const scene = new Scene();
-    scene.background = new Color(0xf4ede0);
-    scene.fog = new Fog(0xe7e4da, 24, 62);
-    scene.add(new AmbientLight(0xfff8ed, 1.4));
-    const sun = new DirectionalLight(0xffd3a8, 1.8);
+    scene.background = new Color(ATLAS_WORLD_PALETTE.sky);
+    scene.fog = new Fog(ATLAS_WORLD_PALETTE.haze, 24, 62);
+    scene.add(new AmbientLight(ATLAS_WORLD_PALETTE.ambientLight, 1.4));
+    const sun = new DirectionalLight(ATLAS_WORLD_PALETTE.sunLight, 1.8);
     sun.position.set(4, 8, 3);
     scene.add(sun);
 
@@ -165,7 +166,7 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
         const signalLights = sceneDefinition.emitters
           .filter((emitter) => emitter.kind === 'lantern' || emitter.kind === 'restoration')
           .map((emitter) => {
-            const light = new PointLight(emitter.kind === 'restoration' ? 0xf28b30 : 0xffd36a, emitter.intensity * 0.12, 10, 2);
+            const light = new PointLight(emitter.kind === 'restoration' ? ATLAS_WORLD_PALETTE.restorationEmitter : ATLAS_WORLD_PALETTE.guidanceEmitter, emitter.intensity * 0.12, 10, 2);
             light.position.set(emitter.position[0], emitter.position[1], emitter.position[2]);
             this.scene!.add(light);
             return { light, baseIntensity: emitter.intensity };
@@ -424,8 +425,8 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
     const relay = new Group();
     relay.name = 'atlas-builder-relay-handheld';
     relay.add(
-      new Mesh(new CylinderGeometry(0.07, 0.09, 0.42, 8), new MeshStandardMaterial({ color: 0xe08a38, roughness: 0.72 })),
-      new Mesh(new SphereGeometry(0.12, 8, 6), new MeshStandardMaterial({ color: 0x82b9b1, roughness: 0.55 })),
+      new Mesh(new CylinderGeometry(0.07, 0.09, 0.42, 8), new MeshStandardMaterial({ color: ATLAS_WORLD_PALETTE.stationWarm, roughness: 0.72 })),
+      new Mesh(new SphereGeometry(0.12, 8, 6), new MeshStandardMaterial({ color: ATLAS_WORLD_PALETTE.lanternComplete, roughness: 0.55 })),
     );
     relay.rotation.z = Math.PI * 0.45;
     const hand = findAttachmentSocket(this.playerRoot);
@@ -440,16 +441,16 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
       const root = new Group();
       root.name = `atlas-builder-station-${anchor.id}`;
       root.position.set(anchor.position[0], anchor.position[1], anchor.position[2]);
-      const pedestal = new Mesh(new CylinderGeometry(0.28, 0.34, 0.12, 8), new MeshStandardMaterial({ color: 0x9a876f, roughness: 0.86 }));
+      const pedestal = new Mesh(new CylinderGeometry(0.28, 0.34, 0.12, 8), new MeshStandardMaterial({ color: ATLAS_WORLD_PALETTE.lanternPedestal, roughness: 0.86 }));
       pedestal.position.y = 0.06;
-      const light = new Mesh(new SphereGeometry(0.12, 8, 6), new MeshStandardMaterial({ color: 0x8f8777, roughness: 0.5 }));
+      const light = new Mesh(new SphereGeometry(0.12, 8, 6), new MeshStandardMaterial({ color: ATLAS_WORLD_PALETTE.lanternUnlit, roughness: 0.5 }));
       light.position.y = 0.28;
-      const ring = new Mesh(new TorusGeometry(0.2, 0.025, 6, 12), new MeshStandardMaterial({ color: 0x746653, roughness: 0.66 }));
+      const ring = new Mesh(new TorusGeometry(0.2, 0.025, 6, 12), new MeshStandardMaterial({ color: ATLAS_WORLD_PALETTE.lanternMast, roughness: 0.66 }));
       ring.rotation.x = Math.PI * 0.5;
       ring.position.y = 0.2;
-      const mast = new Mesh(new CylinderGeometry(0.035, 0.05, 0.42, 6), new MeshStandardMaterial({ color: 0x746653, roughness: 0.72 }));
+      const mast = new Mesh(new CylinderGeometry(0.035, 0.05, 0.42, 6), new MeshStandardMaterial({ color: ATLAS_WORLD_PALETTE.lanternMast, roughness: 0.72 }));
       mast.position.y = 0.42;
-      const beam = new Mesh(new BoxGeometry(0.12, 0.045, 0.48), new MeshBasicMaterial({ color: 0x8f8777 }));
+      const beam = new Mesh(new BoxGeometry(0.12, 0.045, 0.48), new MeshBasicMaterial({ color: ATLAS_WORLD_PALETTE.lanternUnlit }));
       beam.position.y = 0.67;
       beam.visible = false;
       root.add(pedestal, light, ring, mast, beam);
@@ -477,16 +478,16 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
     for (const [index, station] of this.stationVisuals.entries()) {
       const complete = index < completedStations;
       const active = !complete && isPayHarbor && interaction?.relayCarried === true && index === completedStations;
-      const color = complete ? 0x82b9b1 : active ? 0xe08a38 : 0x8f8777;
-      const ringColor = complete ? 0xd6b56c : active ? 0xf2c15f : 0x746653;
+      const color = complete ? ATLAS_WORLD_PALETTE.lanternComplete : active ? ATLAS_WORLD_PALETTE.stationWarm : ATLAS_WORLD_PALETTE.lanternUnlit;
+      const ringColor = complete ? ATLAS_WORLD_PALETTE.stationGold : active ? ATLAS_WORLD_PALETTE.lanternLit : ATLAS_WORLD_PALETTE.lanternMast;
       const lightMaterial = station.light.material as MeshStandardMaterial;
       const ringMaterial = station.ring.material as MeshStandardMaterial;
       const mastMaterial = station.mast.material as MeshStandardMaterial;
       const beamMaterial = station.beam.material as MeshBasicMaterial;
       lightMaterial.color.setHex(color);
       ringMaterial.color.setHex(ringColor);
-      mastMaterial.color.setHex(complete ? 0x4f746f : 0x746653);
-      beamMaterial.color.setHex(complete ? 0x82b9b1 : 0xf2c15f);
+      mastMaterial.color.setHex(complete ? ATLAS_WORLD_PALETTE.lanternMastComplete : ATLAS_WORLD_PALETTE.lanternMast);
+      beamMaterial.color.setHex(complete ? ATLAS_WORLD_PALETTE.lanternComplete : ATLAS_WORLD_PALETTE.lanternLit);
       station.light.scale.setScalar(active ? 1 + Math.sin(tick / 8) * 0.08 : complete ? 1.08 : 0.86);
       station.beam.visible = complete || active;
       station.beam.scale.setScalar(active ? 1 + Math.sin(tick / 8) * 0.12 : complete ? 1 : 0.82);
@@ -531,11 +532,11 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
       }
       const marker = new Group();
       marker.name = `atlas-mission-marker-${anchorId}`;
-      const ring = new Mesh(new TorusGeometry(0.36, 0.035, 6, 16), new MeshBasicMaterial({ color: 0xf28b30 }));
+      const ring = new Mesh(new TorusGeometry(0.36, 0.035, 6, 16), new MeshBasicMaterial({ color: ATLAS_WORLD_PALETTE.restorationEmitter }));
       ring.rotation.x = Math.PI * 0.5;
-      const stem = new Mesh(new CylinderGeometry(0.025, 0.025, 0.55, 6), new MeshBasicMaterial({ color: 0xf28b30 }));
+      const stem = new Mesh(new CylinderGeometry(0.025, 0.025, 0.55, 6), new MeshBasicMaterial({ color: ATLAS_WORLD_PALETTE.restorationEmitter }));
       stem.position.y = 0.28;
-      const cap = new Mesh(new SphereGeometry(0.08, 6, 4), new MeshBasicMaterial({ color: 0xf2c15f }));
+      const cap = new Mesh(new SphereGeometry(0.08, 6, 4), new MeshBasicMaterial({ color: ATLAS_WORLD_PALETTE.lanternLit }));
       cap.position.y = 0.58;
       marker.add(ring, stem, cap);
       this.scene.add(marker);
@@ -552,15 +553,15 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
     if (!visuals) return;
     visuals.root.visible = isPayHarbor;
     if (!isPayHarbor) return;
-    const activeColor = restoration === 'restored' || completedStations > 0 ? 0x82b9b1 : restoration === 'confirming' ? 0xf2c15f : 0x8f8777;
+    const activeColor = restoration === 'restored' || completedStations > 0 ? ATLAS_WORLD_PALETTE.lanternComplete : restoration === 'confirming' ? ATLAS_WORLD_PALETTE.lanternLit : ATLAS_WORLD_PALETTE.lanternUnlit;
     const signalMaterial = visuals.marketSignal.material as MeshStandardMaterial;
     const ferryMaterial = visuals.ferryHull.material as MeshStandardMaterial;
     const ferryLightMaterial = visuals.ferryLight.material as MeshBasicMaterial;
     const haloMaterial = visuals.towerHalo.material as MeshBasicMaterial;
     signalMaterial.color.setHex(activeColor);
-    ferryMaterial.color.setHex(restoration === 'restored' ? 0xe08a38 : 0x70675c);
+    ferryMaterial.color.setHex(restoration === 'restored' ? ATLAS_WORLD_PALETTE.stationWarm : ATLAS_WORLD_PALETTE.stationDim);
     ferryLightMaterial.color.setHex(activeColor);
-    haloMaterial.color.setHex(restoration === 'restored' ? 0xf2c15f : activeColor);
+    haloMaterial.color.setHex(restoration === 'restored' ? ATLAS_WORLD_PALETTE.lanternLit : activeColor);
     const pulse = restoration === 'confirming' ? 1 + Math.sin(tick / 7) * 0.1 : restoration === 'restored' ? 1.08 : 0.9 + Math.min(0.12, completedStations * 0.02);
     visuals.marketSignal.scale.setScalar(pulse);
     visuals.ferryLight.scale.setScalar(restoration === 'restored' ? 1.12 : pulse);
@@ -600,13 +601,13 @@ function createHarborActivityVisuals(scene: Scene, district: AtlasCitySceneV1): 
   const root = new Group();
   root.name = 'atlas-pay-harbor-activity-state';
 
-  const marketSignal = new Mesh(new SphereGeometry(0.16, 8, 6), new MeshStandardMaterial({ color: 0x8f8777, roughness: 0.6 }));
+  const marketSignal = new Mesh(new SphereGeometry(0.16, 8, 6), new MeshStandardMaterial({ color: ATLAS_WORLD_PALETTE.lanternUnlit, roughness: 0.6 }));
   marketSignal.position.set(marketAnchor.position[0], marketAnchor.position[1] + 1.05, marketAnchor.position[2]);
-  const ferryHull = new Mesh(new BoxGeometry(0.9, 0.15, 0.34), new MeshStandardMaterial({ color: 0x70675c, roughness: 0.8 }));
+  const ferryHull = new Mesh(new BoxGeometry(0.9, 0.15, 0.34), new MeshStandardMaterial({ color: ATLAS_WORLD_PALETTE.stationDim, roughness: 0.8 }));
   ferryHull.position.set(ferryAnchor.position[0], ferryAnchor.position[1] + 0.16, ferryAnchor.position[2]);
-  const ferryLight = new Mesh(new SphereGeometry(0.1, 8, 6), new MeshBasicMaterial({ color: 0x8f8777 }));
+  const ferryLight = new Mesh(new SphereGeometry(0.1, 8, 6), new MeshBasicMaterial({ color: ATLAS_WORLD_PALETTE.lanternUnlit }));
   ferryLight.position.set(ferryAnchor.position[0], ferryAnchor.position[1] + 0.42, ferryAnchor.position[2]);
-  const towerHalo = new Mesh(new TorusGeometry(0.75, 0.045, 6, 18), new MeshBasicMaterial({ color: 0x8f8777 }));
+  const towerHalo = new Mesh(new TorusGeometry(0.75, 0.045, 6, 18), new MeshBasicMaterial({ color: ATLAS_WORLD_PALETTE.lanternUnlit }));
   towerHalo.position.set(towerAnchor.position[0], towerAnchor.position[1] + 1.18, towerAnchor.position[2]);
   towerHalo.rotation.x = Math.PI * 0.5;
   root.add(marketSignal, ferryHull, ferryLight, towerHalo);
@@ -619,12 +620,15 @@ interface CitizenAppearance {
   readonly scale: number;
 }
 
-const CITIZEN_APPEARANCE_PALETTES: readonly CitizenAppearance[] = [
-  { colors: { orange: '#2f7890', workwear: '#d4d9cf', seafoam: '#e08a38', ink: '#2c2530' }, scale: 0.94 },
-  { colors: { orange: '#bd5b32', workwear: '#3f5364', seafoam: '#d8bd73', ink: '#30252a' }, scale: 1.02 },
-  { colors: { orange: '#477c62', workwear: '#a8b6a8', seafoam: '#cf7840', ink: '#26333a' }, scale: 0.98 },
-  { colors: { orange: '#d18b37', workwear: '#5b6674', seafoam: '#78a7a1', ink: '#282631' }, scale: 1.06 },
-];
+// Height varies with the wardrobe so the crowd does not read as one person
+// repeated. Scale is geometry and stays here; the colours are palette and live
+// with every other colour in src/atlas/palette.ts.
+const CITIZEN_SCALES: readonly number[] = [0.94, 1.02, 0.98, 1.06];
+
+const CITIZEN_APPEARANCE_PALETTES: readonly CitizenAppearance[] = ATLAS_CITIZEN_WARDROBE.map((colors, index) => ({
+  colors,
+  scale: CITIZEN_SCALES[index] ?? 1,
+}));
 
 function citizenAppearance(id: string, role: AtlasCitizenPresentation['role']): CitizenAppearance {
   const roleOffset = role === 'nimiq-team-guide' || role === 'nimiq-team-builder' ? 1 : 0;

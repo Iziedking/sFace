@@ -59,7 +59,10 @@ describe('approved living-city game entry', () => {
     expect(threeRenderer).toContain('const districtCrowd = BEACON_COMMONS_CROWD.filter((citizen) => npcAnchors.has(citizen.spawnAnchorId))');
     expect(threeRenderer).toContain('const mast = new Mesh');
     expect(threeRenderer).toContain('station.beam.visible = complete || active');
-    expect(threeRenderer).toContain('completedStations > 0 ? 0x82b9b1');
+    // The colour moved into src/atlas/palette.ts; what this line guards is the
+    // conditional, not the literal. atlas-palette.test.ts asserts no renderer
+    // carries a colour of its own.
+    expect(threeRenderer).toContain('completedStations > 0 ? ATLAS_WORLD_PALETTE.lanternComplete');
     expect(threeRenderer).toContain('const PLAYER_WORLD_SCALE = 0.46');
     expect(threeRenderer).toContain('const NPC_WORLD_SCALE = 0.38');
     expect(threeRenderer).toContain('presentMissionMarker');

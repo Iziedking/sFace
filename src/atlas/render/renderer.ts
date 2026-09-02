@@ -1,3 +1,4 @@
+import { ATLAS_FALLBACK_PALETTE } from '../palette';
 import type { AtlasState } from '../../../shared/atlas/state';
 import type { GenesisObjective } from '../../../shared/atlas/districts/genesis-garden';
 import type { LastLanternState } from '../../../shared/atlas/adventures/last-lantern';
@@ -33,7 +34,7 @@ export class AtlasRenderer {
     const context = this.context;
     context.save();
     context.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0);
-    context.fillStyle = '#f4ede0';
+    context.fillStyle = ATLAS_FALLBACK_PALETTE.ground;
     context.fillRect(0, 0, this.width, this.height);
 
     const scale = this.width / VIEW_WIDTH;
@@ -60,9 +61,9 @@ export class AtlasRenderer {
     const restored = phase === 'tower-lit';
     context.save();
     context.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0);
-    context.fillStyle = restored ? '#f6c85f' : '#e8dfcf';
+    context.fillStyle = restored ? ATLAS_FALLBACK_PALETTE.relayScanned : ATLAS_FALLBACK_PALETTE.sandLight;
     context.fillRect(0, 0, this.width, this.height);
-    context.fillStyle = restored ? '#f4ede0' : '#c9bdac';
+    context.fillStyle = restored ? ATLAS_FALLBACK_PALETTE.ground : ATLAS_FALLBACK_PALETTE.groundDim;
     context.fillRect(0, 0, this.width, this.height * 0.48);
     drawHarborSkyline(context, this.width, this.height, restored);
     drawHarborWater(context, this.width, this.height, restored, this.reducedMotion);
@@ -80,11 +81,11 @@ export class AtlasRenderer {
     const palette = districtPalette(districtId);
     context.save();
     context.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0);
-    context.fillStyle = '#f4ede0';
+    context.fillStyle = ATLAS_FALLBACK_PALETTE.ground;
     context.fillRect(0, 0, this.width, this.height);
     context.fillStyle = palette.ground;
     context.fillRect(0, this.height * 0.52, this.width, this.height * 0.48);
-    context.strokeStyle = '#171411';
+    context.strokeStyle = ATLAS_FALLBACK_PALETTE.line;
     context.lineWidth = 5;
     for (let index = 0; index < 6; index += 1) {
       const x = this.width * (0.08 + index * 0.18);
@@ -93,19 +94,19 @@ export class AtlasRenderer {
       context.moveTo(x, this.height * 0.68);
       context.lineTo(x, top);
       context.stroke();
-      context.fillStyle = restored ? palette.active : '#171411';
+      context.fillStyle = restored ? palette.active : ATLAS_FALLBACK_PALETTE.line;
       context.beginPath();
       context.arc(x, top, 18, 0, Math.PI * 2);
       context.fill();
       context.stroke();
     }
-    context.strokeStyle = restored ? palette.active : '#6d6256';
+    context.strokeStyle = restored ? palette.active : ATLAS_FALLBACK_PALETTE.muted;
     context.lineWidth = 9;
     context.beginPath();
     context.moveTo(0, this.height * 0.68);
     context.lineTo(this.width, this.height * 0.38);
     context.stroke();
-    context.fillStyle = '#171411';
+    context.fillStyle = ATLAS_FALLBACK_PALETTE.line;
     context.font = `900 ${Math.max(15, Math.min(28, this.width / 28))}px ui-monospace, monospace`;
     context.fillText(districtId.replace(/-/g, ' ').toUpperCase(), 24, this.height - 34);
     context.restore();
@@ -120,7 +121,7 @@ export class AtlasRenderer {
 export type LegacyAtlasRenderer = AtlasRenderer;
 
 function drawHarborSkyline(context: CanvasRenderingContext2D, width: number, height: number, restored: boolean): void {
-  context.fillStyle = restored ? '#b9c79a' : '#a9a092';
+  context.fillStyle = restored ? ATLAS_FALLBACK_PALETTE.builderPath : ATLAS_FALLBACK_PALETTE.stone;
   for (let x = -30; x < width + 80; x += 130) {
     context.beginPath();
     context.moveTo(x, height * 0.48);
@@ -128,7 +129,7 @@ function drawHarborSkyline(context: CanvasRenderingContext2D, width: number, hei
     context.lineTo(x + 110, height * 0.48);
     context.fill();
   }
-  context.strokeStyle = '#171411';
+  context.strokeStyle = ATLAS_FALLBACK_PALETTE.line;
   context.lineWidth = 8;
   context.beginPath();
   context.moveTo(0, height * 0.55);
@@ -137,9 +138,9 @@ function drawHarborSkyline(context: CanvasRenderingContext2D, width: number, hei
 }
 
 function drawHarborWater(context: CanvasRenderingContext2D, width: number, height: number, restored: boolean, reducedMotion: boolean): void {
-  context.fillStyle = restored ? '#4e7f9f' : '#53626b';
+  context.fillStyle = restored ? ATLAS_FALLBACK_PALETTE.selection : ATLAS_FALLBACK_PALETTE.slate;
   context.fillRect(0, height * 0.55, width, height * 0.45);
-  context.strokeStyle = restored ? '#f4ede0' : '#8a9295';
+  context.strokeStyle = restored ? ATLAS_FALLBACK_PALETTE.ground : ATLAS_FALLBACK_PALETTE.routeQuiet;
   context.lineWidth = 3;
   const offset = reducedMotion ? 0 : Date.now() / 90 % 50;
   for (let y = height * 0.61; y < height; y += 48) {
@@ -157,12 +158,12 @@ function drawHarborLanternShop(context: CanvasRenderingContext2D, x: number, y: 
   const height = 190;
   context.save();
   context.lineJoin = 'round';
-  context.fillStyle = '#f4ede0';
-  context.strokeStyle = '#171411';
+  context.fillStyle = ATLAS_FALLBACK_PALETTE.ground;
+  context.strokeStyle = ATLAS_FALLBACK_PALETTE.line;
   context.lineWidth = 6;
   context.fillRect(x, y, width, height);
   context.strokeRect(x, y, width, height);
-  context.fillStyle = restored ? '#f28b30' : '#c67832';
+  context.fillStyle = restored ? ATLAS_FALLBACK_PALETTE.active : ATLAS_FALLBACK_PALETTE.activeDim;
   context.beginPath();
   context.moveTo(x - 22, y + 8);
   context.lineTo(x + width / 2, y - 42);
@@ -170,35 +171,35 @@ function drawHarborLanternShop(context: CanvasRenderingContext2D, x: number, y: 
   context.closePath();
   context.fill();
   context.stroke();
-  context.fillStyle = '#171411';
+  context.fillStyle = ATLAS_FALLBACK_PALETTE.line;
   context.font = '900 15px ui-monospace, monospace';
   context.fillText('MARA / LANTERN SHOP', x + 12, y - 5);
-  context.fillStyle = '#d6a649';
+  context.fillStyle = ATLAS_FALLBACK_PALETTE.beaconGold;
   context.fillRect(x + 24, y + 58, 72, 82);
   context.strokeRect(x + 24, y + 58, 72, 82);
-  context.fillStyle = restored ? '#f6c85f' : '#6d6256';
+  context.fillStyle = restored ? ATLAS_FALLBACK_PALETTE.relayScanned : ATLAS_FALLBACK_PALETTE.muted;
   context.beginPath();
   context.arc(x + 60, y + 98, 21, 0, Math.PI * 2);
   context.fill();
   context.stroke();
-  context.fillStyle = '#f4ede0';
+  context.fillStyle = ATLAS_FALLBACK_PALETTE.ground;
   context.fillRect(x + 132, y + 58, 104, 82);
   context.strokeRect(x + 132, y + 58, 104, 82);
-  context.fillStyle = '#171411';
+  context.fillStyle = ATLAS_FALLBACK_PALETTE.line;
   context.font = '800 12px ui-monospace, monospace';
   context.fillText(restored ? 'OPEN' : 'WAITING', x + 153, y + 104);
-  context.fillStyle = '#171411';
+  context.fillStyle = ATLAS_FALLBACK_PALETTE.line;
   context.fillRect(x + 103, y + height - 42, 64, 42);
-  context.fillStyle = '#f4ede0';
+  context.fillStyle = ATLAS_FALLBACK_PALETTE.ground;
   context.font = '900 10px ui-monospace, monospace';
   context.fillText('NIMIQ PAY', x + 113, y + height - 18);
   context.restore();
 }
 
 function drawHarborTower(context: CanvasRenderingContext2D, x: number, y: number, height: number, restored: boolean): void {
-  context.strokeStyle = '#171411';
+  context.strokeStyle = ATLAS_FALLBACK_PALETTE.line;
   context.lineWidth = 7;
-  context.fillStyle = '#f4ede0';
+  context.fillStyle = ATLAS_FALLBACK_PALETTE.ground;
   context.beginPath();
   context.moveTo(x - 54, y + height);
   context.lineTo(x - 34, y + 82);
@@ -207,7 +208,7 @@ function drawHarborTower(context: CanvasRenderingContext2D, x: number, y: number
   context.closePath();
   context.fill();
   context.stroke();
-  context.fillStyle = restored ? '#f6c85f' : '#171411';
+  context.fillStyle = restored ? ATLAS_FALLBACK_PALETTE.relayScanned : ATLAS_FALLBACK_PALETTE.line;
   context.fillRect(x - 54, y + 26, 108, 70);
   context.strokeRect(x - 54, y + 26, 108, 70);
   if (restored) {
@@ -222,8 +223,8 @@ function drawHarborTower(context: CanvasRenderingContext2D, x: number, y: number
 }
 
 function drawHarborFerry(context: CanvasRenderingContext2D, x: number, y: number, restored: boolean): void {
-  context.fillStyle = restored ? '#f28b30' : '#6d6256';
-  context.strokeStyle = '#171411';
+  context.fillStyle = restored ? ATLAS_FALLBACK_PALETTE.active : ATLAS_FALLBACK_PALETTE.muted;
+  context.strokeStyle = ATLAS_FALLBACK_PALETTE.line;
   context.lineWidth = 5;
   context.beginPath();
   context.moveTo(x - 105, y);
@@ -233,14 +234,14 @@ function drawHarborFerry(context: CanvasRenderingContext2D, x: number, y: number
   context.closePath();
   context.fill();
   context.stroke();
-  context.fillStyle = '#f4ede0';
+  context.fillStyle = ATLAS_FALLBACK_PALETTE.ground;
   context.fillRect(x - 30, y - 55, 60, 55);
   context.strokeRect(x - 30, y - 55, 60, 55);
 }
 
 function drawHarborWayfinding(context: CanvasRenderingContext2D, width: number, height: number, restored: boolean): void {
   context.save();
-  context.strokeStyle = '#171411';
+  context.strokeStyle = ATLAS_FALLBACK_PALETTE.line;
   context.lineWidth = 10;
   context.lineCap = 'round';
   context.beginPath();
@@ -249,29 +250,29 @@ function drawHarborWayfinding(context: CanvasRenderingContext2D, width: number, 
   context.lineTo(width * 0.48, height * 0.74);
   context.lineTo(width * 0.82, height * 0.55);
   context.stroke();
-  context.strokeStyle = '#f28b30';
+  context.strokeStyle = ATLAS_FALLBACK_PALETTE.active;
   context.lineWidth = 4;
   context.stroke();
-  context.fillStyle = '#171411';
+  context.fillStyle = ATLAS_FALLBACK_PALETTE.line;
   context.font = '900 13px ui-monospace, monospace';
   context.fillText('PAY HARBOR', width * 0.06, height * 0.12);
-  context.fillStyle = restored ? '#5b8f68' : '#f28b30';
+  context.fillStyle = restored ? ATLAS_FALLBACK_PALETTE.settled : ATLAS_FALLBACK_PALETTE.active;
   context.fillText('FOLLOW THE ORANGE WAY', width * 0.06, height * 0.16);
   context.restore();
 }
 
 function districtPalette(districtId: string): { ground: string; active: string } {
-  if (districtId === 'light-forest') return { ground: '#b9c79a', active: '#5b8f68' };
-  if (districtId === 'albatross-causeway') return { ground: '#b8ced9', active: '#4e7f9f' };
-  if (districtId === 'validator-peaks') return { ground: '#d5c7aa', active: '#f6c85f' };
-  if (districtId === 'builder-city') return { ground: '#e1e6df', active: '#f28b30' };
-  return { ground: '#eadfc8', active: '#f28b30' };
+  if (districtId === 'light-forest') return { ground: ATLAS_FALLBACK_PALETTE.builderPath, active: ATLAS_FALLBACK_PALETTE.settled };
+  if (districtId === 'albatross-causeway') return { ground: ATLAS_FALLBACK_PALETTE.waterLight, active: ATLAS_FALLBACK_PALETTE.selection };
+  if (districtId === 'validator-peaks') return { ground: ATLAS_FALLBACK_PALETTE.sandDeep, active: ATLAS_FALLBACK_PALETTE.relayScanned };
+  if (districtId === 'builder-city') return { ground: ATLAS_FALLBACK_PALETTE.groundBuilder, active: ATLAS_FALLBACK_PALETTE.active };
+  return { ground: ATLAS_FALLBACK_PALETTE.groundRaised, active: ATLAS_FALLBACK_PALETTE.active };
 }
 
 function drawGarden(context: CanvasRenderingContext2D, width: number, height: number, tick: number, reducedMotion: boolean): void {
-  context.fillStyle = '#c8d3b0';
+  context.fillStyle = ATLAS_FALLBACK_PALETTE.foliageLight;
   context.fillRect(0, 0, width, height * 0.48);
-  context.fillStyle = '#a7b889';
+  context.fillStyle = ATLAS_FALLBACK_PALETTE.foliageMid;
   context.beginPath();
   context.moveTo(0, height * 0.48);
   context.quadraticCurveTo(width * 0.2, height * 0.25, width * 0.42, height * 0.46);
@@ -280,9 +281,9 @@ function drawGarden(context: CanvasRenderingContext2D, width: number, height: nu
   context.lineTo(0, height * 0.62);
   context.closePath();
   context.fill();
-  context.fillStyle = '#eadfc8';
+  context.fillStyle = ATLAS_FALLBACK_PALETTE.groundRaised;
   context.fillRect(0, height * 0.62, width, height * 0.38);
-  context.strokeStyle = '#d5c7aa';
+  context.strokeStyle = ATLAS_FALLBACK_PALETTE.sandDeep;
   context.lineWidth = 1;
   const drift = reducedMotion ? 0 : tick % 80;
   for (let x = -80 + drift; x < width + 80; x += 80) {
@@ -291,10 +292,10 @@ function drawGarden(context: CanvasRenderingContext2D, width: number, height: nu
     context.lineTo(x - 30, height);
     context.stroke();
   }
-  drawGardenBuilding(context, width * 0.08, height * 0.35, width * 0.16, height * 0.2, '#e5d0a7', 'FIELD OFFICE');
-  drawGardenBuilding(context, width * 0.7, height * 0.31, width * 0.18, height * 0.24, '#b9c79a', 'ROUTE HOUSE');
+  drawGardenBuilding(context, width * 0.08, height * 0.35, width * 0.16, height * 0.2, ATLAS_FALLBACK_PALETTE.sandWarm, 'FIELD OFFICE');
+  drawGardenBuilding(context, width * 0.7, height * 0.31, width * 0.18, height * 0.24, ATLAS_FALLBACK_PALETTE.builderPath, 'ROUTE HOUSE');
   for (let index = 0; index < 7; index += 1) drawGardenTree(context, width * (0.04 + index * 0.15), height * (0.54 + (index % 2) * 0.03), 0.75 + (index % 3) * 0.1);
-  context.fillStyle = '#171411';
+  context.fillStyle = ATLAS_FALLBACK_PALETTE.line;
   context.font = '900 11px ui-monospace, monospace';
   context.fillText('GENESIS GARDEN / PAY HARBOR OUTSKIRTS', 18, height * 0.58);
 }
@@ -302,11 +303,11 @@ function drawGarden(context: CanvasRenderingContext2D, width: number, height: nu
 function drawGardenBuilding(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, color: string, name: string): void {
   context.save();
   context.fillStyle = color;
-  context.strokeStyle = '#171411';
+  context.strokeStyle = ATLAS_FALLBACK_PALETTE.line;
   context.lineWidth = 3;
   context.fillRect(x, y, width, height);
   context.strokeRect(x, y, width, height);
-  context.fillStyle = '#c67832';
+  context.fillStyle = ATLAS_FALLBACK_PALETTE.activeDim;
   context.beginPath();
   context.moveTo(x - 8, y);
   context.lineTo(x + width / 2, y - height * 0.35);
@@ -314,7 +315,7 @@ function drawGardenBuilding(context: CanvasRenderingContext2D, x: number, y: num
   context.closePath();
   context.fill();
   context.stroke();
-  context.fillStyle = '#171411';
+  context.fillStyle = ATLAS_FALLBACK_PALETTE.line;
   context.fillRect(x + width * 0.12, y + height * 0.32, width * 0.22, height * 0.24);
   context.fillRect(x + width * 0.66, y + height * 0.32, width * 0.22, height * 0.24);
   context.font = '900 9px ui-monospace, monospace';
@@ -324,10 +325,10 @@ function drawGardenBuilding(context: CanvasRenderingContext2D, x: number, y: num
 
 function drawGardenTree(context: CanvasRenderingContext2D, x: number, y: number, size: number): void {
   context.save();
-  context.fillStyle = '#6f5338';
+  context.fillStyle = ATLAS_FALLBACK_PALETTE.timber;
   context.fillRect(x - 5 * size, y - 50 * size, 10 * size, 54 * size);
-  context.fillStyle = '#5b8f68';
-  context.strokeStyle = '#171411';
+  context.fillStyle = ATLAS_FALLBACK_PALETTE.settled;
+  context.strokeStyle = ATLAS_FALLBACK_PALETTE.line;
   context.lineWidth = 2;
   for (const [offsetX, offsetY, radius] of [[0, -70, 34], [-23, -48, 24], [23, -48, 24]] as const) {
     context.beginPath();
@@ -342,7 +343,7 @@ function drawPath(context: CanvasRenderingContext2D, point: (x: number, y: numbe
   const stops = [state.mission.spawn, state.relays[0]!, state.rescue, state.gate];
   context.lineCap = 'round';
   context.lineJoin = 'round';
-  context.strokeStyle = '#171411';
+  context.strokeStyle = ATLAS_FALLBACK_PALETTE.line;
   context.lineWidth = 22;
   context.beginPath();
   stops.forEach((stop, index) => {
@@ -351,7 +352,7 @@ function drawPath(context: CanvasRenderingContext2D, point: (x: number, y: numbe
     else context.lineTo(x, y);
   });
   context.stroke();
-  context.strokeStyle = '#f28b30';
+  context.strokeStyle = ATLAS_FALLBACK_PALETTE.active;
   context.lineWidth = 8;
   context.stroke();
 }
@@ -360,8 +361,8 @@ function drawRelay(context: CanvasRenderingContext2D, [x, y]: [number, number], 
   const size = Math.max(34, 580 * scale);
   context.save();
   context.translate(x, y);
-  context.fillStyle = connected ? '#f28b30' : scanned ? '#f6c85f' : '#171411';
-  context.strokeStyle = '#171411';
+  context.fillStyle = connected ? ATLAS_FALLBACK_PALETTE.active : scanned ? ATLAS_FALLBACK_PALETTE.relayScanned : ATLAS_FALLBACK_PALETTE.line;
+  context.strokeStyle = ATLAS_FALLBACK_PALETTE.line;
   context.lineWidth = 4;
   context.beginPath();
   context.moveTo(0, -size);
@@ -371,7 +372,7 @@ function drawRelay(context: CanvasRenderingContext2D, [x, y]: [number, number], 
   context.closePath();
   context.fill();
   context.stroke();
-  context.fillStyle = connected ? '#171411' : '#f4ede0';
+  context.fillStyle = connected ? ATLAS_FALLBACK_PALETTE.line : ATLAS_FALLBACK_PALETTE.ground;
   context.font = `900 ${Math.max(18, size * 0.34)}px ui-monospace, monospace`;
   context.textAlign = 'center';
   context.textBaseline = 'middle';
@@ -384,8 +385,8 @@ function drawCourier(context: CanvasRenderingContext2D, [x, y]: [number, number]
   const size = Math.max(24, 360 * scale);
   context.save();
   context.translate(x, y);
-  context.fillStyle = rescued ? '#5bb98c' : '#f4ede0';
-  context.strokeStyle = '#171411';
+  context.fillStyle = rescued ? ATLAS_FALLBACK_PALETTE.rescued : ATLAS_FALLBACK_PALETTE.ground;
+  context.strokeStyle = ATLAS_FALLBACK_PALETTE.line;
   context.lineWidth = 4;
   context.beginPath();
   context.arc(0, -size * 0.55, size * 0.28, 0, Math.PI * 2);
@@ -402,7 +403,7 @@ function drawGate(context: CanvasRenderingContext2D, [x, y]: [number, number], u
   const height = Math.max(140, 2_100 * scale);
   context.save();
   context.translate(x, y);
-  context.strokeStyle = '#171411';
+  context.strokeStyle = ATLAS_FALLBACK_PALETTE.line;
   context.lineWidth = Math.max(8, 140 * scale);
   context.beginPath();
   context.moveTo(-width / 2, height / 2);
@@ -411,11 +412,11 @@ function drawGate(context: CanvasRenderingContext2D, [x, y]: [number, number], u
   context.lineTo(width / 2, height / 2);
   context.stroke();
   if (unlocked) {
-    context.strokeStyle = '#f28b30';
+    context.strokeStyle = ATLAS_FALLBACK_PALETTE.active;
     context.lineWidth = 6;
     context.stroke();
   } else {
-    context.fillStyle = '#171411';
+    context.fillStyle = ATLAS_FALLBACK_PALETTE.line;
     context.fillRect(-width * 0.35, -height * 0.05, width * 0.7, height * 0.55);
   }
   label(context, unlocked ? 'GENESIS GATE / OPEN' : 'GENESIS GATE / LOCKED', 0, height * 0.72);
@@ -426,14 +427,14 @@ function drawRouteHazard(context: CanvasRenderingContext2D, [x, y]: [number, num
   const size = Math.max(15, Math.min(28, radius * 0.12));
   context.save();
   context.translate(x, y);
-  context.fillStyle = '#d55238';
-  context.strokeStyle = '#171411';
+  context.fillStyle = ATLAS_FALLBACK_PALETTE.warn;
+  context.strokeStyle = ATLAS_FALLBACK_PALETTE.line;
   context.lineWidth = 3;
   context.beginPath();
   context.arc(0, 0, size, 0, Math.PI * 2);
   context.fill();
   context.stroke();
-  context.strokeStyle = '#f4ede0';
+  context.strokeStyle = ATLAS_FALLBACK_PALETTE.ground;
   context.lineWidth = 3;
   context.beginPath();
   context.moveTo(-size * 0.35, -size * 0.35);
@@ -458,14 +459,14 @@ function drawMatureHuman(context: CanvasRenderingContext2D, [x, y]: [number, num
   context.ellipse(0, size * 0.48, size * 0.42, size * 0.13, 0, 0, Math.PI * 2);
   context.fill();
   if (shielded) {
-    context.strokeStyle = '#4e9ccf';
+    context.strokeStyle = ATLAS_FALLBACK_PALETTE.waterDeep;
     context.lineWidth = Math.max(3, size * 0.025);
     context.beginPath();
     context.arc(0, 0, size * 0.62, 0, Math.PI * 2);
     context.stroke();
   }
 
-  context.strokeStyle = '#25201b';
+  context.strokeStyle = ATLAS_FALLBACK_PALETTE.shadow;
   context.lineWidth = Math.max(7, size * 0.095);
   context.beginPath();
   context.moveTo(-size * 0.15, size * 0.2);
@@ -473,7 +474,7 @@ function drawMatureHuman(context: CanvasRenderingContext2D, [x, y]: [number, num
   context.moveTo(size * 0.15, size * 0.2);
   context.lineTo(size * (0.2 + (walking ? 0.08 : 0)), size * 0.53);
   context.stroke();
-  context.strokeStyle = '#171411';
+  context.strokeStyle = ATLAS_FALLBACK_PALETTE.line;
   context.lineWidth = Math.max(8, size * 0.11);
   context.beginPath();
   context.moveTo(-size * (0.2 + (walking ? 0.08 : 0)), size * 0.53);
@@ -482,8 +483,8 @@ function drawMatureHuman(context: CanvasRenderingContext2D, [x, y]: [number, num
   context.lineTo(size * (0.35 + (walking ? 0.08 : 0)), size * 0.53);
   context.stroke();
 
-  context.fillStyle = name === 'MARA' ? '#c67832' : '#4e7f9f';
-  context.strokeStyle = '#171411';
+  context.fillStyle = name === 'MARA' ? ATLAS_FALLBACK_PALETTE.activeDim : ATLAS_FALLBACK_PALETTE.selection;
+  context.strokeStyle = ATLAS_FALLBACK_PALETTE.line;
   context.lineWidth = Math.max(4, size * 0.035);
   context.beginPath();
   context.moveTo(-size * 0.28, -size * 0.22);
@@ -493,10 +494,10 @@ function drawMatureHuman(context: CanvasRenderingContext2D, [x, y]: [number, num
   context.closePath();
   context.fill();
   context.stroke();
-  context.fillStyle = '#d6a77d';
+  context.fillStyle = ATLAS_FALLBACK_PALETTE.skinWarm;
   context.fillRect(-size * 0.07, -size * 0.3, size * 0.14, size * 0.14);
   context.strokeRect(-size * 0.07, -size * 0.3, size * 0.14, size * 0.14);
-  context.strokeStyle = '#171411';
+  context.strokeStyle = ATLAS_FALLBACK_PALETTE.line;
   context.lineWidth = Math.max(5, size * 0.055);
   context.beginPath();
   context.moveTo(-size * 0.23, -size * 0.13);
@@ -505,29 +506,29 @@ function drawMatureHuman(context: CanvasRenderingContext2D, [x, y]: [number, num
   context.lineTo(size * 0.42 * direction, size * 0.1);
   context.stroke();
   if (name === 'MARA') {
-    context.fillStyle = '#d6a649';
+    context.fillStyle = ATLAS_FALLBACK_PALETTE.beaconGold;
     context.fillRect(-size * 0.13, size * 0.01, size * 0.26, size * 0.14);
     context.strokeRect(-size * 0.13, size * 0.01, size * 0.26, size * 0.14);
   } else {
-    context.fillStyle = '#f28b30';
+    context.fillStyle = ATLAS_FALLBACK_PALETTE.active;
     context.fillRect(-size * 0.04, -size * 0.14, size * 0.08, size * 0.3);
   }
 
-  context.fillStyle = '#d6a77d';
-  context.strokeStyle = '#171411';
+  context.fillStyle = ATLAS_FALLBACK_PALETTE.skinWarm;
+  context.strokeStyle = ATLAS_FALLBACK_PALETTE.line;
   context.lineWidth = Math.max(3, size * 0.03);
   context.beginPath();
   context.ellipse(sideFacing ? direction * size * 0.02 : 0, -size * 0.51, size * 0.21, size * 0.23, 0, 0, Math.PI * 2);
   context.fill();
   context.stroke();
-  context.fillStyle = '#3a251c';
+  context.fillStyle = ATLAS_FALLBACK_PALETTE.timberDark;
   context.beginPath();
   context.arc(sideFacing ? direction * size * 0.01 : 0, -size * 0.59, size * 0.2, Math.PI, Math.PI * 2);
   context.lineTo(direction * size * 0.19, -size * 0.48);
   context.quadraticCurveTo(0, -size * 0.4, -direction * size * 0.19, -size * 0.48);
   context.closePath();
   context.fill();
-  context.fillStyle = '#171411';
+  context.fillStyle = ATLAS_FALLBACK_PALETTE.line;
   const eyeX = sideFacing ? direction * size * 0.1 : direction * size * 0.08;
   context.beginPath();
   context.arc(eyeX, -size * 0.52, size * 0.025, 0, Math.PI * 2);
@@ -537,7 +538,7 @@ function drawMatureHuman(context: CanvasRenderingContext2D, [x, y]: [number, num
     context.arc(-eyeX, -size * 0.52, size * 0.025, 0, Math.PI * 2);
     context.fill();
   }
-  context.strokeStyle = '#8f493c';
+  context.strokeStyle = ATLAS_FALLBACK_PALETTE.clay;
   context.lineWidth = Math.max(2, size * 0.018);
   context.beginPath();
   context.arc(sideFacing ? direction * size * 0.02 : 0, -size * 0.46, size * 0.055, 0.15, Math.PI - 0.15);
@@ -550,7 +551,7 @@ function drawDestination(context: CanvasRenderingContext2D, [x, y]: [number, num
   const pulse = reducedMotion ? 0 : (tick % 30) * 0.7;
   context.save();
   context.translate(x, y);
-  context.strokeStyle = '#f28b30';
+  context.strokeStyle = ATLAS_FALLBACK_PALETTE.active;
   context.lineWidth = 4;
   context.setLineDash([10, 8]);
   context.beginPath();
@@ -564,7 +565,7 @@ function drawDistantBeacon(context: CanvasRenderingContext2D, [x, y]: [number, n
   context.save();
   context.translate(x, y);
   context.globalAlpha = 0.28;
-  context.strokeStyle = '#171411';
+  context.strokeStyle = ATLAS_FALLBACK_PALETTE.line;
   context.lineWidth = 6;
   for (let ring = 1; ring <= 3; ring += 1) {
     context.beginPath();
@@ -580,9 +581,9 @@ function label(context: CanvasRenderingContext2D, text: string, x: number, y: nu
   context.textAlign = 'center';
   context.textBaseline = 'middle';
   const width = context.measureText(text).width + 14;
-  context.fillStyle = '#171411';
+  context.fillStyle = ATLAS_FALLBACK_PALETTE.line;
   context.fillRect(x - width / 2, y - 10, width, 20);
-  context.fillStyle = '#f4ede0';
+  context.fillStyle = ATLAS_FALLBACK_PALETTE.ground;
   context.fillText(text, x, y);
 }
 
