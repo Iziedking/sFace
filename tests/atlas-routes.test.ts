@@ -6,6 +6,7 @@ import { ATLAS_CURRICULUM } from '../shared/atlas/manifest';
 import { createAtlasBeaconRepository, createAtlasBeaconService } from '../server/atlas/beacon';
 import { createAtlasOrderStore } from '../server/atlas/orders';
 import { mountAtlasRoutes } from '../server/atlas/routes';
+import { createAtlasEchoRepository, createAtlasEchoService } from '../server/atlas/echoes';
 
 describe('NIM Atlas public curriculum boundary', () => {
   it('serves an honest local-first bootstrap and validated curriculum', async () => {
@@ -72,6 +73,23 @@ describe('NIM Atlas public curriculum boundary', () => {
       expect(reconciledPayload.data.actorId).toBeUndefined();
       expect(reconciledPayload.data.walletAddress).toBeUndefined();
       expect(reconciledPayload.data.chainEvidence?.lookup).toBeUndefined();
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
+  });
+
+  it('serves public echoes only from the injected verified projection', async () => {
+    const echoes = createAtlasEchoService({ repository: createAtlasEchoRepository(), now: () => 1_000 });
+    const api = createAtlasApi({ curriculum: ATLAS_CURRICULUM, echoes, now: () => new Date('2026-08-25T12:00:00.000Z') });
+    const app = express();
+    mountAtlasRoutes({ app, limit: () => (_request, _response, next) => next(), api });
+    const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => { const listening = app.listen(0, () => resolve(listening)); });
+    try {
+      const address = server.address();
+      if (!address || typeof address === 'string') throw new Error('Test server did not expose a port.');
+      const response = await fetch(`http://127.0.0.1:${address.port}/atlas/api/echoes`);
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ ok: true, data: { status: 'live', echoes: [] } });
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     }

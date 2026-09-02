@@ -38,10 +38,10 @@ describe('Genesis Garden first district', () => {
     const values = new Map<string, string>();
     const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); } };
     const store = createAtlasProgressStore(storage);
-    expect(store.load()).toMatchObject({ version: 2, completedAdventureIds: [], completedTrialIds: [], activeRole: 'explorer' });
+    expect(store.load()).toMatchObject({ version: 3, completedAdventureIds: [], completedTrialIds: [], activeRole: 'explorer', avatar: { face: 'face-01', body: 'body-01' } });
     store.completeDistrict('genesis-garden');
     store.completeTrial('luna-lens');
-    expect(createAtlasProgressStore(storage).load()).toMatchObject({ version: 2, completedAdventureIds: ['genesis-garden'], completedTrialIds: ['luna-lens'] });
+    expect(createAtlasProgressStore(storage).load()).toMatchObject({ version: 3, completedAdventureIds: ['genesis-garden'], completedTrialIds: ['luna-lens'], avatar: { face: 'face-01', body: 'body-01' } });
     expect(JSON.stringify([...values.values()])).not.toMatch(/wallet|address|device/i);
   });
 });

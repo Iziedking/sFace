@@ -21,4 +21,12 @@ describe('NIM Atlas server leaderboard', () => {
     await expect(leaderboard.accept({ ...run, runId: 'run-2', walletAddress: 'NQ2' })).rejects.toThrow(/wallet/i);
     await expect(leaderboard.accept({ ...run, runId: 'run-3', actorId: 'actor-2' })).rejects.toThrow(/wallet/i);
   });
+
+  it('ranks by verified mastery when a breakdown is present and rejects forged components', async () => {
+    const leaderboard = createAtlasLeaderboardService();
+    await leaderboard.accept({ runId: 'mastery-low', actorId: 'actor-low', walletAddress: 'NQL', role: 'explorer', seasonId: 'season-2', score: 999, assistance: 'none', prizeEligible: true, replayHash: 'a'.repeat(64), mastery: { knowledge: 4_000, execution: 0, safety: 1_500, efficiency: 1_500, total: 7_000 } });
+    await leaderboard.accept({ runId: 'mastery-high', actorId: 'actor-high', walletAddress: 'NQH', role: 'explorer', seasonId: 'season-2', score: 1, assistance: 'none', prizeEligible: true, replayHash: 'b'.repeat(64), mastery: { knowledge: 4_000, execution: 3_000, safety: 1_500, efficiency: 1_500, total: 10_000 } });
+    await expect(leaderboard.list('season-2', 'explorer')).resolves.toMatchObject([{ runId: 'mastery-high', rank: 1 }, { runId: 'mastery-low', rank: 2 }]);
+    await expect(leaderboard.accept({ runId: 'forged-mastery', actorId: 'actor-forged', walletAddress: 'NQF', role: 'explorer', seasonId: 'season-2', score: 1, assistance: 'none', prizeEligible: true, replayHash: 'c'.repeat(64), mastery: { knowledge: 4_000, execution: 3_000, safety: 1_500, efficiency: 1_500, total: 2 } })).rejects.toThrow(/mastery/i);
+  });
 });

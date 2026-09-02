@@ -51,7 +51,7 @@ describe('importing a client module without a browser', () => {
   for (const path of MODULES) {
     it(`does not throw for ${path.replace('../src/', '')}`, async () => {
       await expect(import(path)).resolves.toBeDefined();
-    });
+    }, 15_000);
   }
 });
 

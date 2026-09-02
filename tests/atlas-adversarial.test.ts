@@ -59,7 +59,7 @@ describe('NIM Atlas competitive boundary', () => {
     const ticket = await setup.tickets.issue({ actorId: setup.actorId, walletAddress: setup.walletAddress, network: 'testalbatross', role: 'explorer', seasonId: 'season-1', challengeId: 'expedition-1', seed: 'seed-1', campaignHash: 'a'.repeat(64), curriculumHash: 'b'.repeat(64), rulesetHash: 'c'.repeat(64) });
     const actions: AtlasAction[] = [{ moveX: 0, moveY: 0, tool: 'none', interact: false }];
     const valid = await createSubmission(setup, ticket.ticketId, actions);
-    await expect(setup.submissions.submit(valid)).resolves.toMatchObject({ status: 'verified', prizeEligible: true, score: 0 });
+    await expect(setup.submissions.submit(valid)).resolves.toMatchObject({ status: 'verified', prizeEligible: true, score: 0, mastery: { total: 2_500 } });
     await expect(setup.submissions.submit(valid)).resolves.toMatchObject({ status: 'verified', duplicate: true });
   });
 
@@ -88,6 +88,18 @@ describe('NIM Atlas competitive boundary', () => {
     const restored = createAtlasSubmissionService({ tickets: setup.tickets, expectedOrigin: 'https://local.sface.test', mission: ATLAS_CORE_FIXTURE, now: () => 1_000 });
     restored.restore(snapshot);
     await expect(restored.reconcileAwaiting()).resolves.toMatchObject([{ runId: valid.runId, status: 'verified' }]);
+  });
+
+  it('accepts one effect under one hundred concurrent duplicate submissions', async () => {
+    const setup = await createSetup();
+    await setup.bindWallet();
+    const ticket = await setup.tickets.issue({ actorId: setup.actorId, walletAddress: setup.walletAddress, network: 'testalbatross', role: 'explorer', seasonId: 'season-1', challengeId: 'expedition-1', seed: 'seed-1', campaignHash: 'a'.repeat(64), curriculumHash: 'b'.repeat(64), rulesetHash: 'c'.repeat(64) });
+    const valid = await createSubmission(setup, ticket.ticketId, [{ moveX: 0, moveY: 0, tool: 'none', interact: false }]);
+    const results = await Promise.all(Array.from({ length: 100 }, () => setup.submissions.submit(valid)));
+    expect(results.filter((result) => result.status === 'verified')).toHaveLength(100);
+    expect(new Set(results.map((result) => result.runId))).toEqual(new Set([valid.runId]));
+    expect(setup.submissions.serialise().runs).toHaveLength(1);
+    expect(setup.submissions.serialise().pending).toHaveLength(0);
   });
 });
 

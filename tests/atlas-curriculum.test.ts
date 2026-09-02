@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { atlasCurriculumSchema, validateAtlasCurriculum } from '../shared/atlas/curriculum';
-import { ATLAS_CURRICULUM } from '../shared/atlas/manifest';
+import { ATLAS_CURRICULUM, ATLAS_PROVIDER_API_REVIEWED_AT } from '../shared/atlas/manifest';
 
 describe('NIM Atlas curriculum contract', () => {
   it('ships six sourced districts, one finale, and three launch expeditions', () => {
@@ -33,6 +33,7 @@ describe('NIM Atlas curriculum contract', () => {
   });
 
   it('encodes installed and documented provider calls without treating wallet replies as payment proof', () => {
+    expect(ATLAS_PROVIDER_API_REVIEWED_AT).toBe('2026-08-26');
     const recipes = JSON.stringify(ATLAS_CURRICULUM);
     expect(recipes).toContain("init({ timeout: 2500 })");
     expect(recipes).toContain('nimiq.listAccounts()');

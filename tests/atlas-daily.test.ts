@@ -39,4 +39,12 @@ describe('NIM Atlas daily applied challenges', () => {
     await service.submit({ actorId: 'actor-7', walletAddress: 'NQwallet', challengeId: 'daily-01', answer: '1200000', replayComplete: true, assistance: 'none' });
     await expect(service.pendingObligation({ actorId: 'actor-7', walletAddress: 'NQwallet', challengeId: 'daily-01' })).resolves.toEqual({ status: 'pending-close', amountLuna: null });
   });
+
+  it('keeps one daily eligibility effect under one hundred concurrent duplicate solves', async () => {
+    const service = createAtlasDailyService({ date: () => '2026-08-25' });
+    const input = { actorId: 'actor-concurrent', walletAddress: 'NQwallet', challengeId: 'daily-01', answer: '1200000', replayComplete: true, assistance: 'none' as const };
+    const results = await Promise.all(Array.from({ length: 100 }, () => service.submit(input)));
+    expect(results.every((result) => result.accepted && result.eligible)).toBe(true);
+    expect(results.filter((result) => result.duplicate !== true)).toHaveLength(1);
+  });
 });

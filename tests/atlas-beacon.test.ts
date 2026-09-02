@@ -40,4 +40,12 @@ describe('NIM Atlas Network Beacon', () => {
     repository.failReads = true;
     expect(await stale.read()).toMatchObject({ status: 'unavailable', snapshot: null });
   });
+
+  it('keeps verified echo descriptors separate from Beacon gameplay progress', async () => {
+    const service = createAtlasBeaconService({ repository: createAtlasBeaconRepository(), now: () => 1_000 });
+    await service.appendEcho({ id: 'echo-1', districtId: 'pay-harbor', action: 'repair', cosmeticId: 'pay-harbor-repair-mark', displayName: 'Explorer #abcd', contributionDelta: 4, observedAtBucket: 1 });
+    const projection = await service.read();
+    expect(projection).toMatchObject({ echoes: [{ id: 'echo-1', contributionDelta: 4 }] });
+    expect(projection.systems.every((system) => system.repairTotal === 0)).toBe(true);
+  });
 });

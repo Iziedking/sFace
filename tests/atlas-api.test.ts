@@ -39,4 +39,16 @@ describe('NIM Atlas order API client', () => {
     await expect(api.getBootstrap()).resolves.toMatchObject({ product: 'nim-atlas', competitiveExpeditions: false });
     await expect(api.getBeacon()).resolves.toEqual({ status: 'unavailable', verifiedContributorCount: 0, systems: [] });
   });
+
+  it('reads verified community echoes with an honest status', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ ok: true, data: { status: 'stale', echoes: [{ id: 'echo-1', districtId: 'pay-harbor', action: 'repair', cosmeticId: 'pay-harbor-repair-mark', displayName: 'Explorer #abcd', contributionDelta: 4, observedAtBucket: 2 }] } })));
+    const api = createAtlasApiClient({ baseUrl: 'https://atlas.test', fetchImpl });
+    await expect(api.getEchoes()).resolves.toMatchObject({ status: 'stale', echoes: [{ contributionDelta: 4 }] });
+  });
+
+  it('reads role-separated competition summaries without fabricating a reward state', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ ok: true, data: [{ role: 'explorer', bestVerifiedScore: null, eligibility: 'not-verified', dailyObligation: { status: 'estimating', amountLuna: null } }] })));
+    const api = createAtlasApiClient({ baseUrl: 'https://atlas.test', fetchImpl });
+    await expect(api.getCompetition()).resolves.toEqual([{ role: 'explorer', bestVerifiedScore: null, eligibility: 'not-verified', dailyObligation: { status: 'estimating', amountLuna: null } }]);
+  });
 });

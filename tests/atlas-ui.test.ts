@@ -13,10 +13,12 @@ describe('NIM Atlas public first district UI', () => {
 
   it('ships semantic controls and required portrait accessibility policies', () => {
     const main = readFileSync(new URL('../src/atlas/main.ts', import.meta.url), 'utf8');
+    const app = readFileSync(new URL('../src/atlas/app/atlas-app.ts', import.meta.url), 'utf8');
+    const toolkit = readFileSync(new URL('../src/atlas/ui/atlas-toolkit.ts', import.meta.url), 'utf8');
     const css = readFileSync(new URL('../src/atlas/atlas.css', import.meta.url), 'utf8');
-    expect(main).toContain("document.createElement('button')");
-    expect(main).toContain("setAttribute('aria-label'");
-    expect(main).toContain("setAttribute('aria-live'");
+    expect(app).toContain("document.createElement('button')");
+    expect(app).toContain("setAttribute('aria-label'");
+    expect(toolkit).toContain("setAttribute('aria-live'");
     expect(main).not.toMatch(/shooter|fire weapon|kill/i);
     expect(css).toContain('min-height: 44px');
     expect(css).toContain('env(safe-area-inset-top)');
@@ -32,79 +34,95 @@ describe('NIM Atlas public first district UI', () => {
   });
 
   it('makes the SFACE and NIM Atlas relationship explicit and keeps Pay central', () => {
-    const main = readFileSync(new URL('../src/atlas/main.ts', import.meta.url), 'utf8');
+    const app = readFileSync(new URL('../src/atlas/app/atlas-app.ts', import.meta.url), 'utf8');
     const manifest = readFileSync(new URL('../public/manifest.webmanifest', import.meta.url), 'utf8');
-    expect(main).toContain('Sface is a Nimiq Pay Mini App game. NIM Atlas is its living network');
+    expect(app).toContain('Sface is a Nimiq Pay Mini App game. NIM Atlas is the network you repair by playing.');
     expect(manifest).toContain('Sface is a Nimiq Pay Mini App game where you explore NIM Atlas');
-    expect(main).toContain('PRACTICE MODE / PLAYABLE WITHOUT A WALLET');
-    expect(main).toContain('NIMIQ PAY IS THE LIVE PAYMENT GATE');
+    expect(app).toContain('PRACTICE MODE / PLAYABLE WITHOUT A WALLET');
+    expect(app).toContain('NIMIQ PAY IS THE LIVE PAYMENT GATE');
   });
 
   it('keeps the mission loop visible so a first-time player knows what they are doing', () => {
-    const main = readFileSync(new URL('../src/atlas/main.ts', import.meta.url), 'utf8');
+    const app = readFileSync(new URL('../src/atlas/app/atlas-app.ts', import.meta.url), 'utf8');
     const prologue = readFileSync(new URL('../shared/atlas/prologue.ts', import.meta.url), 'utf8');
-    expect(main).toContain('Meet Mara');
+    expect(app).toContain('Meet Mara');
     expect(prologue).toContain("id: 'explorer'");
     expect(prologue).toContain("id: 'builder'");
-    expect(main).toContain('Pay Harbor');
-    expect(main).toContain('PRACTICE MODE / PLAYABLE WITHOUT A WALLET');
-    expect(main).toContain('NIMIQ PAY IS THE LIVE PAYMENT GATE');
-    expect(main).toContain('Review payment request');
-    expect(main).toContain('Simulate verified confirmation');
-    expect(main).toContain('YOU ARE HERE');
-    expect(main).toContain('Builder Trial 1 of 6');
+    expect(app).toContain('Pay Harbor');
+    expect(app).toContain('PRACTICE MODE / PLAYABLE WITHOUT A WALLET');
+    expect(app).toContain('NIMIQ PAY IS THE LIVE PAYMENT GATE');
+    expect(app).toContain('Review payment request');
+    expect(app).toContain('Simulate verified confirmation');
+    expect(app).toContain('YOU ARE HERE');
+    expect(app).toContain('Builder Trial 1 of 6');
+  });
+
+  it('uses the living 3D city as the landing backdrop and keeps onboarding to one clear run', () => {
+    const app = readFileSync(new URL('../src/atlas/app/atlas-app.ts', import.meta.url), 'utf8');
+    const landingStart = app.indexOf('private renderWelcome');
+    const landingEnd = app.indexOf('private renderLandingSplash');
+    const landing = app.slice(landingStart, landingEnd);
+    expect(app).toContain("private cityLoadState: 'loading' | 'ready' | 'unavailable' = 'loading';");
+    expect(app).toContain('Start 60-second run');
+    expect(app).toContain('Learn how Nimiq works by walking through a living city');
+    expect(app).toContain('Entering Beacon Commons.');
+    expect(app).toContain('CITY');
+    expect(app).toContain('PLAYER');
+    expect(app).toContain('PEOPLE');
+    expect(landing).not.toContain('drawHarbor');
+    expect(landing).toContain('More ways to learn in the city');
   });
 
   it('ships a mirrored Builder repair board with predictions and an explicit local-only wallet boundary', () => {
-    const main = readFileSync(new URL('../src/atlas/main.ts', import.meta.url), 'utf8');
-    expect(main).toContain('BUILDER REPAIR / PAYMENT PATH');
-    expect(main).toContain('Predict each observation before running the repair');
-    expect(main).toContain('Provider ready');
-    expect(main).toContain('SIMULATED LOOKUP / NO PAYMENT');
-    expect(main).toContain('No arbitrary code runs here');
+    const app = readFileSync(new URL('../src/atlas/app/atlas-app.ts', import.meta.url), 'utf8');
+    expect(app).toContain('BUILDER REPAIR / PAYMENT PATH');
+    expect(app).toContain('Predict each observation before running the repair');
+    expect(app).toContain('Provider ready');
+    expect(app).toContain('SIMULATED LOOKUP / NO PAYMENT');
+    expect(app).toContain('No arbitrary code runs here');
   });
 
   it('ships a Living Knowledge Book and a closed-book teach-back boundary', () => {
-    const main = readFileSync(new URL('../src/atlas/main.ts', import.meta.url), 'utf8');
+    const app = readFileSync(new URL('../src/atlas/app/atlas-app.ts', import.meta.url), 'utf8');
     const knowledge = readFileSync(new URL('../shared/atlas/knowledge.ts', import.meta.url), 'utf8');
-    expect(main).toContain('LIVING KNOWLEDGE BOOK');
-    expect(main).toContain('ASK / CHECK / APPROVE / CONFIRM / UNLOCK');
-    expect(main).toContain('BOOK CLOSED / TEACH-BACK');
-    expect(main).toContain('FREE CORE / NO PRIZE ADVANTAGE');
+    expect(app).toContain('LIVING KNOWLEDGE BOOK');
+    expect(app).toContain('ASK / CHECK / APPROVE / CONFIRM / UNLOCK');
+    expect(app).toContain('BOOK CLOSED / TEACH-BACK');
+    expect(app).toContain('FREE CORE / NO PRIZE ADVANTAGE');
     expect(knowledge).toContain("availability: 'free-core'");
   });
 
   it('exposes a daily applied puzzle without fabricating reward or leaderboard outcomes', () => {
-    const main = readFileSync(new URL('../src/atlas/main.ts', import.meta.url), 'utf8');
-    expect(main).toContain('DAILY ATLAS PUZZLE');
-    expect(main).toContain('LEARN / SOLVE / VERIFY');
-    expect(main).toContain('Reward share appears only after server verification');
-    expect(main).toContain('EXPLORER LEADERBOARD');
-    expect(main).toContain('BUILDER LEADERBOARD');
-    expect(main).toContain('BOARD UNAVAILABLE');
+    const app = readFileSync(new URL('../src/atlas/app/atlas-app.ts', import.meta.url), 'utf8');
+    expect(app).toContain('DAILY ATLAS PUZZLE');
+    expect(app).toContain('LEARN / SOLVE / VERIFY');
+    expect(app).toContain('Reward share appears only after server verification');
+    expect(app).toContain('EXPLORER LEADERBOARD');
+    expect(app).toContain('BUILDER LEADERBOARD');
+    expect(app).toContain('BOARD UNAVAILABLE');
   });
 
   it('exposes the evergreen district atlas with Explorer and Builder mirrors', () => {
-    const main = readFileSync(new URL('../src/atlas/main.ts', import.meta.url), 'utf8');
+    const app = readFileSync(new URL('../src/atlas/app/atlas-app.ts', import.meta.url), 'utf8');
     const evergreen = readFileSync(new URL('../shared/atlas/adventures/evergreen.ts', import.meta.url), 'utf8');
-    expect(main).toContain('DISTRICT ATLAS');
-    expect(main).toContain('Walk the District Atlas');
+    expect(app).toContain('DISTRICT ATLAS');
+    expect(app).toContain('Walk the District Atlas');
     expect(evergreen).toContain('The Canopy That Waits');
-    expect(main).toContain('TRANSFER / TEACH-BACK');
+    expect(app).toContain('TRANSFER / TEACH-BACK');
   });
 
   it('shows the Network Beacon with an honest unavailable state before server data exists', () => {
-    const main = readFileSync(new URL('../src/atlas/main.ts', import.meta.url), 'utf8');
-    expect(main).toContain('NETWORK BEACON');
-    expect(main).toContain('No progress is being invented locally');
-    expect(main).toContain('SERVER PROJECTION');
+    const app = readFileSync(new URL('../src/atlas/app/atlas-app.ts', import.meta.url), 'utf8');
+    expect(app).toContain('NETWORK BEACON');
+    expect(app).toContain('No progress is being invented locally');
+    expect(app).toContain('SERVER PROJECTION');
   });
 
   it('shows the optional shop as locked until an owner enables a verified mainnet catalog', () => {
-    const main = readFileSync(new URL('../src/atlas/main.ts', import.meta.url), 'utf8');
-    expect(main).toContain('MAINNET EXPANSIONS');
-    expect(main).toContain('OWNER APPROVAL REQUIRED');
-    expect(main).toContain('Purchases stay disabled');
+    const app = readFileSync(new URL('../src/atlas/app/atlas-app.ts', import.meta.url), 'utf8');
+    expect(app).toContain('MAINNET EXPANSIONS');
+    expect(app).toContain('OWNER APPROVAL REQUIRED');
+    expect(app).toContain('Purchases stay disabled');
   });
 
   it('ships crawler and agent discovery files for the current product', () => {
