@@ -59,9 +59,6 @@ const DEFAULT_NAVIGATION: AtlasLivingCityNavigation = {
   bounds: { minX: -10, maxX: 10, minZ: -18, maxZ: 6 },
 };
 
-const CAMERA_AUTO_CENTER_DELAY_SECONDS = 0.65;
-const CAMERA_AUTO_CENTER_STIFFNESS = 4.2;
-const CAMERA_AUTO_CENTER_MOVEMENT_SECONDS = 0.35;
 
 export class AtlasLivingCityController {
   private readonly frameLoop: AtlasLivingCityFrameLoop;
@@ -77,7 +74,6 @@ export class AtlasLivingCityController {
   private cityTick = 0;
   private daySeed: string;
   private cameraControlActive = false;
-  private cameraFollowPending = false;
   private secondsSinceCameraInput = Number.POSITIVE_INFINITY;
   private secondsSinceMovement = 0;
   private sustainedMovementSeconds = 0;
@@ -166,7 +162,6 @@ export class AtlasLivingCityController {
       cameraHeadingRadians: normalizeAngle(this.player.cameraHeadingRadians + deltaRadians),
     };
     this.secondsSinceCameraInput = 0;
-    this.cameraFollowPending = false;
     this.sustainedMovementSeconds = 0;
   }
 
@@ -179,7 +174,6 @@ export class AtlasLivingCityController {
   recenterCamera(): void {
     if (this.destroyed) return;
     this.player = { ...this.player, cameraHeadingRadians: this.player.headingRadians };
-    this.cameraFollowPending = false;
     this.secondsSinceMovement = 0;
   }
 
@@ -272,25 +266,27 @@ export class AtlasLivingCityController {
     this.crowd.update(this.currentDistrict ?? 'beacon-commons', this.daySeed, this.snapshot.restoration, this.quality.current(), tick);
   }
 
+  /*
+   * Camera heading is the player's to set.
+   *
+   * This used to swing the camera behind the player on its own: 0.65 s after
+   * movement stopped it damped the heading back to the player's facing. Because
+   * movement is camera-relative, that meant the direction the stick pointed kept
+   * changing while the player stood still deciding what to do, which playtested
+   * as the view moving on its own and the controls not being trustworthy.
+   *
+   * Recentring is still one tap away on the Center button, which is where a
+   * player asks for it deliberately. All that is tracked here now is how long
+   * the camera has been untouched, which the HUD uses.
+   */
   private updateCameraFollow(deltaSeconds: number): void {
     if (this.cameraControlActive) {
       this.secondsSinceCameraInput = 0;
       return;
     }
     this.secondsSinceCameraInput += deltaSeconds;
-    if (this.player.moving) {
-      this.secondsSinceMovement = 0;
-      this.sustainedMovementSeconds += deltaSeconds;
-      if (this.sustainedMovementSeconds >= CAMERA_AUTO_CENTER_MOVEMENT_SECONDS) this.cameraFollowPending = true;
-      return;
-    }
-    this.sustainedMovementSeconds = 0;
-    this.secondsSinceMovement += deltaSeconds;
-    if (!this.cameraFollowPending || this.secondsSinceMovement < CAMERA_AUTO_CENTER_DELAY_SECONDS) return;
-    const blend = 1 - Math.exp(-CAMERA_AUTO_CENTER_STIFFNESS * Math.max(0, Math.min(deltaSeconds, 0.25)));
-    const cameraHeadingRadians = dampAngle(this.player.cameraHeadingRadians, this.player.headingRadians, blend);
-    this.player = { ...this.player, cameraHeadingRadians };
-    if (Math.abs(shortestAngleDelta(cameraHeadingRadians, this.player.headingRadians)) < 0.01) this.cameraFollowPending = false;
+    this.secondsSinceMovement = this.player.moving ? 0 : this.secondsSinceMovement + deltaSeconds;
+    this.sustainedMovementSeconds = this.player.moving ? this.sustainedMovementSeconds + deltaSeconds : 0;
   }
 }
 
@@ -298,13 +294,7 @@ function normalizeAngle(value: number): number {
   return Math.atan2(Math.sin(value), Math.cos(value));
 }
 
-function shortestAngleDelta(current: number, target: number): number {
-  return Math.atan2(Math.sin(target - current), Math.cos(target - current));
-}
 
-function dampAngle(current: number, target: number, amount: number): number {
-  return normalizeAngle(current + shortestAngleDelta(current, target) * amount);
-}
 
 function browserFrameLoop(): AtlasLivingCityFrameLoop {
   return {

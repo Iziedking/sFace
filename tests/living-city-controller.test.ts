@@ -75,7 +75,7 @@ describe('living city controller', () => {
     await controller.destroy();
   });
 
-  it('orbits manually and then recenters behind a moving player', async () => {
+  it('holds the camera where the player left it, and recentres only when asked', async () => {
     const fakeRenderer = renderer();
     const loop = frameLoop();
     let movement = { moveX: 127, moveY: 0 };
@@ -94,8 +94,19 @@ describe('living city controller', () => {
       callback(timestamp);
       if (frame === 5) movement = { moveX: 0, moveY: 0 };
     }
-    const player = controller.playerSnapshot();
-    expect(Math.abs(player.cameraHeadingRadians - player.headingRadians)).toBeLessThan(0.2);
+    /*
+     * This used to assert the opposite: that the camera swung itself back
+     * behind the player 0.65 s after movement stopped. Movement is
+     * camera-relative, so an unrequested swing changes what the stick means
+     * while the player stands still, and it playtested as the view moving on
+     * its own. Recentring is now a deliberate act.
+     */
+    const drifted = controller.playerSnapshot();
+    expect(Math.abs(drifted.cameraHeadingRadians - Math.PI / 2)).toBeLessThan(0.01);
+
+    controller.recenterCamera();
+    const recentred = controller.playerSnapshot();
+    expect(Math.abs(recentred.cameraHeadingRadians - recentred.headingRadians)).toBeLessThan(0.01);
     await controller.destroy();
   });
 

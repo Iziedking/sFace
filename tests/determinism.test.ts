@@ -52,12 +52,21 @@ describe('seeded rng', () => {
   });
 
   it('stays inside [0, 1)', () => {
+    /*
+     * Collect, then assert once.
+     *
+     * Twenty thousand expect() calls ran in about a second alone and blew
+     * vitest's 5 s default under a loaded worker, so the suite failed
+     * intermittently on a property that is deterministic. One assertion also
+     * names the first offending draw instead of only the first failure.
+     */
     const rng = new Rng('bounds');
-    for (let i = 0; i < 10_000; i++) {
+    const outside: string[] = [];
+    for (let i = 0; i < 10_000; i += 1) {
       const value = rng.next();
-      expect(value).toBeGreaterThanOrEqual(0);
-      expect(value).toBeLessThan(1);
+      if (value < 0 || value >= 1) outside.push(`draw ${i} = ${value}`);
     }
+    expect(outside).toEqual([]);
   });
 
   it('hashes seeds to an unsigned 32 bit integer', () => {
@@ -71,11 +80,12 @@ describe('seeded rng', () => {
 
   it('keeps int() inside its inclusive bounds', () => {
     const rng = new Rng('ints');
-    for (let i = 0; i < 5000; i++) {
+    const outside: string[] = [];
+    for (let i = 0; i < 5000; i += 1) {
       const value = rng.int(3, 7);
-      expect(value).toBeGreaterThanOrEqual(3);
-      expect(value).toBeLessThanOrEqual(7);
+      if (value < 3 || value > 7) outside.push(`draw ${i} = ${value}`);
     }
+    expect(outside).toEqual([]);
   });
 });
 

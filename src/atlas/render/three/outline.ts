@@ -1,4 +1,4 @@
-import { BackSide, Mesh, MeshBasicMaterial, type Object3D } from 'three';
+import { BackSide, Mesh, MeshBasicMaterial, Vector3, type Object3D } from 'three';
 import { ATLAS_WORLD_PALETTE } from '../../palette';
 import type { AtlasQualityTier } from '../../../../shared/atlas/city/types';
 
@@ -41,7 +41,26 @@ export function attachAtlasOutline(root: Object3D, thickness = 0.03): number {
     if (target.children.some((child) => child.userData[OUTLINE_FLAG])) continue;
     const hull = new Mesh(target.geometry, new MeshBasicMaterial({ color: ATLAS_WORLD_PALETTE.ink, side: BackSide }));
     hull.userData[OUTLINE_FLAG] = true;
-    hull.scale.setScalar(1 + thickness);
+    /*
+     * Scale about the geometry's own centre, not the object's origin.
+     *
+     * build_character.py authors every part in character space — the mouth sits
+     * at y = 1.833, not at its own origin — so a plain scale.setScalar pushes
+     * each part outward in proportion to its distance from the character's
+     * feet. A head at y = 1.9 moved about six centimetres, and playtesters
+     * reported the character "having a double effect" while walking: they were
+     * seeing the offset hull as a second body.
+     *
+     * Offsetting by centre * (1 - scale) pins the hull to the same centre, so
+     * the only growth is the part's own size times the thickness. A 20 cm head
+     * gains six millimetres of rim, which is what an outline should be.
+     */
+    target.geometry.computeBoundingBox();
+    const centre = new Vector3();
+    target.geometry.boundingBox?.getCenter(centre);
+    const scale = 1 + thickness;
+    hull.scale.setScalar(scale);
+    hull.position.copy(centre).multiplyScalar(1 - scale);
     // The hull is inside-out geometry slightly larger than the character.
     // Casting from it would draw a second, oversized shadow beside the real one.
     hull.castShadow = false;

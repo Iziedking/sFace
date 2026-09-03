@@ -55,7 +55,15 @@ describe('NIM Atlas deterministic adventure core', () => {
       ...Array.from({ length: 15 }, () => ({ ...idle(), moveX: 127 })),
     ];
     const expected = replayAtlasActions(ATLAS_CORE_FIXTURE, actions);
-    for (let repeat = 0; repeat < 1_000; repeat += 1) expect(replayAtlasActions(ATLAS_CORE_FIXTURE, actions)).toEqual(expected);
+    // toEqual on a full state object, a thousand times, is a second of deep
+    // comparison. Comparing serialisations and asserting once is the same
+    // property for a fraction of the cost.
+    const serialised = JSON.stringify(expected);
+    const drifted: number[] = [];
+    for (let repeat = 0; repeat < 1_000; repeat += 1) {
+      if (JSON.stringify(replayAtlasActions(ATLAS_CORE_FIXTURE, actions)) !== serialised) drifted.push(repeat);
+    }
+    expect(drifted).toEqual([]);
     expect(Number.isInteger(expected.player.x)).toBe(true);
     expect(expected.player.x).toBeLessThanOrEqual(ATLAS_CORE_FIXTURE.width);
   });

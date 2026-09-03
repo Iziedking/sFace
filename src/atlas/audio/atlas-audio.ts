@@ -1,7 +1,17 @@
 import type { LanternEvidenceSource, LanternPhase } from '../../../shared/atlas/adventures/last-lantern';
 
+/*
+ * The game is written in English and narrated by the browser's speech synthesis.
+ *
+ * Three call sites passed 'ja-JP' with English text, so a Japanese voice read
+ * English aloud and playtesters reported hearing another language. The locale
+ * now defaults here rather than being repeated at every call site, because a
+ * locale is a property of the script, not of the sentence being spoken.
+ */
+export const ATLAS_NARRATION_LOCALE = 'en-US';
+
 export type AtlasAudioBus = 'ambience' | 'events' | 'interface' | 'voice';
-export type AtlasAudioCue = 'harbor-waiting-ambience' | 'harbor-restored-ambience' | 'payment-pending' | 'payment-confirmed' | 'beacon-confirmation' | 'city-footstep' | 'city-interaction';
+export type AtlasAudioCue = 'atlas-theme' | 'city-ambience' | 'harbor-waiting-ambience' | 'harbor-restored-ambience' | 'payment-pending' | 'payment-confirmed' | 'beacon-confirmation' | 'city-footstep' | 'city-interaction';
 
 export interface AtlasAudioBackend {
   unlock(): void;
@@ -52,18 +62,44 @@ export class AtlasAudio {
     this.backend.setVolume(bus, value);
   }
 
+  /*
+   * The music bed and the city's environment layer.
+   *
+   * Both loop until something asks them to stop, and both are safe to call
+   * repeatedly: playCue restarts the source rather than stacking a second copy.
+   * Nothing here can run before the unlock gesture, which is what browsers
+   * require and also what keeps a 1.4 MB download off first paint.
+   */
+  playTheme(): void {
+    if (!this.unlocked) return;
+    this.playCue('atlas-theme', 'ambience', true);
+  }
+
+  stopTheme(): void {
+    this.stopCue('atlas-theme');
+  }
+
+  playCityAmbience(): void {
+    if (!this.unlocked) return;
+    this.playCue('city-ambience', 'ambience', true);
+  }
+
+  stopCityAmbience(): void {
+    this.stopCue('city-ambience');
+  }
+
   playWorldCue(cue: 'city-footstep' | 'city-interaction'): void {
     if (!this.unlocked) return;
     this.playCue(cue, cue === 'city-footstep' ? 'interface' : 'events', false);
   }
 
-  narrate(text: string, locale: string): void {
+  narrate(text: string, locale: string = ATLAS_NARRATION_LOCALE): void {
     if (!this.unlocked || !text.trim()) return;
     try { this.backend.narrate?.(text, locale); } catch { /* Voice is optional and never blocks play. */ }
   }
 
   destroy(): void {
-    for (const cue of ['harbor-waiting-ambience', 'payment-pending', 'harbor-restored-ambience'] as const) this.stopCue(cue);
+    for (const cue of ['atlas-theme', 'city-ambience', 'harbor-waiting-ambience', 'payment-pending', 'harbor-restored-ambience'] as const) this.stopCue(cue);
     this.backend.destroy();
     this.current = null;
     this.unlocked = false;
@@ -109,9 +145,31 @@ export class AtlasAudio {
   }
 }
 
+/*
+ * Cues backed by a real recording.
+ *
+ * Everything used to be a synthesised oscillator ramp, including the three ogg
+ * files that shipped in public/atlas/audio and were never loaded, so a
+ * playtester reported no music on the start screen and no environment sound
+ * while playing. A cue listed here plays its file; anything else still gets a
+ * tone, which is right for short interface feedback and wrong for a music bed.
+ *
+ * Files load lazily on first play, after the unlock gesture, so none of this is
+ * on the path to first paint. theme.mp3 is 1.4 MB and would be if it were not.
+ */
+const SAMPLES: Partial<Record<AtlasAudioCue, string>> = {
+  'atlas-theme': '/audio/theme.mp3',
+  'city-ambience': '/atlas/audio/harbor-waiting-ambience.ogg',
+  'harbor-waiting-ambience': '/atlas/audio/harbor-waiting-ambience.ogg',
+  'harbor-restored-ambience': '/atlas/audio/harbor-restored-ambience.ogg',
+  'beacon-confirmation': '/atlas/audio/beacon-confirmation.ogg',
+};
+
 interface ToneRecipe { from: number; to: number; duration: number; }
 
 const TONES: Record<AtlasAudioCue, ToneRecipe> = {
+  'atlas-theme': { from: 196, to: 262, duration: 1.1 },
+  'city-ambience': { from: 146, to: 174, duration: 0.9 },
   'harbor-waiting-ambience': { from: 164, to: 196, duration: 0.7 },
   'harbor-restored-ambience': { from: 220, to: 440, duration: 0.9 },
   'payment-pending': { from: 196, to: 180, duration: 0.24 },
@@ -126,6 +184,63 @@ function createWebAudioBackend(): AtlasAudioBackend {
   const buses = new Map<AtlasAudioBus, GainNode>();
   const volumes: Record<AtlasAudioBus, number> = { ambience: 0.25, events: 0.7, interface: 0.5, voice: 0.85 };
 
+  /*
+   * Decoded samples, and the sources currently playing them.
+   *
+   * Kept per cue so stop() can silence a loop that has no natural end: the
+   * music bed and the city layer both run until the screen changes.
+   */
+  const decoded = new Map<AtlasAudioCue, AudioBuffer>();
+  const playing = new Map<AtlasAudioCue, AudioBufferSourceNode>();
+  const loading = new Set<AtlasAudioCue>();
+
+  function startSample(cue: AtlasAudioCue, buffer: AudioBuffer, bus: AtlasAudioBus, loop: boolean): void {
+    if (!context) return;
+    const output = buses.get(bus);
+    if (!output) return;
+    /*
+     * Asking for a loop that is already running is a no-op.
+     *
+     * Screens repaint often — every panel screen calls screenPanel on each
+     * render — so restarting the source here would make the music stutter back
+     * to bar one whenever anything on screen changed. A one-shot still
+     * retriggers, which is what a one-shot is for.
+     */
+    if (loop && playing.has(cue)) return;
+    playing.get(cue)?.stop();
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.loop = loop;
+    source.connect(output);
+    source.onended = () => { if (playing.get(cue) === source) playing.delete(cue); };
+    source.start();
+    playing.set(cue, source);
+  }
+
+  function playSampled(cue: AtlasAudioCue, url: string, bus: AtlasAudioBus, loop: boolean): void {
+    const buffer = decoded.get(cue);
+    if (buffer) {
+      startSample(cue, buffer, bus, loop);
+      return;
+    }
+    if (loading.has(cue)) return;
+    loading.add(cue);
+    void fetch(url)
+      .then((response) => (response.ok ? response.arrayBuffer() : Promise.reject(new Error(`${response.status}`))))
+      .then((bytes) => context?.decodeAudioData(bytes))
+      .then((buffered) => {
+        loading.delete(cue);
+        if (!buffered) return;
+        decoded.set(cue, buffered);
+        startSample(cue, buffered, bus, loop);
+      })
+      .catch(() => {
+        // A missing or undecodable file must never take the game down; the cue
+        // simply stays silent and the visual cue still fires.
+        loading.delete(cue);
+      });
+  }
+
   return {
     unlock: () => {
       if (context) return;
@@ -139,10 +254,15 @@ function createWebAudioBackend(): AtlasAudioBackend {
         buses.set(bus, gain);
       }
     },
-    play: (cue, bus) => {
+    play: (cue, bus, loop) => {
       if (!context) return;
       const output = buses.get(bus);
       if (!output) return;
+      const sample = SAMPLES[cue];
+      if (sample) {
+        playSampled(cue, sample, bus, loop);
+        return;
+      }
       const now = context.currentTime;
       const recipe = TONES[cue];
       const oscillator = context.createOscillator();
@@ -157,7 +277,12 @@ function createWebAudioBackend(): AtlasAudioBackend {
       oscillator.start(now);
       oscillator.stop(now + recipe.duration + 0.02);
     },
-    stop: () => undefined,
+    stop: (cue) => {
+      const source = playing.get(cue);
+      if (!source) return;
+      playing.delete(cue);
+      source.stop();
+    },
     setVolume: (bus, value) => {
       volumes[bus] = value;
       const gain = buses.get(bus);
@@ -178,6 +303,9 @@ function createWebAudioBackend(): AtlasAudioBackend {
     },
     visualCue: () => undefined,
     destroy: () => {
+      for (const source of playing.values()) source.stop();
+      playing.clear();
+      decoded.clear();
       globalThis.speechSynthesis?.cancel();
       if (context) void context.close().catch(() => undefined);
       context = null;

@@ -1,4 +1,4 @@
-import { BackSide, BoxGeometry, Group, Mesh, MeshStandardMaterial } from 'three';
+import { BackSide, BoxGeometry, Group, Mesh, MeshStandardMaterial, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { attachAtlasOutline, outlinesEnabledForTier } from '../src/atlas/render/three/outline';
 import { createBlobShadow } from '../src/atlas/render/three/shadows';
@@ -62,5 +62,46 @@ describe('Atlas ink outlines', () => {
     const hull = (root.children[0] as Mesh).children[0] as Mesh;
     expect(hull.castShadow).toBe(false);
     expect(hull.receiveShadow).toBe(false);
+  });
+});
+
+describe('Atlas outlines do not ghost the character', () => {
+  /*
+   * The regression a playtester found as "the character is having a double
+   * effect" while walking.
+   *
+   * Character parts are authored in character space, so a part's geometry sits
+   * far from its object origin. Scaling the hull about that origin translated
+   * it by a fraction of that distance and drew a second, offset body.
+   */
+  function partAuthoredInCharacterSpace(): Group {
+    const root = new Group();
+    // A head-sized box centred 1.9 m above the origin, as build_character.py emits.
+    const geometry = new BoxGeometry(0.2, 0.2, 0.2);
+    geometry.translate(0, 1.9, 0);
+    root.add(new Mesh(geometry, new MeshStandardMaterial()));
+    return root;
+  }
+
+  it('keeps the hull on top of the part it outlines', () => {
+    const root = partAuthoredInCharacterSpace();
+    attachAtlasOutline(root);
+    const source = root.children[0] as Mesh;
+    const hull = source.children[0] as Mesh;
+
+    source.updateMatrixWorld(true);
+    const sourceCentre = new Vector3(0, 1.9, 0);
+    const hullCentre = sourceCentre.clone().applyMatrix4(hull.matrix);
+    // A plain setScalar(1.03) moved this by 1.9 * 0.03 = 57 mm. The rim of a
+    // 20 cm part should be a few millimetres, so anything near a centimetre is
+    // the bug returning.
+    expect(hullCentre.distanceTo(sourceCentre)).toBeLessThan(0.001);
+  });
+
+  it('still grows the hull enough to read as a rim', () => {
+    const root = partAuthoredInCharacterSpace();
+    attachAtlasOutline(root);
+    const hull = (root.children[0] as Mesh).children[0] as Mesh;
+    expect(hull.scale.x).toBeGreaterThan(1);
   });
 });

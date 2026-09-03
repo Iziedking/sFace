@@ -71,3 +71,73 @@
   .atlas-pill, .atlas-round { transition: none; }
   .atlas-pill:active, .atlas-round:active { transform: none; }
 }
+
+/*
+ * First-run tutorial.
+ *
+ * Dims everything except the one control the current step teaches, so the
+ * screen has a single affordance and cannot be misread.
+ *
+ * It dims siblings along the path to the spotlight rather than laying a scrim
+ * over the HUD. A scrim cannot work here: .atlas-controls carries z-index 2 and
+ * therefore opens a stacking context, so no z-index on the joystick inside it
+ * can lift it above an overlay. Opacity on an ancestor cannot be undone by a
+ * descendant either, so the dimming has to skip the ancestors that lead to the
+ * spotlight and dim their siblings instead.
+ *
+ * The world behind is darkened with a filter on the city stage, which needs no
+ * stacking cooperation from anything.
+ */
+.atlas-play-shell.is-tutorial > *:not(.atlas-spotlight-path):not(.atlas-tutorial-prompt),
+.atlas-play-shell.is-tutorial .atlas-spotlight-path > *:not(.atlas-spotlight-path):not(.atlas-spotlight) {
+  opacity: .26;
+  pointer-events: none;
+  transition: opacity 220ms ease;
+}
+
+#atlas-city-stage.is-tutorial-dimmed { filter: brightness(.48) saturate(.8); }
+
+.atlas-tutorial-prompt {
+  position: fixed;
+  left: 50%;
+  top: 16%;
+  translate: -50% 0;
+  z-index: 6;
+  width: min(86vw, 360px);
+  padding: 16px 18px;
+  border-radius: var(--atlas-radius);
+  background: var(--atlas-paper);
+  backdrop-filter: var(--atlas-glass-blur);
+  box-shadow: var(--atlas-glow);
+  color: var(--atlas-ink);
+  font: 700 17px/1.35 system-ui, sans-serif;
+  text-align: center;
+  pointer-events: none;
+  animation: atlas-tutorial-fade 220ms ease both;
+}
+
+.atlas-tutorial-prompt small {
+  display: block;
+  margin-top: 8px;
+  color: var(--atlas-muted);
+  font: 700 12px/1.3 system-ui, sans-serif;
+  letter-spacing: .08em;
+}
+
+/* The real control, at full strength, still carrying its own handlers. */
+.atlas-spotlight {
+  opacity: 1;
+  pointer-events: auto;
+  animation: atlas-spotlight-pulse 1.4s ease-in-out infinite alternate;
+}
+
+@keyframes atlas-tutorial-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes atlas-spotlight-pulse {
+  from { filter: drop-shadow(0 0 0 rgb(var(--atlas-signal-rgb) / .9)); }
+  to { filter: drop-shadow(0 0 16px rgb(var(--atlas-signal-rgb) / .95)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .atlas-tutorial-prompt { animation: none; }
+  .atlas-spotlight { animation: none; outline: 3px solid var(--atlas-signal); outline-offset: 4px; }
+}

@@ -4,6 +4,7 @@ import { AtlasCameraLookController, AtlasInputController, installAtlasKeyboard, 
 import { createAtlasProgressStore } from '../progress';
 import { AtlasRenderer } from '../render/renderer';
 import { createIdleOrbit } from '../render/three/orbit';
+import { ATLAS_GUIDE_REACH_METRES, createAtlasTutorial, type AtlasTutorialDirector } from '../tutorial';
 import { ATLAS_PROLOGUE } from '../../../shared/atlas/prologue';
 import type { AtlasRole } from '../../../shared/atlas/types';
 import { LAST_LANTERN, createLastLanternState, replayLastLantern, type LastLanternAction, type LastLanternState } from '../../../shared/atlas/adventures/last-lantern';
@@ -94,6 +95,8 @@ export class AtlasApp {
   private cityLoadState: 'loading' | 'ready' | 'unavailable' = 'loading';
   private lastCityFootstepAt = 0;
   private beaconTravelNotice = '';
+  private tutorial: AtlasTutorialDirector = createAtlasTutorial({ completed: readTutorialDone() });
+  private tutorialOrigin: { x: number; z: number } | null = null;
   private cityQuestStep: 'meet-guide' | 'guide-met' = 'meet-guide';
   private payHarborBuilderStation = 0;
 
@@ -109,6 +112,16 @@ export class AtlasApp {
 
   boot(): void {
     if ('serviceWorker' in navigator) void navigator.serviceWorker.register('/service-worker.js', { scope: '/' }).catch(() => undefined);
+    /*
+     * Browsers refuse to start audio before a gesture, so the theme waits for
+     * the first touch anywhere rather than trying at load and failing silently.
+     * Playtested as "no background sound on start": nothing ever unlocked audio
+     * outside the two screens that called unlock() themselves.
+     */
+    window.addEventListener('pointerdown', () => {
+      this.audio.unlock();
+      if (this.screen !== 'beacon-commons' && this.screen !== 'pay-harbor') this.audio.playTheme();
+    }, { once: true });
     this.canvas.hidden = true;
     this.renderWelcome();
     void this.ensureLivingCity().then(() => {
@@ -316,6 +329,8 @@ export class AtlasApp {
     // Every screen but the welcome one wants the camera following the player,
     // so stopping the drift here means no screen has to remember to.
     this.orbitStartedAt = null;
+    this.audio.stopCityAmbience();
+    this.audio.playTheme();
     return element('section', `atlas-panel ${className}`.trim());
   }
 
@@ -420,7 +435,7 @@ export class AtlasApp {
   private openBeaconCommons = (): void => {
     this.canvas.hidden = true;
     this.audio.unlock();
-    this.audio.narrate('Beacon Commons is a living city. Walk the pink route, meet the Nimiq team, and learn what each working district does.', 'ja-JP');
+    this.audio.narrate('Beacon Commons is a living city. Walk the pink route, meet the Nimiq team, and learn what each working district does.');
     this.screen = 'beacon-commons';
     this.beaconTravelNotice = '';
     this.cityQuestStep = 'meet-guide';
@@ -490,7 +505,11 @@ export class AtlasApp {
     const cameraCenter = actionButton('Center', () => this.livingCity?.recenterCamera(), 'Center the camera behind the player');
     cameraCenter.className = 'atlas-camera-center';
     shell.append(topbar, this.toolkit.element, this.createBeaconMap(), this.createCityWaypoint(), this.createCameraLookZone(), cameraCenter, controls, hint);
+    this.applyTutorialStep(shell, movement, interact);
     this.ui.append(shell);
+    this.audio.unlock();
+    this.audio.stopTheme();
+    this.audio.playCityAmbience();
     this.livingCity?.resize(window.innerWidth, window.innerHeight, 1);
   }
 
@@ -501,14 +520,14 @@ export class AtlasApp {
       this.renderBeaconCommons();
       return;
     }
-    if (!this.isNearBeaconAnchor(player, 'mission-guide', 2.2)) {
+    if (!this.isNearBeaconAnchor(player, 'mission-guide', ATLAS_GUIDE_REACH_METRES)) {
       this.toolkit?.setDetail('Move closer to the pink guide beside the market, then talk.');
       return;
     }
     this.cityQuestStep = 'guide-met';
     this.beaconTravelNotice = '';
     this.audio.playWorldCue('city-interaction');
-    this.audio.narrate('Welcome to Beacon Commons. Follow the pink route to learn how Nimiq connects people and builders.', 'ja-JP');
+    this.audio.narrate('Welcome to Beacon Commons. Follow the pink route to learn how Nimiq connects people and builders.');
     this.renderBeaconCommons();
   };
 
@@ -631,7 +650,7 @@ export class AtlasApp {
       this.screen = 'pay-harbor';
       this.presentPayHarborWorld();
       this.audio.playWorldCue('city-interaction');
-      this.audio.narrate('You have reached Pay Harbor. Find Mara, inspect the lantern, and verify every payment field before the city changes.', 'ja-JP');
+      this.audio.narrate('You have reached Pay Harbor. Find Mara, inspect the lantern, and verify every payment field before the city changes.');
       this.renderPayHarbor();
     } catch {
       this.toolkit?.setDetail('Pay Harbor could not open. Beacon Commons is still safe; try the gate again when the route is available.');
@@ -679,6 +698,9 @@ export class AtlasApp {
     if (paymentReview) shell.append(paymentReview);
     shell.append(this.createBeaconMap(), this.createCityWaypoint(), this.createCameraLookZone(), cameraCenter, controls, hint);
     this.ui.append(shell);
+    this.audio.unlock();
+    this.audio.stopTheme();
+    this.audio.playCityAmbience();
     this.livingCity?.resize(window.innerWidth, window.innerHeight, 1);
   }
 
@@ -824,7 +846,10 @@ export class AtlasApp {
         const action = this.input.sample();
         return { moveX: action.moveX, moveY: action.moveY };
       },
-      onFrame: ({ player }) => this.updateBeaconMap(player),
+      onFrame: ({ player }) => {
+        this.updateBeaconMap(player);
+        this.observeTutorial(player);
+      },
       /*
        * Derived from the current screen, not from a flag each screen has to
        * remember to clear.
@@ -1527,6 +1552,61 @@ export class AtlasApp {
     this.cityWaypointLabel.dataset.direction = guidance.direction;
   }
 
+  /*
+   * Feeds the first-run sequence from the frame that already runs.
+   *
+   * Distance walked is measured from where the run started rather than summed
+   * per frame, so nudging the stick back and forth cannot satisfy the step that
+   * exists to prove the player found the joystick.
+   */
+  private observeTutorial(player: AtlasCityPlayerState | undefined): void {
+    if (!player || this.tutorial.isComplete()) return;
+    if (!this.tutorialOrigin) this.tutorialOrigin = { x: player.x, z: player.z };
+    const guide = this.beaconScene?.anchors.find((anchor) => anchor.id === 'mission-guide');
+    const changed = this.tutorial.observe({
+      metresWalked: Math.hypot(player.x - this.tutorialOrigin.x, player.z - this.tutorialOrigin.z),
+      metresToGuide: guide ? Math.hypot(guide.position[0] - player.x, guide.position[2] - player.z) : Number.POSITIVE_INFINITY,
+      hasTalked: this.cityQuestStep !== 'meet-guide',
+    });
+    if (!changed) return;
+    if (this.tutorial.isComplete()) writeTutorialDone();
+    if (this.screen === 'beacon-commons') this.renderBeaconCommons();
+  }
+
+  /*
+   * Dims the play screen down to the one control the current step teaches.
+   *
+   * The scrim is a sibling that swallows every tap; the spotlighted control is
+   * lifted above it and keeps its own handlers, so the player performs the real
+   * action rather than a rehearsal of it. There is no close button by design —
+   * a tutorial a confused player can dismiss by accident is not a tutorial.
+   */
+  private applyTutorialStep(shell: HTMLElement, joystick: HTMLElement, interact: HTMLElement): void {
+    const step = this.tutorial.step();
+    this.livingCityHost?.classList.toggle('is-tutorial-dimmed', step !== null);
+    if (!step) return;
+    shell.classList.add('is-tutorial');
+    const target = step.spotlight === 'joystick' ? joystick : interact;
+    target.classList.add('atlas-spotlight');
+    /*
+     * Mark the ancestors between the spotlight and the shell so the dimming
+     * rule can skip them. Without this the control is dimmed by its own parent,
+     * and opacity on a parent cannot be undone by a child.
+     */
+    for (let node = target.parentElement; node && node !== shell; node = node.parentElement) {
+      node.classList.add('atlas-spotlight-path');
+    }
+    const prompt = element('div', 'atlas-tutorial-prompt');
+    prompt.setAttribute('role', 'status');
+    prompt.append(element('span', '', step.prompt), element('small', '', `STEP ${this.tutorialStepNumber()} OF 3`));
+    shell.append(prompt);
+  }
+
+  private tutorialStepNumber(): number {
+    const step = this.tutorial.step();
+    return step === null ? 3 : ['walk', 'approach', 'talk'].indexOf(step.id) + 1;
+  }
+
   private isNearBeaconAnchor(player: { readonly x: number; readonly z: number }, anchorId: string, fallbackRadius: number): boolean {
     const anchor = this.beaconScene?.anchors.find((candidate) => candidate.id === anchorId);
     if (!anchor) return false;
@@ -1561,6 +1641,32 @@ function livingCityNavigation(scene: AtlasCitySceneV1): AtlasLivingCityNavigatio
     },
     colliders: scene.colliders,
   };
+}
+
+/*
+ * Whether the first run has already happened.
+ *
+ * Kept in its own key rather than in the progress store so that clearing game
+ * progress does not force an experienced player back through the tutorial, and
+ * so a storage failure degrades to showing it again rather than to a crash.
+ */
+const TUTORIAL_DONE_KEY = 'sface.atlas.tutorial.v1';
+
+function readTutorialDone(): boolean {
+  try {
+    return globalThis.localStorage?.getItem(TUTORIAL_DONE_KEY) === 'done';
+  } catch {
+    return false;
+  }
+}
+
+function writeTutorialDone(): void {
+  try {
+    globalThis.localStorage?.setItem(TUTORIAL_DONE_KEY, 'done');
+  } catch {
+    // A player in private browsing sees the tutorial again. That is a far
+    // better failure than refusing to play.
+  }
 }
 
 function element<K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = ''): HTMLElementTagNameMap[K] {
