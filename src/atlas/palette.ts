@@ -53,6 +53,11 @@ export const ATLAS_WORLD_PALETTE = Object.freeze({
   stationWarm: 0xff9f1c,
   stationDim: 0x4a5280,
   stationGold: 0xffd166,
+
+  // The two paths, worn by the player's ground ring so the crowd cannot be
+  // mistaken for them. Neither is the guide's pink, which the copy points at.
+  explorerPath: 0xffd166,
+  builderPath: 0xa78bfa,
 });
 
 export type AtlasWorldColour = keyof typeof ATLAS_WORLD_PALETTE;

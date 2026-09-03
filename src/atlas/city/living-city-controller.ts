@@ -21,6 +21,7 @@ export interface AtlasLivingCityRenderer {
   render(snapshot: AtlasLivingWorldSnapshot, crowd?: readonly AtlasCitizenPresentation[], player?: AtlasCityPlayerState, interaction?: AtlasCityInteractionPresentation): void;
   resize(width: number, height: number, resolution: number): void;
   setQuality?(tier: 'low' | 'balanced' | 'high'): void;
+  setPlayerRole?(role: 'explorer' | 'builder'): void;
   stats?(): { readonly drawCalls: number; readonly triangles: number };
   destroy(): Promise<void>;
 }
@@ -67,6 +68,7 @@ export class AtlasLivingCityController {
   private frameHandle: number | null = null;
   private currentDistrict: string | null = null;
   private destroyed = false;
+  private playerRole: 'explorer' | 'builder' = 'explorer';
   private snapshot: AtlasLivingWorldSnapshot | null = null;
   private lastFrameTimestamp: number | null = null;
   private navigation: AtlasLivingCityNavigation;
@@ -99,6 +101,7 @@ export class AtlasLivingCityController {
     if (this.destroyed) throw new Error('Atlas living city controller is destroyed.');
     const previous = this.currentDistrict;
     await this.options.renderer.loadDistrict(districtId);
+    this.options.renderer.setPlayerRole?.(this.playerRole);
     if (previous && previous !== districtId) await this.options.renderer.releaseDistrict(previous);
     this.currentDistrict = districtId;
   }
@@ -142,6 +145,16 @@ export class AtlasLivingCityController {
   setInteractionPresentation(presentation: AtlasCityInteractionPresentation | undefined): void {
     if (this.destroyed) return;
     this.interactionPresentation = presentation;
+  }
+
+  /*
+   * Forwarded straight to the renderer, which marks the player's ground ring.
+   * Held here too so a district loaded later still gets it.
+   */
+  setPlayerRole(role: 'explorer' | 'builder'): void {
+    if (this.destroyed) return;
+    this.playerRole = role;
+    this.options.renderer.setPlayerRole?.(role);
   }
 
   setNavigation(navigation: AtlasLivingCityNavigation): void {

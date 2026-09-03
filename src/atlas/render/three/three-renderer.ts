@@ -1,6 +1,7 @@
 import { BoxGeometry, Color, CylinderGeometry, DoubleSide, PCFSoftShadowMap, Fog, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PerspectiveCamera, PointLight, Scene, SphereGeometry, TorusGeometry, WebGLRenderer } from 'three';
 import type { AtlasLivingWorldSnapshot } from '../../../../shared/atlas/living-world';
 import type { AtlasQualityTier } from '../../../../shared/atlas/city/types';
+import { QUALITY_PROFILES } from '../../../../shared/atlas/city/quality';
 import { ATLAS_CITIZEN_WARDROBE, ATLAS_WORLD_PALETTE } from '../../palette';
 import type { AtlasCitizenPresentation } from '../../../../shared/atlas/city/crowd';
 import { BEACON_COMMONS_CROWD } from '../../../../shared/atlas/city/crowd';
@@ -14,7 +15,7 @@ import { createAtlasLighting, type AtlasLighting } from './lighting';
 import { atlasHorizonColour, createAtlasSkyTexture } from './sky';
 import { toAtlasToonMaterial } from './toon';
 import { createBlobShadow, shadowPlanForTier } from './shadows';
-import { attachAtlasOutline, outlinesEnabledForTier } from './outline';
+import { attachAtlasOutline, outlinesEnabledForTier, NO_OUTLINE_FLAG } from './outline';
 import {
   atlasCitizenAnimationState,
   atlasCitizenDetailLevel,
@@ -28,6 +29,9 @@ import type { AtlasGltfHandle } from './gltf-loader';
 // Keep the authored character proportions intact while giving the city more breathing room on mobile.
 const PLAYER_WORLD_SCALE = 0.46;
 const NPC_WORLD_SCALE = 0.38;
+// Heavier than the default: a character is what the eye tracks, and a hairline
+// rim disappears against a busy street at phone size.
+const CHARACTER_OUTLINE_THICKNESS = 0.055;
 
 interface AtlasNpcSlot {
   readonly id: string;
@@ -47,6 +51,7 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
   private canvas: HTMLCanvasElement | null = null;
   private loadedDistrict: string | null = null;
   private qualityTier: AtlasQualityTier = 'balanced';
+  private maxPixelRatio = 2;
   private cameraRig: AtlasCameraRig | null = null;
   private lighting: AtlasLighting | null = null;
   private readonly blobShadows: Mesh[] = [];
@@ -57,6 +62,8 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
   private districtScene: AtlasCitySceneV1 | null = null;
   private routedPaths = new Map<string, AtlasCitySceneV1['paths'][number]>();
   private playerRoot: Object3D | null = null;
+  private playerRing: Mesh | null = null;
+  private playerRole: 'explorer' | 'builder' = 'explorer';
   private playerAnimator: AtlasCharacterAnimator | null = null;
   private relayRoot: Group | null = null;
   private relayParent: Object3D | null = null;
@@ -84,7 +91,7 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
       antialias: false,
       powerPreference: 'high-performance',
     });
-    renderer.setPixelRatio(clampResolution(options.maxPixelRatio ?? options.resolution));
+    this.maxPixelRatio = clampResolution(options.maxPixelRatio ?? options.resolution ?? 2);
     renderer.setSize(clampDimension(host.clientWidth), clampDimension(host.clientHeight), false);
     renderer.setClearColor(new Color(ATLAS_WORLD_PALETTE.sky), 1);
     renderer.shadowMap.type = PCFSoftShadowMap;
@@ -101,6 +108,7 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
     const lighting = createAtlasLighting();
     scene.add(lighting.hemisphere);
     scene.add(lighting.sun);
+    scene.add(lighting.rim);
 
     const camera = new PerspectiveCamera(50, aspect(host.clientWidth, host.clientHeight), 0.1, 200);
     const cameraRig = new AtlasCameraRig(camera);
@@ -139,8 +147,9 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
         const player = await this.gltfCache.acquire(playerModel);
         acquired.push(player);
         this.prepareRuntimeMaterials(player.root);
-        if (outlinesEnabledForTier(this.qualityTier)) attachAtlasOutline(player.root);
+        if (outlinesEnabledForTier(this.qualityTier)) attachAtlasOutline(player.root, CHARACTER_OUTLINE_THICKNESS);
         this.attachContactShadow(player.root);
+        this.attachPlayerRing(player.root);
         this.applyInstanceTransform(player.root, sceneDefinition.instances.find((instance) => instance.modelId === 'atlas-walker-player'));
         player.root.scale.multiplyScalar(PLAYER_WORLD_SCALE);
         this.playerRoot = player.root;
@@ -166,7 +175,7 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
             root.visible = false;
             root.scale.setScalar(NPC_WORLD_SCALE * appearance.scale);
             root.position.set(anchor.position[0], anchor.position[1], anchor.position[2]);
-            if (outlinesEnabledForTier(this.qualityTier)) attachAtlasOutline(root);
+            if (outlinesEnabledForTier(this.qualityTier)) attachAtlasOutline(root, CHARACTER_OUTLINE_THICKNESS);
             this.attachContactShadow(root);
             this.scene!.add(root);
           }
@@ -316,8 +325,25 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
     return this.renderer;
   }
 
+  /*
+   * Render scale is a fraction of the device's pixel ratio, not a pixel ratio.
+   *
+   * This used to return 0.7, 0.85 or 1 straight into setPixelRatio, which sets
+   * the backing store to that many pixels per CSS pixel. On a phone reporting
+   * devicePixelRatio 3 the city was drawn at 0.85/3 — about 28% of native — and
+   * upscaled to fill the screen. A playtester reported it as "color is blurry",
+   * and the screenshots show softened edges on every surface.
+   *
+   * The scales now come from QUALITY_PROFILES rather than being repeated here,
+   * so the governor's idea of a tier and the renderer's cannot drift, and the
+   * device ratio is capped so a 3x phone does not pay for pixels nobody can
+   * see. If the result is too expensive, render-scale is the last step in
+   * QUALITY_REDUCTION_ORDER and the governor will reach for it.
+   */
   private pixelRatioForTier(): number {
-    return this.qualityTier === 'low' ? 0.7 : this.qualityTier === 'balanced' ? 0.85 : 1;
+    const device = typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1;
+    const scale = QUALITY_PROFILES[this.qualityTier].renderScale;
+    return Math.max(1, Math.min(device, this.maxPixelRatio) * scale);
   }
 
   private optionsAssetManager(): Pick<NonNullable<AtlasRendererOptions['assetManager']>, 'loadBytes'> {
@@ -340,6 +366,40 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
    * over, and every cheaper tier shows it because contact matters more than
    * accuracy.
    */
+  /*
+   * A ring on the ground under the player.
+   *
+   * Every citizen wears the same model, and the player is only fractionally
+   * larger, so a playtester could not tell which figure was theirs. Every game
+   * in the reference reel marks the player the same way. The colour is the
+   * chosen path's, which also keeps reminding the player which one they took.
+   */
+  private attachPlayerRing(root: Object3D): void {
+    const ring = new Mesh(
+      new TorusGeometry(0.52, 0.055, 8, 28),
+      new MeshBasicMaterial({ color: ATLAS_WORLD_PALETTE.explorerPath, transparent: true, opacity: 0.9, depthWrite: false }),
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.02;
+    ring.renderOrder = -1;
+    ring.userData[NO_OUTLINE_FLAG] = true;
+    this.playerRing = ring;
+    root.add(ring);
+    this.applyPlayerRole(this.playerRole);
+  }
+
+  setPlayerRole(role: 'explorer' | 'builder'): void {
+    this.playerRole = role;
+    this.applyPlayerRole(role);
+  }
+
+  private applyPlayerRole(role: 'explorer' | 'builder' | undefined): void {
+    if (!this.playerRing || !role) return;
+    const material = this.playerRing.material as MeshBasicMaterial;
+    const colour = role === 'builder' ? ATLAS_WORLD_PALETTE.builderPath : ATLAS_WORLD_PALETTE.explorerPath;
+    if (material.color.getHex() !== colour) material.color.setHex(colour);
+  }
+
   private attachContactShadow(root: Object3D): void {
     const blob = createBlobShadow();
     blob.visible = shadowPlanForTier(this.qualityTier).blobs;

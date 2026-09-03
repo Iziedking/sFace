@@ -35,6 +35,16 @@ export interface AtlasSceneRenderer {
   render(snapshot: AtlasLivingWorldSnapshot, crowd?: readonly AtlasCitizenPresentation[], player?: AtlasCityPlayerState, interaction?: AtlasCityInteractionPresentation): void;
   resize(width: number, height: number, resolution: number): void;
   setQuality?(tier: AtlasQualityTier): void;
+  /*
+   * Which path the player chose.
+   *
+   * Every citizen shares the player's model and a playtester could not tell
+   * which figure was theirs, so the renderer marks the player with a ground
+   * ring in their path's colour. Separate from the interaction presentation
+   * because identity is not interaction: Beacon Commons deliberately clears
+   * that presentation, and the player is still the player there.
+   */
+  setPlayerRole?(role: 'explorer' | 'builder'): void;
   stats?(): AtlasRendererStats;
   releaseDistrict(districtId: string): Promise<void>;
   destroy(): Promise<void>;
