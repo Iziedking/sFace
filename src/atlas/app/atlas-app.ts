@@ -7,6 +7,7 @@ import { createIdleOrbit } from '../render/three/orbit';
 import { ATLAS_GUIDE_REACH_METRES, createAtlasTutorial, type AtlasTutorialDirector } from '../tutorial';
 import { AtlasConversationController, type AtlasConversationDisplay } from '../conversations/conversation-controller';
 import { dialogueSheet } from '../ui/shell/dialogue';
+import { isPortraitNow, rotateGate, shouldGateForLandscape, watchOrientation } from '../ui/shell/rotate-gate';
 import { ATLAS_PROLOGUE } from '../../../shared/atlas/prologue';
 import type { AtlasRole } from '../../../shared/atlas/types';
 import { LAST_LANTERN, createLastLanternState, replayLastLantern, type LastLanternAction, type LastLanternState } from '../../../shared/atlas/adventures/last-lantern';
@@ -107,6 +108,7 @@ export class AtlasApp {
    */
   private readonly conversations = new AtlasConversationController();
   private maraConversation: AtlasConversationDisplay | null = null;
+  private stopWatchingOrientation: (() => void) | null = null;
   private cityQuestStep: 'meet-guide' | 'guide-met' = 'meet-guide';
   private payHarborBuilderStation = 0;
 
@@ -461,6 +463,7 @@ export class AtlasApp {
 
   private renderBeaconCommons(): void {
     this.ui.replaceChildren();
+    if (this.gateForLandscape()) return;
     const citizens = this.livingCity?.crowdSnapshot() ?? [];
     const visibleCitizens = citizens.filter((citizen) => citizen.visible).length;
     const activeCitizens = citizens.filter((citizen) => citizen.active).length;
@@ -669,6 +672,7 @@ export class AtlasApp {
 
   private renderPayHarbor(): void {
     this.ui.replaceChildren();
+    if (this.gateForLandscape()) return;
     const mission = projectPayHarborPhysicalMission(this.lanternState, this.payHarborBuilderStation);
     const citizens = this.livingCity?.crowdSnapshot() ?? [];
     const shell = element('section', 'atlas-play-shell atlas-living-city-play-shell atlas-pay-harbor-play-shell');
@@ -1612,6 +1616,31 @@ export class AtlasApp {
    * action rather than a rehearsal of it. There is no close button by design —
    * a tutorial a confused player can dismiss by accident is not a tutorial.
    */
+  /*
+   * Refuses to run the city upright, and repaints when the phone turns.
+   *
+   * A gate rather than a lock: iOS Safari does not implement
+   * screen.orientation.lock, and Android Chrome only honours it in fullscreen,
+   * which a wallet Mini App is not. The listener is torn down whenever the gate
+   * is not showing so a screen that stopped caring stops listening.
+   */
+  private gateForLandscape(): boolean {
+    if (!shouldGateForLandscape(this.screen, isPortraitNow())) {
+      this.stopWatchingOrientation?.();
+      this.stopWatchingOrientation = null;
+      return false;
+    }
+    this.ui.replaceChildren(rotateGate({
+      isPortrait: isPortraitNow,
+      reducedMotion: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
+    }));
+    this.stopWatchingOrientation ??= watchOrientation(() => {
+      if (this.screen === 'beacon-commons') this.renderBeaconCommons();
+      else if (this.screen === 'pay-harbor') this.renderPayHarbor();
+    });
+    return true;
+  }
+
   private applyTutorialStep(shell: HTMLElement, joystick: HTMLElement, interact: HTMLElement): void {
     const step = this.tutorial.step();
     this.livingCityHost?.classList.toggle('is-tutorial-dimmed', step !== null);

@@ -190,3 +190,65 @@
 @keyframes atlas-dialogue-rise { from { transform: translateY(14px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
 @media (prefers-reduced-motion: reduce) { .atlas-dialogue { animation: none; } }
+
+/*
+ * Turn your phone sideways.
+ *
+ * Covers the play screens only, and covers them completely: this is a refusal,
+ * not a hint, so there is nothing behind it to tap at. The phone is drawn from
+ * two elements so it needs no asset and follows the palette.
+ */
+.atlas-rotate-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 9;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 10px;
+  padding: 32px;
+  background: var(--atlas-city-ground);
+  color: var(--atlas-ink);
+  text-align: center;
+  pointer-events: auto;
+}
+
+.atlas-rotate-stage { position: relative; width: 132px; height: 132px; display: grid; place-items: center; margin-bottom: 14px; }
+
+.atlas-rotate-phone {
+  width: 62px;
+  height: 104px;
+  border: 3px solid var(--atlas-ink);
+  border-radius: 12px;
+  background: var(--atlas-raised);
+  animation: atlas-rotate-turn 2.4s ease-in-out infinite;
+}
+
+/* The screen inside the phone, so the shape reads as a device. */
+.atlas-rotate-phone span { display: block; width: 100%; height: 100%; border-radius: 5px; background: var(--atlas-signal); opacity: .22; }
+
+/* A quarter arc with an arrowhead, pointing the way the phone should turn. */
+.atlas-rotate-arc {
+  position: absolute;
+  inset: 0;
+  border: 3px dashed rgb(var(--atlas-ink-rgb) / .34);
+  border-radius: 50%;
+  border-top-color: transparent;
+  border-left-color: transparent;
+}
+
+.atlas-rotate-heading { margin: 0; font: 400 26px/1.15 AtlasDisplay, Georgia, serif; }
+.atlas-rotate-reason { margin: 0; max-width: 30ch; color: var(--atlas-muted); font: 500 15px/1.4 system-ui, sans-serif; }
+
+@keyframes atlas-rotate-turn {
+  0%, 24% { transform: rotate(0deg); }
+  58%, 84% { transform: rotate(-90deg); }
+  100% { transform: rotate(0deg); }
+}
+
+/* Under reduced motion the phone simply shows the destination, already turned. */
+.atlas-rotate-stage.is-still .atlas-rotate-phone { animation: none; transform: rotate(-90deg); }
+
+@media (prefers-reduced-motion: reduce) {
+  .atlas-rotate-phone { animation: none; transform: rotate(-90deg); }
+}
