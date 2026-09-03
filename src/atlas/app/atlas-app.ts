@@ -5,6 +5,8 @@ import { createAtlasProgressStore } from '../progress';
 import { AtlasRenderer } from '../render/renderer';
 import { createIdleOrbit } from '../render/three/orbit';
 import { ATLAS_GUIDE_REACH_METRES, createAtlasTutorial, type AtlasTutorialDirector } from '../tutorial';
+import { AtlasConversationController, type AtlasConversationDisplay } from '../conversations/conversation-controller';
+import { dialogueSheet } from '../ui/shell/dialogue';
 import { ATLAS_PROLOGUE } from '../../../shared/atlas/prologue';
 import type { AtlasRole } from '../../../shared/atlas/types';
 import { LAST_LANTERN, createLastLanternState, replayLastLantern, type LastLanternAction, type LastLanternState } from '../../../shared/atlas/adventures/last-lantern';
@@ -97,6 +99,14 @@ export class AtlasApp {
   private beaconTravelNotice = '';
   private tutorial: AtlasTutorialDirector = createAtlasTutorial({ completed: readTutorialDone() });
   private tutorialOrigin: { x: number; z: number } | null = null;
+  /*
+   * Mara's lines existed and nothing ever showed them: the controller that owns
+   * conversations was referenced by no other file. Held here so the lantern
+   * screen can put the conversation in front of the payment panels, which is
+   * where a player expects to be spoken to.
+   */
+  private readonly conversations = new AtlasConversationController();
+  private maraConversation: AtlasConversationDisplay | null = null;
   private cityQuestStep: 'meet-guide' | 'guide-met' = 'meet-guide';
   private payHarborBuilderStation = 0;
 
@@ -805,6 +815,7 @@ export class AtlasApp {
       const scene = parseAtlasCityScene(JSON.parse(new TextDecoder().decode(await assets.loadBytes(scenePath))) as unknown);
       await controller.activateDistrict('beacon-commons');
       controller.setInteractionPresentation(undefined);
+      controller.setPlayerRole(this.selectedRole);
       controller.setNavigation(livingCityNavigation(scene));
       controller.present(projectLivingWorld(BEACON_CORE_WORLD, createAtlasState(BEACON_CORE_WORLD.mission), 'waiting'));
       this.beaconScene = scene;
@@ -869,8 +880,10 @@ export class AtlasApp {
       await renderer.initialize(host, {
         reducedMotion: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
         resolution: 1,
+        // Cap the backing store at 2x. Below the device ratio the city is
+        // upscaled and reads as blurry; above it costs pixels nobody sees.
         qualityTier: 'balanced',
-        maxPixelRatio: 1,
+        maxPixelRatio: 2,
         assetManager: assets,
       });
       await controller.activateDistrict('beacon-commons');
@@ -938,6 +951,7 @@ export class AtlasApp {
     this.paymentController = this.paymentConfig.enabled ? this.createPaymentController() : null;
     this.restorePaymentJourney();
     this.screen = 'lantern';
+    this.maraConversation = this.conversations.start('mara-lantern', 'arrival');
     this.renderLantern();
   };
 
@@ -1171,6 +1185,22 @@ export class AtlasApp {
   private renderLantern(notice = ''): void {
     this.ui.replaceChildren();
     this.renderer.drawHarbor(this.lanternState.phase, this.selectedRole);
+    if (this.maraConversation) {
+      this.ui.append(dialogueSheet({
+        display: this.maraConversation,
+        speakerName: 'Mara',
+        onChoose: (choiceId) => {
+          this.maraConversation = this.conversations.choose(choiceId);
+          this.renderLantern();
+        },
+        onContinue: () => {
+          this.maraConversation = null;
+          this.renderLantern();
+        },
+        continueLabel: 'Help her',
+      }));
+      return;
+    }
     const panel = this.screenPanel('atlas-lantern');
     panel.setAttribute('aria-label', 'The Last Lantern local practice');
     panel.append(
@@ -1396,6 +1426,7 @@ export class AtlasApp {
       return;
     }
     this.screen = 'lantern';
+    this.maraConversation = this.conversations.start('mara-lantern', 'arrival');
     this.renderLantern();
   };
 

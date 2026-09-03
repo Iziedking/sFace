@@ -141,3 +141,52 @@
   .atlas-tutorial-prompt { animation: none; }
   .atlas-spotlight { animation: none; outline: 3px solid var(--atlas-signal); outline-offset: 4px; }
 }
+
+/*
+ * A character speaking.
+ *
+ * Bottom-anchored over the live city, because the city is the thing being
+ * taught and a centred card would hide the person talking. The speaker is named
+ * in the accent rather than left to a portrait: the cast share one model, and a
+ * playtester could not tell characters apart.
+ */
+.atlas-dialogue {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  translate: -50% 0;
+  z-index: 7;
+  width: min(100%, 560px);
+  padding: 18px 20px max(20px, env(safe-area-inset-bottom));
+  border-top: 1px solid rgb(var(--atlas-ink-rgb) / .14);
+  border-radius: var(--atlas-radius) var(--atlas-radius) 0 0;
+  background: var(--atlas-paper);
+  backdrop-filter: var(--atlas-glass-blur);
+  box-shadow: var(--atlas-glow);
+  color: var(--atlas-ink);
+  pointer-events: auto;
+  animation: atlas-dialogue-rise 260ms ease both;
+}
+
+.atlas-dialogue-speaker {
+  margin: 0;
+  color: var(--atlas-signal);
+  font: 700 13px/1.2 system-ui, sans-serif;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.atlas-dialogue-line {
+  margin: 10px 0 0;
+  font: 500 17px/1.45 system-ui, sans-serif;
+}
+
+.atlas-dialogue-actions { display: grid; gap: 8px; margin-top: 16px; }
+.atlas-dialogue-actions .atlas-pill { width: 100%; }
+
+/* A milestone line is the character's moment, so it gets more room. */
+.atlas-dialogue-closeup .atlas-dialogue-line { font-size: 19px; }
+
+@keyframes atlas-dialogue-rise { from { transform: translateY(14px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) { .atlas-dialogue { animation: none; } }
