@@ -135,6 +135,14 @@ describe('Atlas world-facing HUD elements wear the kit', () => {
     expect(rule('.atlas-mini-map')).toContain('top: 112px');
     expect(rule('.atlas-city-waypoint')).toContain('top: 254px');
     expect(rule('.atlas-camera-center')).toContain('bottom: 148px');
-    expect(rule('.atlas-camera-look-zone')).toContain('inset: 0 0 0 44%');
+    /*
+     * The one HUD element deliberately moved, on the owner's instruction:
+     * "allow players adjust camera by holding screen down and turning".
+     * It used to start 44% in from the left, so pressing the empty left side of
+     * the screen to look did nothing. It now covers the screen and sits below
+     * the controls, which take their own touches first.
+     */
+    expect(rule('.atlas-camera-look-zone')).toContain('inset: 0;');
+    expect(rule('.atlas-camera-look-zone')).toContain('z-index: 1');
   });
 });
