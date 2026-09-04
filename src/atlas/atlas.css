@@ -109,6 +109,26 @@ button { min-height: 44px; }
 .atlas-home-intro, .atlas-home-primary { min-width: 0; }
 .atlas-home-primary .atlas-mission-card { margin-top: 0; }
 .atlas-home-primary .atlas-start { margin-top: 14px; }
+
+/*
+ * The one action that starts the game never scrolls out of reach.
+ *
+ * Measured on a 844px phone: the welcome sheet is 523px tall with 524px of
+ * content hidden below it, and "Start 60-second run" sat 779px down. A new
+ * player could not see the button that begins the game, and the drag handle
+ * reads as decoration rather than as "there is more". Sticking it to the
+ * bottom of the scroll container keeps the prose scrollable behind it.
+ *
+ * It carries the panel surface so text passing underneath does not show
+ * through, and a top fade so the join does not read as a hard cut.
+ */
+.atlas-home-primary .atlas-start {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin-bottom: 0;
+  box-shadow: 0 -12px 18px -6px var(--atlas-paper), var(--atlas-glow);
+}
 .atlas-quick-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 18px; }
 .atlas-quick-grid .atlas-primary { min-height: 54px; margin-top: 0; padding: 9px; font-size: 10px; }
 .atlas-screen-nav { display: flex; gap: 10px; align-items: center; justify-content: space-between; margin: -10px 0 22px; padding-bottom: 10px; border-bottom: 2px solid var(--atlas-ink); }
@@ -197,9 +217,21 @@ button:focus-visible, input:focus-visible, a:focus-visible, [tabindex]:focus-vis
 .atlas-living-city-play-shell .atlas-toolkit,
 .atlas-living-city-play-shell .atlas-controls,
 .atlas-living-city-play-shell .atlas-key-hint { position: relative; z-index: 2; }
-.atlas-camera-look-zone { position: fixed; z-index: 1; inset: 0 0 0 44%; pointer-events: auto; touch-action: none; user-select: none; cursor: grab; }
+/* Drag anywhere to turn the camera.
+   This used to be inset 44% from the left, keeping the whole left half of the
+   screen away from the joystick — but the joystick is 132px, not half a phone,
+   and a player pressing the empty left side to look got nothing. The zone now
+   covers the screen and sits below the controls, which carry their own pointer
+   events and higher stacking, so they still take their own touches first. It
+   already accepted a mouse: pointer events cover both. */
+.atlas-camera-look-zone { position: fixed; z-index: 1; inset: 0; pointer-events: auto; touch-action: none; user-select: none; cursor: grab; }
 .atlas-camera-look-zone.is-looking { cursor: grabbing; }
-.atlas-camera-look-hint { position: absolute; right: 16px; top: 50%; padding: 5px 7px; background: rgb(var(--atlas-ink-rgb) / .62); color: var(--atlas-paper); font: 700 13px/1.25 system-ui, sans-serif; letter-spacing: .08em; pointer-events: none; }
+/* Bottom centre, out of the right rail.
+   It used to sit at right:16px top:50%, which in landscape lands on top of the
+   NEXT TARGET card — the two were printed over each other. The look zone now
+   covers the whole screen anyway, so a hint pinned to the right edge was also
+   pointing at the wrong place. */
+.atlas-camera-look-hint { position: absolute; left: 50%; bottom: 8px; translate: -50% 0; padding: 6px 12px; border-radius: var(--atlas-radius-pill); background: rgb(var(--atlas-shadow-rgb) / .55); color: var(--atlas-ink); font: 700 12px/1.25 system-ui, sans-serif; letter-spacing: .08em; pointer-events: none; }
 .atlas-camera-center { position: absolute; right: 18px; bottom: 148px; z-index: 2; min-width: 58px; min-height: 44px; padding: 6px 12px; border: 1px solid rgb(var(--atlas-ink-rgb) / .18); border-radius: var(--atlas-radius-pill); background: var(--atlas-raised); backdrop-filter: var(--atlas-glass-blur); color: var(--atlas-ink); box-shadow: var(--atlas-glow); font: 700 13px/1.25 system-ui, sans-serif; text-transform: none; pointer-events: auto; }
 .atlas-living-city-play-shell .atlas-toolkit { width: min(100%, 420px); margin-top: 8px; padding: 0; border: none; background: none; box-shadow: none; color: var(--atlas-ink); text-shadow: var(--atlas-scrim); }
 .atlas-living-city-play-shell .atlas-toolkit-depth { color: var(--atlas-label-dim); }
@@ -207,7 +239,7 @@ button:focus-visible, input:focus-visible, a:focus-visible, [tabindex]:focus-vis
 .atlas-city-payment-review { position: absolute; top: 232px; left: 0; z-index: 3; width: min(100%, 420px); display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 10px; margin: 0; padding: 9px 10px; border: 2px solid var(--atlas-mission-line); background: var(--atlas-mission-surface); box-shadow: 3px 3px 0 var(--atlas-mission-shadow); pointer-events: auto; }
 .atlas-city-payment-review dt { color: var(--atlas-label-dim); font: 700 13px/1.25 system-ui, sans-serif; letter-spacing: .08em; }
 .atlas-city-payment-review dd { margin: 0; overflow-wrap: anywhere; color: var(--atlas-ink); font: 700 13px/1.25 system-ui, sans-serif; text-align: right; }
-.atlas-mini-map { position: absolute; top: 112px; right: 10px; z-index: 3; width: 132px; aspect-ratio: 1; overflow: hidden; padding: 0; border: 2px solid rgb(var(--atlas-ink-rgb) / .22); border-radius: 50%; background: rgb(var(--atlas-paper-rgb) / .82); backdrop-filter: var(--atlas-glass-blur); box-shadow: var(--atlas-glow); pointer-events: none; }
+.atlas-mini-map { position: absolute; top: 112px; right: 10px; z-index: 3; width: 168px; aspect-ratio: 1; overflow: hidden; padding: 0; border: 2px solid rgb(var(--atlas-ink-rgb) / .22); border-radius: 50%; background: rgb(var(--atlas-paper-rgb) / .82); backdrop-filter: var(--atlas-glass-blur); box-shadow: var(--atlas-glow); pointer-events: none; }
 .atlas-city-waypoint { position: absolute; top: 254px; right: 18px; z-index: 3; display: grid; gap: 3px; min-width: 108px; padding: 8px 12px; border: 1px solid rgb(var(--atlas-ink-rgb) / .18); border-radius: var(--atlas-radius); background: var(--atlas-raised); backdrop-filter: var(--atlas-glass-blur); box-shadow: var(--atlas-glow); pointer-events: none; }
 .atlas-city-waypoint-kicker, .atlas-city-waypoint-distance { color: var(--atlas-label-dim); font: 700 13px/1.25 system-ui, sans-serif; letter-spacing: .08em; }
 .atlas-city-waypoint-label { font: 900 13px/1 ui-monospace, monospace; }
@@ -215,13 +247,19 @@ button:focus-visible, input:focus-visible, a:focus-visible, [tabindex]:focus-vis
 .atlas-mini-map-label { position: absolute; inset: 7px 0 auto; z-index: 2; display: block; color: var(--atlas-ink); font: 700 13px/1.25 system-ui, sans-serif; letter-spacing: .12em; text-align: center; text-shadow: var(--atlas-scrim); }
 .atlas-mini-map-loading { display: block; padding: 12px 4px; font: 700 13px/1.25 system-ui, sans-serif; }
 .atlas-mini-map svg { display: block; width: 100%; height: 100%; overflow: hidden; background: rgb(var(--atlas-map-panel-rgb) / .9); }
+/* Map ink, roughly doubled.
+   The viewBox is a 21 metre window drawn into a circle a few centimetres wide,
+   so a quarter-metre stroke landed near one physical pixel and a playtester
+   could not read the map at all. Everything that carries meaning is now thick
+   enough to survive that reduction: the route you follow reads first, the side
+   routes stay quiet but visible, and the player arrow outranks both. */
 .atlas-map-route, .atlas-map-side-route { fill: none; stroke-linecap: round; stroke-linejoin: round; }
-.atlas-map-route { stroke: var(--atlas-signal); stroke-width: .24; }
-.atlas-map-side-route { stroke: var(--atlas-map-quiet); stroke-width: .12; stroke-dasharray: .45 .35; }
+.atlas-map-route { stroke: var(--atlas-signal); stroke-width: .5; }
+.atlas-map-side-route { stroke: var(--atlas-map-quiet); stroke-width: .26; stroke-dasharray: .6 .4; }
 .atlas-map-point { fill: var(--atlas-map-quiet); }
-.atlas-map-landmark { fill: var(--atlas-signal); stroke: var(--atlas-ink); stroke-width: .08; }
-.atlas-map-target { fill: none; stroke: var(--atlas-warn); stroke-width: .14; stroke-dasharray: .3 .18; }
-.atlas-map-player { fill: var(--atlas-selected); stroke: var(--atlas-paper); stroke-width: .14; }
+.atlas-map-landmark { fill: var(--atlas-explorer); stroke: var(--atlas-on-accent); stroke-width: .16; }
+.atlas-map-target { fill: none; stroke: var(--atlas-warn); stroke-width: .3; stroke-dasharray: .4 .24; }
+.atlas-map-player { fill: var(--atlas-selected); stroke: var(--atlas-on-accent); stroke-width: .22; }
 .atlas-city-population { background: rgb(var(--atlas-paper-rgb) / .9); }
 .atlas-city-controls { grid-template-columns: 132px 112px; gap: 10px; }
 .atlas-mobile-movement { position: relative; width: 132px; height: 132px; }
@@ -270,17 +308,17 @@ button:focus-visible, input:focus-visible, a:focus-visible, [tabindex]:focus-vis
   .atlas-living-city-play-shell .atlas-toolkit-objective p { font-size: 11px; }
   .atlas-living-city-play-shell .atlas-toolkit-status { display: none; }
   .atlas-city-payment-review { top: 230px; width: min(62vw, 242px); }
-  .atlas-mini-map { top: 104px; right: 8px; width: 112px; }
+  .atlas-mini-map { top: 104px; right: 8px; width: 148px; }
   .atlas-city-waypoint { top: 226px; right: 10px; min-width: 96px; }
   .atlas-city-controls { grid-template-columns: 124px 112px; }
   .atlas-mobile-movement, .atlas-joystick { width: 124px; height: 124px; }
   .atlas-living-city-play-shell .atlas-key-hint { max-width: 270px; }
-  .atlas-camera-look-hint { right: 10px; top: 54%; }
+  .atlas-camera-look-hint { bottom: 6px; }
   .atlas-camera-center { right: 10px; bottom: 140px; }
 }
 @media (max-width: 360px) {
   .atlas-living-city-play-shell .atlas-toolkit { width: 185px; }
-  .atlas-mini-map { width: 96px; }
+  .atlas-mini-map { width: 132px; }
   .atlas-city-waypoint { top: 210px; right: 8px; }
   .atlas-city-controls { grid-template-columns: 116px 106px; }
   .atlas-mobile-movement, .atlas-joystick { width: 116px; height: 116px; }
@@ -297,12 +335,12 @@ button:focus-visible, input:focus-visible, a:focus-visible, [tabindex]:focus-vis
   .atlas-living-city-play-shell .atlas-toolkit-objective p { display: none; }
   .atlas-living-city-play-shell .atlas-toolkit-status { display: none; }
   .atlas-city-payment-review { top: 126px; width: min(38vw, 320px); padding: 6px 8px; }
-  .atlas-mini-map { top: 4px; right: 4px; width: 108px; }
+  .atlas-mini-map { top: 4px; right: 4px; width: 140px; }
   .atlas-city-waypoint { top: 120px; right: 4px; }
   .atlas-living-city-play-shell .atlas-city-controls { position: absolute; right: 0; bottom: 0; left: 0; width: 100%; grid-template-columns: 116px 104px; }
   .atlas-mobile-movement, .atlas-joystick { width: 116px; height: 116px; }
   .atlas-living-city-play-shell .atlas-key-hint { display: none; }
-  .atlas-camera-look-hint { top: 48%; }
+  .atlas-camera-look-hint { bottom: 6px; }
   .atlas-camera-center { right: 4px; bottom: 120px; }
 }
 .atlas-trial-context { margin: 0; color: var(--atlas-label); font: 700 13px/1.25 system-ui, sans-serif; letter-spacing: .08em; }

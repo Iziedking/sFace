@@ -35,6 +35,16 @@ import { projectPayHarborPhysicalMission } from '../../../shared/atlas/city/pay-
 import { getAtlasWaypointGuidance } from '../../../shared/atlas/city/wayfinding';
 import { createPayHarborScene } from '../scenes/pay-harbor';
 
+/*
+ * How long a tap on a directional arrow holds the direction down.
+ *
+ * The city ramps a walk up from standing, so the old 120 ms pulse ended before
+ * the player had gone anywhere: measured at 0.00 m over twenty taps. These
+ * arrows are the only way to move for a keyboard or assistive-technology
+ * player, so a tap has to be worth a step.
+ */
+const DIRECTIONAL_TAP_MILLISECONDS = 520;
+
 const BUILDER_REPAIR_STEPS = [
   { title: 'Provider ready', prompt: 'What should initialization do before a wallet action?', answer: 'Return a provider or an honest unavailable state.', choices: ['Return a provider or an honest unavailable state.', 'Request accounts during app boot.'] },
   { title: 'Player intent', prompt: 'When may the route ask for account access?', answer: 'Only after the player chooses the wallet action.', choices: ['Only after the player chooses the wallet action.', 'Whenever the page loads.'] },
@@ -109,6 +119,7 @@ export class AtlasApp {
   private readonly conversations = new AtlasConversationController();
   private maraConversation: AtlasConversationDisplay | null = null;
   private stopWatchingOrientation: (() => void) | null = null;
+  private readonly directionalTapTimers = new Map<AtlasDirection, number>();
   private cityQuestStep: 'meet-guide' | 'guide-met' = 'meet-guide';
   private payHarborBuilderStation = 0;
 
@@ -269,16 +280,15 @@ export class AtlasApp {
     const heading = element('h1', '', 'Explore Nimiq. Build what survives.');
     const tagline = element('p', 'atlas-tagline', 'Learn how Nimiq works by walking through a living city, meeting its people, and making the right move.');
     const identity = element('p', 'atlas-identity', 'Sface is a Nimiq Pay Mini App game. NIM Atlas is the network you repair by playing.');
-    const loop = element('ol', 'atlas-learning-loop');
-    for (const step of [
-      ['01', 'WALK', 'Find the signal.'],
-      ['02', 'USE', 'Make the right NIM move.'],
-      ['03', 'SEE CHANGE', 'Watch the district respond.'],
-    ]) {
-      const item = element('li', 'atlas-learning-step');
-      item.append(element('span', 'atlas-learning-number', step[0]), element('strong', '', step[1]), element('small', '', step[2]));
-      loop.append(item);
-    }
+    /*
+     * The 01/02/03 learning loop used to live here.
+     *
+     * It taught walk, use, see-change as three cards a player read before
+     * playing. The first-run tutorial now teaches those three things in the
+     * city, one at a time, blocking until each is done — which teaches them
+     * better and costs no height on the one screen where height decides
+     * whether anybody finds the button that starts the game.
+     */
     const mission = element('div', 'atlas-mission-card');
     mission.append(
       element('strong', '', '60-SECOND RUN / Meet Mara'),
@@ -312,7 +322,7 @@ export class AtlasApp {
     const primary = element('div', 'atlas-home-primary');
     primary.append(mission, roles, promise, start, howToPlay);
     const introduction = element('div', 'atlas-home-intro');
-    introduction.append(eyebrow, heading, tagline, identity, loop);
+    introduction.append(eyebrow, heading, tagline, identity);
     const homeGrid = element('div', 'atlas-home-grid');
     homeGrid.append(introduction, primary);
     const routes = document.createElement('details');
@@ -596,7 +606,10 @@ export class AtlasApp {
     if (player && this.beaconMapPlayer) {
       const rotationDegrees = (player.headingRadians - Math.PI) * 180 / Math.PI;
       this.beaconMapPlayer.setAttribute('transform', `translate(${player.x} ${player.z}) rotate(${rotationDegrees})`);
-      const localRadius = 10.5;
+      /* A 21 m window in a 168 px circle put eight metres in a fingertip. Seven
+         metres either side keeps the next target on screen while making the
+         street it sits on readable. */
+      const localRadius = 7;
       this.beaconMapSvg?.setAttribute('viewBox', `${player.x - localRadius} ${player.z - localRadius} ${localRadius * 2} ${localRadius * 2}`);
       const now = typeof performance === 'undefined' ? Date.now() : performance.now();
       const footstepInterval = player.pace === 'run' ? 175 : 320;
@@ -1481,10 +1494,27 @@ export class AtlasApp {
     button.addEventListener('pointerup', release);
     button.addEventListener('pointercancel', release);
     button.addEventListener('lostpointercapture', release);
+    /*
+     * A tap has to move you somewhere.
+     *
+     * These arrows are the only way to move for a player using a keyboard or
+     * assistive technology, and the pulse was 120 ms — measured at 0.00 m over
+     * twenty taps, because the city ramps a walk up from standing and the pulse
+     * ended before it had gone anywhere. A step long enough to clear that ramp
+     * makes one tap worth roughly half a metre, so a player can cross the
+     * street in a sensible number of presses.
+     *
+     * Repeated taps extend the same step rather than stacking their own
+     * releases, which previously let an early timer stop a later press.
+     */
     button.addEventListener('click', (event) => {
       if (!shouldHandleDirectionalClick(event.detail)) return;
       this.input.setDirection(direction, true);
-      window.setTimeout(() => this.input.setDirection(direction, false), 120);
+      window.clearTimeout(this.directionalTapTimers.get(direction));
+      this.directionalTapTimers.set(direction, window.setTimeout(() => {
+        this.input.setDirection(direction, false);
+        this.directionalTapTimers.delete(direction);
+      }, DIRECTIONAL_TAP_MILLISECONDS));
     });
     return button;
   }
