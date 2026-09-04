@@ -42,6 +42,9 @@ interface AtlasNpcSlot {
   readonly spawn: readonly [number, number, number];
   readonly lastPosition: { x: number; z: number };
   readonly displayPosition: { x: number; z: number };
+  /* Which rig is currently drawn, so the switch can be given hysteresis and the
+     animation phase can be carried across it. */
+  detailLevel: 'near' | 'distant';
 }
 
 export class ThreeAtlasRenderer implements AtlasSceneRenderer {
@@ -186,6 +189,8 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
             lod1Animator: createAtlasCharacterAnimator(lod1Root, lod1.animations, { facialPhase: (stableHash(citizen.id) % 1000) / 1000 }),
             lod2Animator: createAtlasCharacterAnimator(lod2Root, lod2.animations, { facialPhase: (stableHash(citizen.id) % 1000) / 1000 }),
             spawn: anchor.position,
+            // Starts distant: nothing is drawn near until the player is close.
+            detailLevel: 'distant' as const,
             lastPosition: { x: anchor.position[0], z: anchor.position[2] },
             displayPosition: { x: anchor.position[0], z: anchor.position[2] },
           };
@@ -475,7 +480,21 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
       slot.displayPosition.x += (position[0] - slot.displayPosition.x) * presentationBlend;
       slot.displayPosition.z += (position[2] - slot.displayPosition.z) * presentationBlend;
       const distanceFromPlayer = this.playerRoot ? Math.hypot(position[0] - this.playerRoot.position.x, position[2] - this.playerRoot.position.z) : Number.POSITIVE_INFINITY;
-      const detailLevel = atlasCitizenDetailLevel(this.qualityTier, citizen.active, distanceFromPlayer);
+      const detailLevel = atlasCitizenDetailLevel(this.qualityTier, citizen.active, distanceFromPlayer, slot.detailLevel);
+      if (detailLevel !== slot.detailLevel) {
+        /*
+         * Carry the stride across the swap.
+         *
+         * Only the visible rig is animated, so the one being switched to has
+         * been frozen since it was last drawn. Handing it the other's mixer
+         * time means the citizen keeps walking through the change instead of
+         * snapping to a stale pose, which is what read as a doubled figure.
+         */
+        const leaving = slot.detailLevel === 'near' ? slot.lod1Animator : slot.lod2Animator;
+        const arriving = detailLevel === 'near' ? slot.lod1Animator : slot.lod2Animator;
+        arriving.mixer.setTime(leaving.mixer.time);
+        slot.detailLevel = detailLevel;
+      }
       const root = detailLevel === 'near' ? slot.lod1Root : slot.lod2Root;
       root.visible = true;
       for (const characterRoot of [slot.lod1Root, slot.lod2Root]) {

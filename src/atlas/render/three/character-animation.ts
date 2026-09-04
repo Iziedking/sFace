@@ -88,11 +88,34 @@ export function atlasCitizenFacialCue(activity: AtlasCitizenActivity): AtlasFaci
   return 'neutral';
 }
 
-export function atlasCitizenDetailLevel(quality: AtlasQualityTier, active: boolean, distanceFromPlayer: number): 'near' | 'distant' {
+/*
+ * Which body a citizen is drawn with, as a band rather than a line.
+ *
+ * This used to be a bare `distance <= 12`. Each citizen owns two rigs and only
+ * the visible one is animated, so the hidden one is frozen wherever it was last
+ * seen. With a hard threshold, a citizen hovering at 12 m — and the player is
+ * almost always moving, so several always are — flipped between the two every
+ * frame, showing a character in one stride pose and then another. A playtester
+ * reported it as "this double feel while humans walk".
+ *
+ * The exit distance is further out than the entry distance, so crossing once
+ * does not cross back on the next frame. Pair this with carrying the animation
+ * phase across a switch, which the renderer does: hysteresis makes switches
+ * rare, the phase carry makes the rare ones invisible.
+ */
+const DETAIL_HYSTERESIS_METRES = 2.5;
+
+export function atlasCitizenDetailLevel(
+  quality: AtlasQualityTier,
+  active: boolean,
+  distanceFromPlayer: number,
+  previous?: 'near' | 'distant',
+): 'near' | 'distant' {
   if (quality === 'low') return 'distant';
   if (active) return 'near';
   const nearDistance = quality === 'high' ? 20 : 12;
-  return distanceFromPlayer <= nearDistance ? 'near' : 'distant';
+  const threshold = previous === 'near' ? nearDistance + DETAIL_HYSTERESIS_METRES : nearDistance;
+  return distanceFromPlayer <= threshold ? 'near' : 'distant';
 }
 
 interface AtlasFacialRig {
