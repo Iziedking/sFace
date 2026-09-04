@@ -88,12 +88,15 @@
  * The world behind is darkened with a filter on the city stage, which needs no
  * stacking cooperation from anything.
  */
-.atlas-play-shell.is-tutorial > *:not(.atlas-spotlight-path):not(.atlas-tutorial-prompt),
+.atlas-play-shell.is-tutorial > *:not(.atlas-spotlight-path):not(.atlas-spotlight):not(.atlas-tutorial-prompt):not(.atlas-camera-look-zone):not(.atlas-camera-center):not(.atlas-city-topbar),
 .atlas-play-shell.is-tutorial .atlas-spotlight-path > *:not(.atlas-spotlight-path):not(.atlas-spotlight) {
   opacity: .26;
   pointer-events: none;
   transition: opacity 220ms ease;
 }
+
+/* The transparent game shell passes input through; its buttons must opt in. */
+.atlas-city-topbar button { pointer-events: auto; }
 
 #atlas-city-stage.is-tutorial-dimmed { filter: brightness(.48) saturate(.8); }
 
@@ -157,6 +160,8 @@
   translate: -50% 0;
   z-index: 7;
   width: min(100%, 560px);
+  max-height: calc(100svh - 16px);
+  overflow-y: auto;
   padding: 18px 20px max(20px, env(safe-area-inset-bottom));
   border-top: 1px solid rgb(var(--atlas-ink-rgb) / .14);
   border-radius: var(--atlas-radius) var(--atlas-radius) 0 0;

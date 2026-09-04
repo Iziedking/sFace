@@ -6,7 +6,8 @@ import { AtlasRenderer } from '../render/renderer';
 import { createIdleOrbit } from '../render/three/orbit';
 import { ATLAS_GUIDE_REACH_METRES, createAtlasTutorial, type AtlasTutorialDirector } from '../tutorial';
 import { AtlasConversationController, type AtlasConversationDisplay } from '../conversations/conversation-controller';
-import { dialogueSheet } from '../ui/shell/dialogue';
+import { dialogueSheet, type DialogueOptions } from '../ui/shell/dialogue';
+import { harborInvoiceLesson } from '../conversations/harbor-invoice';
 import { isPortraitNow, rotateGate, shouldGateForLandscape, watchOrientation } from '../ui/shell/rotate-gate';
 import { ATLAS_PROLOGUE } from '../../../shared/atlas/prologue';
 import type { AtlasRole } from '../../../shared/atlas/types';
@@ -56,6 +57,7 @@ const BUILDER_REPAIR_STEPS = [
 ] as const;
 
 export class AtlasApp {
+  private harborDialogue: DialogueOptions | null = null;
   private readonly input = new AtlasInputController();
   private readonly renderer: AtlasRenderer;
   private readonly progress = createAtlasProgressStore(safeStorage());
@@ -632,7 +634,9 @@ export class AtlasApp {
       const deltaX = target.position[0] - playerPosition.x;
       const deltaZ = target.position[2] - playerPosition.z;
       const distance = Math.hypot(deltaX, deltaZ);
-      const scale = distance > 8.4 ? 8.4 / distance : 1;
+      // Keep the target ring inside the seven-metre circular map, including its rim.
+      const targetRadius = 5.6;
+      const scale = distance > targetRadius ? targetRadius / distance : 1;
       this.beaconMapTarget.setAttribute('cx', String(playerPosition.x + deltaX * scale));
       this.beaconMapTarget.setAttribute('cy', String(playerPosition.z + deltaZ * scale));
     }
@@ -668,6 +672,7 @@ export class AtlasApp {
       controller.setNavigation(livingCityNavigation(scene));
       this.beaconScene = scene;
       this.lanternState = createLastLanternState(this.selectedRole, this.paymentConfig.enabled ? 'live' : 'practice');
+      this.harborDialogue = null;
       this.paymentNotice = '';
       this.liveOrderId = null;
       this.liveLookup = null;
@@ -725,6 +730,13 @@ export class AtlasApp {
     if (paymentReview) shell.append(paymentReview);
     shell.append(this.createBeaconMap(), this.createCityWaypoint(), this.createCameraLookZone(), cameraCenter, controls, hint);
     this.ui.append(shell);
+    if (this.harborDialogue) {
+      shell.inert = true;
+      const dialogue = dialogueSheet(this.harborDialogue);
+      dialogue.setAttribute('aria-modal', 'true');
+      this.ui.append(dialogue);
+      dialogue.querySelector<HTMLButtonElement>('button')?.focus();
+    }
     this.audio.unlock();
     this.audio.stopTheme();
     this.audio.playCityAmbience();
@@ -742,20 +754,24 @@ export class AtlasApp {
   }
 
   private interactInPayHarbor = (): void => {
+    if (this.harborDialogue || this.suspended || this.paymentBusy) return;
     const player = this.livingCity?.playerSnapshot();
     const mission = projectPayHarborPhysicalMission(this.lanternState, this.payHarborBuilderStation);
     if (!player || !this.isNearBeaconAnchor(player, mission.targetAnchorId, 2.4)) {
       this.toolkit?.setDetail('Follow the pink target on the city map and move closer before acting.');
       return;
     }
-    if (this.lanternState.phase === 'street') return this.advancePhysicalLantern({ type: 'enter-shop' });
+    if (this.lanternState.phase === 'street') {
+      this.showHarborDialogue(this.conversations.start('mara-lantern', 'arrival'), () => this.advancePhysicalLantern({ type: 'enter-shop' }));
+      return;
+    }
     if (this.lanternState.phase === 'shop') return this.advancePhysicalLantern({ type: 'select-lantern' });
     if (this.lanternState.phase === 'selected' && this.selectedRole === 'builder') {
       this.input.setSystem('paused');
       this.startBuilderRepair();
       return;
     }
-    if (this.lanternState.phase === 'selected') return this.advancePhysicalLantern({ type: 'review-request', request: this.currentLanternRequest() });
+    if (this.lanternState.phase === 'selected') return this.reviewHarborInvoice();
     if ((this.lanternState.phase === 'review' || this.lanternState.phase === 'confirming') && this.lanternState.mode === 'practice') {
       return this.advancePhysicalLantern({ type: 'receive-evidence', source: 'local-simulation', evidence: { txHash: 'practice-only', network: LAST_LANTERN.request.network, recipient: LAST_LANTERN.recipient, valueLuna: LAST_LANTERN.priceLuna, canonical: true, success: true, confirmations: LAST_LANTERN.minimumConfirmations } });
     }
@@ -777,6 +793,42 @@ export class AtlasApp {
     if (this.lanternState.phase === 'fulfilled') return this.advancePhysicalLantern({ type: 'reach-tower' });
     void this.returnToBeaconCommons();
   };
+
+  private showHarborDialogue(display: AtlasConversationDisplay, onContinue: () => void, onChoose?: (choiceId: string) => void): void {
+    this.input.setSystem('paused');
+    this.input.clearJoystick();
+    this.harborDialogue = {
+      display,
+      speakerName: 'Mara',
+      continueLabel: this.lanternState.phase === 'tower-lit' ? 'Explore the open harbor' : 'Find the lantern counter',
+      onChoose: onChoose ?? ((choiceId) => this.showHarborDialogue(this.conversations.choose(choiceId), onContinue)),
+      onContinue: () => {
+        this.closeHarborDialogue();
+        onContinue();
+      },
+    };
+    this.audio.narrate(display.subtitle);
+    this.renderPayHarbor();
+  }
+
+  private closeHarborDialogue(): void {
+    this.harborDialogue = null;
+    this.input.clearJoystick();
+    this.input.setSystem(this.suspended ? 'paused' : 'active');
+  }
+
+  private reviewHarborInvoice(retry = false): void {
+    const request = this.currentLanternRequest();
+    this.showHarborDialogue(harborInvoiceLesson(request, retry), () => this.renderPayHarbor(), (choiceId) => {
+      if (choiceId !== 'correct') {
+        this.reviewHarborInvoice(true);
+        return;
+      }
+      this.closeHarborDialogue();
+      this.paymentNotice = 'One lantern, correct amount. Now check the recipient and network before approving.';
+      this.advancePhysicalLantern({ type: 'review-request', request });
+    });
+  }
 
   private createCityPaymentReview(): HTMLElement | null {
     if (this.lanternState.phase !== 'review' && this.lanternState.phase !== 'confirming') return null;
@@ -804,6 +856,10 @@ export class AtlasApp {
         this.progress.completeTrial('last-lantern');
       }
       this.presentPayHarborWorld();
+      if (this.lanternState.phase === 'tower-lit' && action.type === 'reach-tower') {
+        this.showHarborDialogue(this.conversations.start('mara-lantern', 'tower-lit'), () => this.renderPayHarbor());
+        return;
+      }
       this.renderPayHarbor();
     } catch (error) {
       this.toolkit?.setDetail(error instanceof Error ? error.message : 'The harbor action could not continue.');
@@ -872,6 +928,7 @@ export class AtlasApp {
       navigation: livingCityNavigation(scene),
       sampleMovement: () => {
         const action = this.input.sample();
+        if (this.suspended || (this.screen === 'pay-harbor' && this.harborDialogue)) return { moveX: 0, moveY: 0 };
         return { moveX: action.moveX, moveY: action.moveY };
       },
       onFrame: ({ player }) => {

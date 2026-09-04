@@ -232,10 +232,11 @@ export class AtlasLivingCityController {
   private frame = (timestamp: number): void => {
     this.frameHandle = null;
     if (this.destroyed) return;
-    const elapsedMilliseconds = this.lastFrameTimestamp === null ? 1_000 / 30 : Math.max(1, timestamp - this.lastFrameTimestamp);
-    if (this.lastFrameTimestamp !== null) this.recordFrameTime(elapsedMilliseconds);
+    const elapsedMilliseconds = this.lastFrameTimestamp === null ? 0 : Math.max(0, timestamp - this.lastFrameTimestamp);
+    // Returning from a suspended WebView is not a slow rendering sample.
+    if (this.lastFrameTimestamp !== null && elapsedMilliseconds <= 250) this.recordFrameTime(elapsedMilliseconds);
     this.lastFrameTimestamp = timestamp;
-    const deltaSeconds = elapsedMilliseconds / 1_000;
+    const deltaSeconds = Math.min(elapsedMilliseconds / 1_000, 0.1);
     const idleHeading = this.options.idleHeading?.() ?? null;
     if (idleHeading !== null) this.player = { ...this.player, cameraHeadingRadians: idleHeading };
     const sampledMovement = this.options.sampleMovement?.() ?? { moveX: 0, moveY: 0 };
@@ -249,7 +250,10 @@ export class AtlasLivingCityController {
       this.navigation.initial,
     );
     this.updateCameraFollow(deltaSeconds);
-    this.cityTick += Math.max(1, Math.round(elapsedMilliseconds / (1_000 / 30)));
+    // This is a presentation clock, not the authoritative replay tick. Keep
+    // fractional ticks so gait, crowd travel and camera damping share player
+    // time on 30, 60 and 120 Hz displays. Rounding per frame sped up animation.
+    this.cityTick += deltaSeconds * 30;
     if (this.snapshot) {
       const frameSnapshot: AtlasLivingWorldSnapshot = {
         ...this.snapshot,

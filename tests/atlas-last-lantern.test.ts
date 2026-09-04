@@ -18,6 +18,28 @@ const verifiedEvidence: LanternEvidence = {
 };
 
 describe('The Last Lantern local vertical slice', () => {
+  it('accepts the configured 0.1 NIM live order and still rejects mismatched evidence', () => {
+    const state = createLastLanternState('explorer', 'live');
+    const request = { ...LAST_LANTERN.request, recipient: 'NQ22EY1GT6FH5X60JGQQ6MK7H973T31PMYV4', valueLuna: 10_000 };
+    replayLastLantern([{ type: 'enter-shop' }, { type: 'select-lantern' }, { type: 'review-request', request }], state);
+    const evidence = { ...verifiedEvidence, recipient: request.recipient, valueLuna: request.valueLuna };
+    expect(() => replayLastLantern([{ type: 'receive-evidence', source: 'server-verified', evidence: { ...evidence, valueLuna: 100_000 } }], state)).toThrow(/amount/i);
+    expect(() => replayLastLantern([{ type: 'receive-evidence', source: 'local-simulation', evidence }], state)).toThrow(/server/i);
+    expect(state.phase).toBe('review');
+    replayLastLantern([
+      { type: 'receive-evidence', source: 'server-verified', evidence },
+      { type: 'fulfill-lantern' }, { type: 'reach-tower' },
+    ], state);
+    expect(state.phase).toBe('tower-lit');
+  });
+
+  it.each([0, -1, 0.1, Number.NaN, Number.MAX_SAFE_INTEGER + 1])('rejects an invalid live Luna amount %s', (valueLuna) => {
+    const state = createLastLanternState('explorer', 'live');
+    replayLastLantern([{ type: 'enter-shop' }, { type: 'select-lantern' }], state);
+    expect(() => replayLastLantern([{ type: 'review-request', request: { ...LAST_LANTERN.request, recipient: 'NQ22EY1GT6FH5X60JGQQ6MK7H973T31PMYV4', valueLuna } }], state)).toThrow(/amount/i);
+    expect(state.phase).toBe('selected');
+  });
+
   it('replays shop, review, simulated verification, carry, and harbor lighting', () => {
     const result = replayLastLantern([
       { type: 'enter-shop' },

@@ -143,7 +143,10 @@ function assertRequest(request: LanternPaymentRequest, mode: LanternMode): void 
   if (mode === 'practice' && request.recipient !== LAST_LANTERN.recipient) throw new Error('Lantern request recipient is wrong.');
   if (mode === 'live' && (request.recipient === LAST_LANTERN.recipient || !isNimiqAddress(request.recipient))) throw new Error('Lantern request recipient is wrong.');
   if (mode === 'competitive' && request.recipient !== LAST_LANTERN.recipient && !isNimiqAddress(request.recipient)) throw new Error('Lantern request recipient is wrong.');
-  if (request.valueLuna !== LAST_LANTERN.priceLuna) throw new Error('Lantern request Luna amount is wrong.');
+  // Live prices come from deployment configuration and are checked against
+  // the server order. The fixed price belongs only to the replayable lesson.
+  if (!Number.isSafeInteger(request.valueLuna) || request.valueLuna <= 0
+    || (mode !== 'live' && request.valueLuna !== LAST_LANTERN.priceLuna)) throw new Error('Lantern request Luna amount is wrong.');
   if (request.itemId !== LAST_LANTERN.request.itemId) throw new Error('Lantern item is unknown.');
 }
 
