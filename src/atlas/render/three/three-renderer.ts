@@ -2,9 +2,10 @@ import { BoxGeometry, Color, CylinderGeometry, DoubleSide, PCFSoftShadowMap, Fog
 import type { AtlasLivingWorldSnapshot } from '../../../../shared/atlas/living-world';
 import type { AtlasQualityTier } from '../../../../shared/atlas/city/types';
 import { QUALITY_PROFILES } from '../../../../shared/atlas/city/quality';
-import { ATLAS_CITIZEN_WARDROBE, ATLAS_WORLD_PALETTE } from '../../palette';
+import { ATLAS_CITIZEN_WARDROBE, ATLAS_WORLD_PALETTE, worldColourCss } from '../../palette';
 import type { AtlasCitizenPresentation } from '../../../../shared/atlas/city/crowd';
 import { BEACON_COMMONS_CROWD } from '../../../../shared/atlas/city/crowd';
+import { atlasCitizenAppearance, type AtlasCitizenAppearanceProfile } from '../../../../shared/atlas/city/character-appearance';
 import { projectAtlasCitizenMotion, resolveAtlasCitizenSpacing, routeAtlasCitizenPath, type AtlasCitizenMotionProjection } from '../../../../shared/atlas/city/citizen-motion';
 import type { AtlasCityPlayerState } from '../../../../shared/atlas/city/player';
 import { parseAtlasCityScene, type AtlasCitySceneV1 } from '../../../../shared/atlas/city/types';
@@ -26,6 +27,12 @@ import {
 } from './character-animation';
 import { AtlasGltfResourceCache } from './gltf-loader';
 import type { AtlasGltfHandle } from './gltf-loader';
+import {
+  applyAtlasCitizenIdentity,
+  createAtlasPlayerRoleAppearance,
+  type AtlasCitizenIdentity,
+  type AtlasPlayerRoleAppearance,
+} from './character-appearance';
 
 // Keep the authored character proportions intact while giving the city more breathing room on mobile.
 const PLAYER_WORLD_SCALE = 0.72;
@@ -40,6 +47,7 @@ interface AtlasNpcSlot {
   readonly lod2Root: Group;
   readonly lod1Animator: AtlasCharacterAnimator;
   readonly lod2Animator: AtlasCharacterAnimator;
+  readonly lod1Identity: AtlasCitizenIdentity;
   readonly spawn: readonly [number, number, number];
   readonly lastPosition: { x: number; z: number };
   readonly displayPosition: { x: number; z: number };
@@ -68,6 +76,7 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
   private playerRoot: Object3D | null = null;
   private playerRing: Mesh | null = null;
   private playerRole: 'explorer' | 'builder' = 'explorer';
+  private playerRoleAppearance: AtlasPlayerRoleAppearance | null = null;
   private playerAnimator: AtlasCharacterAnimator | null = null;
   private relayRoot: Group | null = null;
   private relayParent: Object3D | null = null;
@@ -151,6 +160,7 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
         const player = await this.gltfCache.acquire(playerModel);
         acquired.push(player);
         this.prepareRuntimeMaterials(player.root);
+        this.playerRoleAppearance = createAtlasPlayerRoleAppearance(player.root, this.playerRole);
         if (outlinesEnabledForTier(this.qualityTier)) attachAtlasOutline(player.root, CHARACTER_OUTLINE_THICKNESS);
         this.attachContactShadow(player.root);
         this.attachPlayerRing(player.root);
@@ -175,6 +185,7 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
           const appearance = citizenAppearance(citizen.id, citizen.role);
           this.prepareRuntimeMaterials(lod1Root, appearance);
           this.prepareRuntimeMaterials(lod2Root, appearance);
+          const lod1Identity = applyAtlasCitizenIdentity(lod1Root, appearance.profile, appearance.colors.ink ?? worldColourCss('ink'));
           for (const root of [lod1Root, lod2Root]) {
             root.visible = false;
             root.scale.setScalar(NPC_WORLD_SCALE * appearance.scale);
@@ -189,6 +200,7 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
             lod2Root,
             lod1Animator: createAtlasCharacterAnimator(lod1Root, lod1.animations, { facialPhase: (stableHash(citizen.id) % 1000) / 1000 }),
             lod2Animator: createAtlasCharacterAnimator(lod2Root, lod2.animations, { facialPhase: (stableHash(citizen.id) % 1000) / 1000 }),
+            lod1Identity,
             spawn: anchor.position,
             // Starts distant: nothing is drawn near until the player is close.
             detailLevel: 'distant' as const,
@@ -210,6 +222,7 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
         this.districtHandles.set(districtId, acquired);
       } catch (error) {
         this.stopCharacterAnimations();
+        this.clearCharacterAppearance();
         for (const { light } of this.districtSignalLights.get(districtId) ?? []) light.removeFromParent();
         this.districtSignalLights.delete(districtId);
         for (const handle of [...acquired].reverse()) handle.release();
@@ -287,6 +300,7 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
     if (!handles) return;
     if (this.loadedDistrict === districtId) this.stopCharacterAnimations();
     if (this.loadedDistrict === districtId) this.clearInteractionVisuals();
+    if (this.loadedDistrict === districtId) this.clearCharacterAppearance();
     for (const handle of [...handles].reverse()) handle.release();
     for (const { light } of this.districtSignalLights.get(districtId) ?? []) light.removeFromParent();
     this.districtSignalLights.delete(districtId);
@@ -306,6 +320,7 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
     const canvas = this.canvas;
     this.stopCharacterAnimations();
     this.clearInteractionVisuals();
+    this.clearCharacterAppearance();
     this.renderer = null;
     this.scene = null;
     this.camera = null;
@@ -396,6 +411,7 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
 
   setPlayerRole(role: 'explorer' | 'builder'): void {
     this.playerRole = role;
+    this.playerRoleAppearance?.setRole(role);
     this.applyPlayerRole(role);
   }
 
@@ -548,6 +564,12 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
       slot.lod2Animator.stop();
     }
     this.playerAnimator = null;
+  }
+
+  private clearCharacterAppearance(): void {
+    this.playerRoleAppearance?.dispose();
+    this.playerRoleAppearance = null;
+    for (const slot of this.npcSlots) slot.lod1Identity.dispose();
   }
 
   private harborSupplies: ReturnType<typeof createHarborSupplies> | null = null;
@@ -757,21 +779,16 @@ function createHarborActivityVisuals(scene: Scene, district: AtlasCitySceneV1): 
 interface CitizenAppearance {
   readonly colors: Readonly<Record<string, string>>;
   readonly scale: number;
+  readonly profile: AtlasCitizenAppearanceProfile;
 }
 
-// Height varies with the wardrobe so the crowd does not read as one person
-// repeated. Scale is geometry and stays here; the colours are palette and live
-// with every other colour in src/atlas/palette.ts.
-const CITIZEN_SCALES: readonly number[] = [0.94, 1.02, 0.98, 1.06];
-
-const CITIZEN_APPEARANCE_PALETTES: readonly CitizenAppearance[] = ATLAS_CITIZEN_WARDROBE.map((colors, index) => ({
-  colors,
-  scale: CITIZEN_SCALES[index] ?? 1,
-}));
-
 function citizenAppearance(id: string, role: AtlasCitizenPresentation['role']): CitizenAppearance {
-  const roleOffset = role === 'nimiq-team-guide' || role === 'nimiq-team-builder' ? 1 : 0;
-  return CITIZEN_APPEARANCE_PALETTES[(stableHash(id) + roleOffset) % CITIZEN_APPEARANCE_PALETTES.length]!;
+  const profile = atlasCitizenAppearance(id, role);
+  return {
+    colors: ATLAS_CITIZEN_WARDROBE[profile.wardrobeIndex]!,
+    scale: profile.bodyScale,
+    profile,
+  };
 }
 
 function stableHash(value: string): number {

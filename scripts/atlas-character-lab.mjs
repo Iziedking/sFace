@@ -15,6 +15,7 @@ export async function startCharacterLab(port = 5191) {
       if (pathname === '/') relative = 'scripts/fixtures/atlas-character-lab.html';
       else if (pathname.startsWith('/vendor/three/')) relative = `node_modules/three/${pathname.slice('/vendor/three/'.length)}`;
       else if (/^\/src\/atlas\/render\/three\/character-[a-z-]+(?:\.ts)?$/.test(pathname)) relative = pathname.slice(1) + (pathname.endsWith('.ts') ? '' : '.ts');
+      else if (pathname === '/src/atlas/palette') relative = 'src/atlas/palette.ts';
       else if (pathname === '/shared/atlas/city/character-gait') relative = 'shared/atlas/city/character-gait.ts';
       else if (/^\/public\/atlas\/3d\/v1\/characters\/atlas-walker-(player|npc-lod1|npc-lod2)\.glb$/.test(pathname)) relative = pathname.slice(1);
       else { response.writeHead(404); response.end(); return; }

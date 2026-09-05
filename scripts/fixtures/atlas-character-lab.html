@@ -14,6 +14,7 @@
   <p>Same native model and travel speed. Left: original clips. Right: connected limbs and distance-driven feet.</p>
   <button data-pace="idle">Stop</button><button data-pace="walk">Walk</button><button data-pace="run">Run</button><button data-pace="talk">Talk</button>
   <button id="side">Side view</button><button id="front">Front view</button>
+  <button data-role="explorer">Explorer kit</button><button data-role="builder">Builder kit</button>
   <p id="status" role="status">Loading local character assets...</p>
   <div class="labels"><strong>Original</strong><strong>Updated</strong></div>
 </header>
@@ -23,6 +24,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { refineAtlasCharacterSkin } from '/src/atlas/render/three/character-skin';
 import { createAtlasCharacterAnimator } from '/src/atlas/render/three/character-animation';
+import { createAtlasPlayerRoleAppearance } from '/src/atlas/render/three/character-appearance';
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 document.body.append(renderer.domElement);
@@ -43,13 +45,15 @@ try {
     gltf.scene.scale.setScalar(0.72);
     gltf.scene.position.x = i === 0 ? -0.9 : 0.9;
     scene.add(gltf.scene);
-    actors.push({ root: gltf.scene, animator: createAtlasCharacterAnimator(gltf.scene, gltf.animations) });
+    const roleAppearance = i === 1 ? createAtlasPlayerRoleAppearance(gltf.scene, 'explorer') : null;
+    actors.push({ root: gltf.scene, animator: createAtlasCharacterAnimator(gltf.scene, gltf.animations), roleAppearance });
     const grid = new THREE.GridHelper(1.5, 12, 0xa3b4bc, 0x51616b);
     grid.position.x = gltf.scene.position.x; scene.add(grid); grids.push(grid);
   }
   document.querySelector('#status').textContent = 'Ready. Ground grid moves at travel speed; this is a motion fixture, not a full-game performance test.';
 } catch (error) { document.querySelector('#status').textContent = `Review failed: ${error.message}`; }
 document.querySelectorAll('[data-pace]').forEach(button => button.onclick = () => { pace = button.dataset.pace; });
+document.querySelectorAll('[data-role]').forEach(button => button.onclick = () => actors.forEach(actor => actor.roleAppearance?.setRole(button.dataset.role)));
 document.querySelector('#side').onclick = () => actors.forEach(actor => { actor.root.rotation.y = Math.PI / 2; });
 document.querySelector('#front').onclick = () => actors.forEach(actor => { actor.root.rotation.y = 0; });
 let previous, travel = 0;
