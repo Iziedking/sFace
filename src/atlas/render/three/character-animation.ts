@@ -6,7 +6,7 @@ import type { AtlasGaitState } from '../../../../shared/atlas/city/character-gai
 import { createAtlasGaitRig, type AtlasLocomotionSample } from './character-gait-rig';
 import { findAtlasBone } from './character-bones';
 
-export type AtlasCharacterAnimationState = 'idle' | 'walk' | 'run';
+export type AtlasCharacterAnimationState = 'idle' | 'walk' | 'run' | 'talk';
 export type AtlasFacialCue = 'neutral' | 'focused' | 'talking' | 'pleased';
 
 export interface AtlasCharacterAnimatorOptions {
@@ -26,10 +26,12 @@ const CLIP_NAMES: Readonly<Record<AtlasCharacterAnimationState, string>> = {
   idle: 'Atlas_Idle',
   walk: 'Atlas_Walk',
   run: 'Atlas_Run',
+  talk: 'Atlas_Talk',
 };
 
 const LOCOMOTION_CROSS_FADE_SECONDS = 0.22;
 const IDLE_CROSS_FADE_SECONDS = 0.28;
+const SOCIAL_CROSS_FADE_SECONDS = 0.24;
 
 export function createAtlasCharacterAnimator(
   root: Object3D,
@@ -67,7 +69,7 @@ export function createAtlasCharacterAnimator(
         const previousPhase = previousClip.duration > 0 ? positiveModulo(previous.time, previousClip.duration) / previousClip.duration : 0;
         next.reset().setEffectiveTimeScale(safeSpeed).setEffectiveWeight(1).play();
         if (current !== 'idle' && nextState !== 'idle' && nextClip.duration > 0) next.time = previousPhase * nextClip.duration;
-        const fadeSeconds = current === 'idle' || nextState === 'idle' ? IDLE_CROSS_FADE_SECONDS : LOCOMOTION_CROSS_FADE_SECONDS;
+        const fadeSeconds = transitionDuration(current, nextState);
         previous.crossFadeTo(next, fadeSeconds, false);
         current = nextState;
       }
@@ -84,9 +86,10 @@ export function createAtlasCharacterAnimator(
 
 export function atlasCitizenAnimationState(
   active: boolean,
-  requestedPace: Exclude<AtlasCharacterAnimationState, 'idle'>,
+  requestedPace: 'walk' | 'run',
+  activity?: AtlasCitizenActivity,
 ): AtlasCharacterAnimationState {
-  if (!active) return 'idle';
+  if (!active) return activity === 'talking' || activity === 'trading' ? 'talk' : 'idle';
   return requestedPace;
 }
 
@@ -180,4 +183,10 @@ function blinkClosure(elapsedSeconds: number, phase: number): number {
 
 function positiveModulo(value: number, modulus: number): number {
   return ((value % modulus) + modulus) % modulus;
+}
+
+function transitionDuration(current: AtlasCharacterAnimationState, next: AtlasCharacterAnimationState): number {
+  if (current === 'talk' || next === 'talk') return SOCIAL_CROSS_FADE_SECONDS;
+  if (current === 'idle' || next === 'idle') return IDLE_CROSS_FADE_SECONDS;
+  return LOCOMOTION_CROSS_FADE_SECONDS;
 }

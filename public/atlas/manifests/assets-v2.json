@@ -79,9 +79,9 @@
     {
       "id": "atlas-walker-player",
       "path": "/atlas/3d/v1/characters/atlas-walker-player.glb",
-      "sha256": "2362b4667e18472bc0efdc2ecead12ee7b5a8f373086ca4e611a292c600ab760",
-      "bytes": 196208,
-      "compressedBytes": 196208,
+      "sha256": "bc534336f4c57d13dc55c92e1d651ef368c89c228e0b3d17de5b1e75912802fc",
+      "bytes": 201380,
+      "compressedBytes": 201380,
       "mime": "model/gltf-binary",
       "width": 1,
       "height": 1,
@@ -92,15 +92,15 @@
         "high"
       ],
       "sourceFile": "art/atlas/characters/atlas-walker-v1/build_character.py",
-      "sourceSha256": "602435deb86396f07649b091405b070793e1b16250733f7c5575bfa9dee26ffd",
+      "sourceSha256": "42162953f5475867f8067025ca8456caf44ca9d08864c04fc42f9e10ed84966a",
       "sourceStatus": "owner-approved-procedural"
     },
     {
       "id": "atlas-walker-npc-lod1",
       "path": "/atlas/3d/v1/characters/atlas-walker-npc-lod1.glb",
-      "sha256": "42da79da3a3540bcaad0e42f3027be4d08aec177e00485cbfd0a2f61f0eb4c06",
-      "bytes": 144392,
-      "compressedBytes": 144392,
+      "sha256": "c32060925f7e72d1e40711b543145c44ee5491e8ff18ecf40a8299c98a559378",
+      "bytes": 149568,
+      "compressedBytes": 149568,
       "mime": "model/gltf-binary",
       "width": 1,
       "height": 1,
@@ -111,15 +111,15 @@
         "high"
       ],
       "sourceFile": "art/atlas/characters/atlas-walker-v1/build_character.py",
-      "sourceSha256": "602435deb86396f07649b091405b070793e1b16250733f7c5575bfa9dee26ffd",
+      "sourceSha256": "42162953f5475867f8067025ca8456caf44ca9d08864c04fc42f9e10ed84966a",
       "sourceStatus": "owner-approved-procedural"
     },
     {
       "id": "atlas-walker-npc-lod2",
       "path": "/atlas/3d/v1/characters/atlas-walker-npc-lod2.glb",
-      "sha256": "b87d72124920d1f0b4633e093152865ebf496b336b8c105eba214cea1a0ddad0",
-      "bytes": 35640,
-      "compressedBytes": 35640,
+      "sha256": "5f743cb459906ef8698989d735892fd6026bb15fbe4f2251d311e6eeaaed32ca",
+      "bytes": 40804,
+      "compressedBytes": 40804,
       "mime": "model/gltf-binary",
       "width": 1,
       "height": 1,
@@ -130,7 +130,7 @@
         "high"
       ],
       "sourceFile": "art/atlas/characters/atlas-walker-v1/build_character.py",
-      "sourceSha256": "602435deb86396f07649b091405b070793e1b16250733f7c5575bfa9dee26ffd",
+      "sourceSha256": "42162953f5475867f8067025ca8456caf44ca9d08864c04fc42f9e10ed84966a",
       "sourceStatus": "owner-approved-procedural"
     },
     {

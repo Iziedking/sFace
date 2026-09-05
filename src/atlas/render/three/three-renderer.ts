@@ -508,7 +508,7 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
       const animator = root === slot.lod1Root ? slot.lod1Animator : slot.lod2Animator;
       if (motion.moving || detailLevel === 'near' || citizen.active || this.qualityTier !== 'low') {
         const requestedPace = motion.pace === 'run' ? 'run' : 'walk';
-        const animationState = atlasCitizenAnimationState(motion.moving, requestedPace);
+        const animationState = atlasCitizenAnimationState(motion.moving, requestedPace, citizen.activity);
         const speedScale = citizenAnimationSpeed(animationState, motion.speedUnitsPerSecond);
         const renderedSpeed = deltaSeconds > 0 ? Math.hypot(slot.displayPosition.x - previousX, slot.displayPosition.z - previousZ) / deltaSeconds : 0;
         animator.update(animationState, deltaSeconds, speedScale, atlasCitizenFacialCue(citizen.activity), { speedUnitsPerSecond: Math.min(3, renderedSpeed), worldScale: NPC_WORLD_SCALE });
@@ -786,7 +786,7 @@ function playerAnimationSpeed(player: AtlasCityPlayerState): number {
   return 1;
 }
 
-function citizenAnimationSpeed(state: 'idle' | 'walk' | 'run', speedUnitsPerSecond: number): number {
+function citizenAnimationSpeed(state: 'idle' | 'walk' | 'run' | 'talk', speedUnitsPerSecond: number): number {
   if (state === 'walk') return clampNumber(speedUnitsPerSecond / 0.62, 0.62, 1.42);
   if (state === 'run') return clampNumber(speedUnitsPerSecond / 1.42, 0.92, 1.45);
   return 1;

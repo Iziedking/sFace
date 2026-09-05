@@ -558,7 +558,29 @@ def build_animation_set(buffer: GlbBuffer, joint_index: dict[str, int], skeleton
         },
         {"hips": [(math.sin(phase) * 0.016, math.sin(phase) ** 2 * 0.058, 0) for phase in run_phases]},
     )
-    return [idle, walk, run]
+
+    # A two-second social loop gives stationary guides and merchants readable
+    # intent at gameplay distance. Alternating gestures avoid the mechanical
+    # bilateral wave used by the early procedural prototype.
+    talk_times = [index * 0.1 for index in range(21)]
+    talk_phases = [math.tau * index / (len(talk_times) - 1) for index in range(len(talk_times))]
+    left_gesture = [max(0.0, math.sin(phase)) for phase in talk_phases]
+    right_gesture = [max(0.0, -math.sin(phase)) for phase in talk_phases]
+    talk = build_animation(
+        buffer, joint_index, base, "Atlas_Talk", talk_times,
+        {
+            "hips": [(0, math.sin(phase) * 1.6, math.sin(phase) * 0.8) for phase in talk_phases],
+            "chest": [(-1.5 + math.sin(phase * 2) * 0.7, math.sin(phase) * -4.2, math.sin(phase) * -1.4) for phase in talk_phases],
+            "neck": [(0.8 + math.sin(phase * 2) * -0.8, math.sin(phase) * 1.1, 0) for phase in talk_phases],
+            "head": [(-1.0 + math.sin(phase * 2) * 2.4, math.sin(phase) * 3.2, math.sin(phase) * 0.7) for phase in talk_phases],
+            "upper_arm.L": [(-8.0 - gesture * 24.0, 0, 3.0 + gesture * 20.0) for gesture in left_gesture],
+            "lower_arm.L": [(12.0 + gesture * 68.0, 0, gesture * -10.0) for gesture in left_gesture],
+            "upper_arm.R": [(-8.0 - gesture * 24.0, 0, -3.0 - gesture * 20.0) for gesture in right_gesture],
+            "lower_arm.R": [(12.0 + gesture * 68.0, 0, gesture * 10.0) for gesture in right_gesture],
+        },
+        {"hips": [(math.sin(phase) * 0.008, (1 - math.cos(phase * 2)) * 0.003, 0) for phase in talk_phases]},
+    )
+    return [idle, walk, run, talk]
 
 
 def export_glb(
@@ -643,7 +665,7 @@ def export_glb(
             "source": "art/atlas/characters/atlas-walker-v1/build_character.py",
             "provenance": "Original procedural geometry; no generated image, image-to-3D input, stock model, or external mesh.",
             "frontDirection": "+Z",
-            "animationSet": ["Atlas_Idle", "Atlas_Walk", "Atlas_Run"],
+            "animationSet": ["Atlas_Idle", "Atlas_Walk", "Atlas_Run", "Atlas_Talk"],
         },
     }
 

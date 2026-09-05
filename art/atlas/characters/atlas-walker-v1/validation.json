@@ -1,24 +1,24 @@
 {
   "asset": "atlas-walker-v1",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "status": "pass",
   "metrics": {
     "vertices": 2828,
     "triangles": 4626,
     "materials": 8,
     "bones": 23,
-    "animations": 3,
+    "animations": 4,
     "textureMaps": 0,
-    "glbBytes": 196208,
+    "glbBytes": 201380,
     "drawCalls": 8,
     "npcLod1": {
       "vertices": 1940,
       "triangles": 3254,
       "materials": 7,
       "bones": 23,
-      "animations": 3,
+      "animations": 4,
       "textureMaps": 0,
-      "glbBytes": 144392,
+      "glbBytes": 149568,
       "drawCalls": 7
     },
     "npcLod2": {
@@ -26,13 +26,13 @@
       "triangles": 164,
       "materials": 4,
       "bones": 23,
-      "animations": 3,
+      "animations": 4,
       "textureMaps": 0,
-      "glbBytes": 35640,
+      "glbBytes": 40804,
       "drawCalls": 4
     }
   },
-  "sha256": "2362b4667e18472bc0efdc2ecead12ee7b5a8f373086ca4e611a292c600ab760",
+  "sha256": "bc534336f4c57d13dc55c92e1d651ef368c89c228e0b3d17de5b1e75912802fc",
   "boundsMeters": {
     "x": [
       -0.37460569067093913,

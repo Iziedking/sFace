@@ -57,14 +57,16 @@ describe('Atlas 3D asset registry', () => {
     expect(triangleCount(lod2)).toBeLessThanOrEqual(800);
   });
 
-  it('ships dedicated authored idle, walk, and run clips', () => {
+  it('ships dedicated authored idle, walk, run, and conversation clips', () => {
     const player = readGlbJson('public/atlas/3d/v1/characters/atlas-walker-player.glb');
-    expect(player.animations.map((clip: { name: string }) => clip.name)).toEqual(['Atlas_Idle', 'Atlas_Walk', 'Atlas_Run']);
+    expect(player.animations.map((clip: { name: string }) => clip.name)).toEqual(['Atlas_Idle', 'Atlas_Walk', 'Atlas_Run', 'Atlas_Talk']);
     expect(player.nodes.map((node: { name: string }) => node.name)).toEqual(expect.arrayContaining(['eye.L', 'eye.R', 'eyelid.L', 'eyelid.R', 'mouth']));
     expect(animationFrameCount(player, 'Atlas_Idle')).toBeGreaterThanOrEqual(13);
     expect(animationFrameCount(player, 'Atlas_Walk')).toBeGreaterThanOrEqual(25);
     expect(animationDuration(player, 'Atlas_Walk')).toBeCloseTo(1.2, 2);
     expect(animationFrameCount(player, 'Atlas_Run')).toBeGreaterThanOrEqual(13);
+    expect(animationFrameCount(player, 'Atlas_Talk')).toBeGreaterThanOrEqual(17);
+    expect(animationDuration(player, 'Atlas_Talk')).toBeCloseTo(2, 2);
     expect([...animatedNodes(player, 'Atlas_Idle')]).toEqual(expect.arrayContaining(['hips', 'chest', 'head']));
     for (const clipName of ['Atlas_Walk', 'Atlas_Run']) {
       expect([...animatedNodes(player, clipName)]).toEqual(
@@ -84,6 +86,9 @@ describe('Atlas 3D asset registry', () => {
         ]),
       );
     }
+    expect([...animatedNodes(player, 'Atlas_Talk')]).toEqual(
+      expect.arrayContaining(['hips', 'chest', 'neck', 'head', 'upper_arm.L', 'lower_arm.L', 'upper_arm.R', 'lower_arm.R']),
+    );
   });
 
   it('keeps Beacon Commons as a real scene contract with readable anchors', () => {

@@ -99,7 +99,7 @@ function verifyBudget(id, metrics) {
   if (metrics.triangles > triangleLimit) throw new Error(`triangle budget exceeded: ${metrics.triangles} > ${triangleLimit}`);
   const materialLimit = id === 'pay-harbor-environment' ? 8 : id.startsWith('atlas-walker') ? 8 : 12;
   if (metrics.materials > materialLimit) throw new Error(`material budget exceeded: ${metrics.materials} > ${materialLimit}`);
-  if (id.startsWith('atlas-walker') && metrics.animations !== 3) throw new Error(`character animation set is incomplete: ${metrics.animations} != 3`);
+  if (id.startsWith('atlas-walker') && metrics.animations !== 4) throw new Error(`character animation set is incomplete: ${metrics.animations} != 4`);
 }
 
 function verifyScene(scene, expectedDistrict) {

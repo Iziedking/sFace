@@ -12,6 +12,7 @@ function clips(): AnimationClip[] {
     new AnimationClip('Atlas_Idle', 2.4, []),
     new AnimationClip('Atlas_Walk', 1, []),
     new AnimationClip('Atlas_Run', 0.72, []),
+    new AnimationClip('Atlas_Talk', 2, []),
   ];
 }
 
@@ -20,7 +21,7 @@ describe('Atlas character animation controller', () => {
     const animator = createAtlasCharacterAnimator(new Group(), clips());
     expect(animator.state()).toBe('idle');
     const mixer = animator.mixer;
-    for (const state of ['walk', 'run', 'idle'] satisfies AtlasCharacterAnimationState[]) {
+    for (const state of ['walk', 'run', 'talk', 'idle'] satisfies AtlasCharacterAnimationState[]) {
       animator.update(state, 1 / 30);
       expect(animator.state()).toBe(state);
       expect(animator.mixer).toBe(mixer);
@@ -62,13 +63,20 @@ describe('Atlas character animation controller', () => {
   });
 
   it('rejects incomplete character animation sets', () => {
-    expect(() => createAtlasCharacterAnimator(new Group(), clips().slice(0, 2))).toThrow(/Atlas_Run/);
+    expect(() => createAtlasCharacterAnimator(new Group(), clips().slice(0, 3))).toThrow(/Atlas_Talk/);
   });
 
   it('keeps ordinary moving citizens walking while stationary citizens idle', () => {
     expect(atlasCitizenAnimationState(false, 'walk')).toBe('idle');
     expect(atlasCitizenAnimationState(true, 'walk')).toBe('walk');
     expect(atlasCitizenAnimationState(true, 'run')).toBe('run');
+  });
+
+  it('uses a dedicated conversational body animation for social activities', () => {
+    expect(atlasCitizenAnimationState(false, 'walk', 'talking')).toBe('talk');
+    expect(atlasCitizenAnimationState(false, 'walk', 'trading')).toBe('talk');
+    expect(atlasCitizenAnimationState(false, 'walk', 'planning')).toBe('idle');
+    expect(atlasCitizenAnimationState(true, 'walk', 'talking')).toBe('walk');
   });
 
   it('keeps nearby citizens facial on balanced and high quality profiles', () => {
