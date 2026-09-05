@@ -45,8 +45,17 @@ describe('Citizen level of detail', () => {
     expect(switches, `${switches} body swaps while jittering at the boundary`).toBeLessThanOrEqual(1);
   });
 
-  it('keeps the old behaviour where it was already right', () => {
-    expect(atlasCitizenDetailLevel('low', false, 1, 'near')).toBe('distant');
+  it('keeps nearby citizens articulated on low quality without boundary flicker', () => {
+    expect(atlasCitizenDetailLevel('low', false, 1, 'distant')).toBe('near');
+    expect(atlasCitizenDetailLevel('low', false, 6, 'distant')).toBe('near');
+    expect(atlasCitizenDetailLevel('low', false, 6.01, 'distant')).toBe('distant');
+    expect(atlasCitizenDetailLevel('low', false, 6.01, 'near')).toBe('near');
+    expect(atlasCitizenDetailLevel('low', false, 8.5, 'near')).toBe('near');
+    expect(atlasCitizenDetailLevel('low', false, 8.51, 'near')).toBe('distant');
+    expect(atlasCitizenDetailLevel('low', true, 999, 'distant')).toBe('distant');
+  });
+
+  it('preserves balanced and high quality detail policies', () => {
     expect(atlasCitizenDetailLevel('balanced', true, 999, 'distant')).toBe('near');
     expect(atlasCitizenDetailLevel('high', false, 19, 'distant')).toBe('near');
     expect(atlasCitizenDetailLevel('high', false, 25, 'distant')).toBe('distant');

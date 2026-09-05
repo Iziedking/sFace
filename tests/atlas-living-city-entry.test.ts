@@ -76,8 +76,9 @@ describe('approved living-city game entry', () => {
     // conditional, not the literal. atlas-palette.test.ts asserts no renderer
     // carries a colour of its own.
     expect(threeRenderer).toContain('completedStations > 0 ? ATLAS_WORLD_PALETTE.lanternComplete');
-    expect(threeRenderer).toContain('const PLAYER_WORLD_SCALE = 0.46');
-    expect(threeRenderer).toContain('const NPC_WORLD_SCALE = 0.38');
+    // Keep the enlarged silhouettes readable from the mobile follow camera.
+    expect(threeRenderer).toContain('const PLAYER_WORLD_SCALE = 0.72');
+    expect(threeRenderer).toContain('const NPC_WORLD_SCALE = 0.68');
     expect(threeRenderer).toContain('presentMissionMarker');
     expect(threeRenderer).toContain('createHarborActivityVisuals');
     expect(threeRenderer).toContain('presentHarborActivity');

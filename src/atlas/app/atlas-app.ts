@@ -324,9 +324,14 @@ export class AtlasApp {
     const activeRole = ATLAS_PROLOGUE.roles.find((role) => role.id === this.selectedRole)!;
     roles.append(roleButtons, element('p', 'atlas-role-description', activeRole.description));
     const promise = element('p', 'atlas-quiet', this.selectedRole === 'builder' ? 'Builder: repair, predict, verify.' : 'Explorer: inspect, approve, confirm.');
-    const start = this.contractProgress.opened
-      ? actionButton(this.contractProgress.active ? 'Resume harbor job' : 'Harbor contracts', () => { void this.enterPayHarbor(); }, 'Return to your open harbor')
-      : actionButton('Start 60-second run', this.openBeaconCommons, 'Start the 60-second NIM Atlas run and Meet Mara');
+    const startLabel = this.contractProgress.opened
+      ? (this.contractProgress.active ? 'Resume harbor job' : 'Harbor contracts')
+      : 'Start 60-second run';
+    const startAction = this.contractProgress.opened ? () => { void this.enterPayHarbor(); } : this.openBeaconCommons;
+    const startDescription = this.contractProgress.opened
+      ? 'Return to your open harbor'
+      : 'Start the 60-second NIM Atlas run and Meet Mara';
+    const start = actionButton(startLabel, startAction, startDescription);
     start.classList.add('atlas-start');
     // Only `start` keeps the signal colour. Everything else here is a ghost, so
     // a first-time player has exactly one obvious next move. Three identical
