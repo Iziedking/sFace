@@ -27,6 +27,8 @@ export interface AtlasCityInteractionPresentation {
   readonly relayCarried: boolean;
   readonly builderStationIndex: number;
   readonly targetAnchorId?: string;
+  readonly harborCargo?: boolean;
+  readonly harborStocked?: readonly ('market' | 'ferry' | 'workshop')[];
 }
 
 export interface AtlasSceneRenderer {

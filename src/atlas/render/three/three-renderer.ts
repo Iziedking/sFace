@@ -11,6 +11,7 @@ import { parseAtlasCityScene, type AtlasCitySceneV1 } from '../../../../shared/a
 import type { AtlasCityInteractionPresentation, AtlasRendererOptions, AtlasRendererStats, AtlasSceneRenderer } from '../contracts';
 import { detectThreeCapability } from './capability';
 import { AtlasCameraRig } from './camera-rig';
+import { createHarborSupplies } from './harbor-supplies';
 import { createAtlasLighting, type AtlasLighting } from './lighting';
 import { atlasHorizonColour, createAtlasSkyTexture } from './sky';
 import { toAtlasToonMaterial } from './toon';
@@ -545,6 +546,8 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
     this.playerAnimator = null;
   }
 
+  private harborSupplies: ReturnType<typeof createHarborSupplies> | null = null;
+
   private createPayHarborInteractionVisuals(districtId: string, scene: AtlasCitySceneV1): void {
     this.clearInteractionVisuals();
     if (districtId !== 'pay-harbor' || !this.scene || !this.playerRoot) return;
@@ -586,11 +589,14 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
     });
 
     this.harborActivityVisuals = createHarborActivityVisuals(this.scene, scene);
+    const market = scene.anchors.find((anchor) => anchor.id === 'conversation-market');
+    if (market) this.harborSupplies = createHarborSupplies(this.scene, this.playerRoot, market.position);
   }
 
   private presentInteractionVisuals(restoration: AtlasLivingWorldSnapshot['restoration'], interaction: AtlasCityInteractionPresentation | undefined, tick: number): void {
     if (!this.relayRoot) return;
     const isPayHarbor = interaction?.districtId === 'pay-harbor' && this.loadedDistrict === 'pay-harbor';
+    this.harborSupplies?.update(isPayHarbor && interaction?.harborCargo === true, isPayHarbor ? interaction?.harborStocked ?? [] : []);
     const relayVisible = isPayHarbor && interaction?.relayCarried === true;
     this.relayRoot.visible = relayVisible;
     if (relayVisible) this.relayRoot.rotation.y = Math.sin(tick / 10) * 0.08;
@@ -624,6 +630,8 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
   }
 
   private clearInteractionVisuals(): void {
+    this.harborSupplies?.dispose();
+    this.harborSupplies = null;
     if (this.relayRoot) {
       this.relayParent?.remove(this.relayRoot);
       disposeObject(this.relayRoot);

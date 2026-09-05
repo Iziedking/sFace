@@ -35,6 +35,9 @@ import type { AtlasCityPlayerState } from '../../../shared/atlas/city/player';
 import { projectPayHarborPhysicalMission } from '../../../shared/atlas/city/pay-harbor-mission';
 import { getAtlasWaypointGuidance } from '../../../shared/atlas/city/wayfinding';
 import { createPayHarborScene } from '../scenes/pay-harbor';
+import { activeHarborContract, advanceHarborContract, harborContractsForDay, harborContractStars, startHarborContract, type HarborContractProgress } from '../../../shared/atlas/harbor-contracts';
+import { createHarborContractStore } from '../harbor-contract-store';
+import { harborContractDialogue, projectHarborContractMission } from '../ui/harbor-contracts';
 
 /*
  * How long a tap on a directional arrow holds the direction down.
@@ -61,6 +64,12 @@ export class AtlasApp {
   private readonly input = new AtlasInputController();
   private readonly renderer: AtlasRenderer;
   private readonly progress = createAtlasProgressStore(safeStorage());
+  private readonly contractStore = createHarborContractStore({
+    getItem: (key) => window.localStorage.getItem(key),
+    setItem: (key, value) => window.localStorage.setItem(key, value),
+  });
+  private contractProgress = this.contractStore.snapshot();
+  private contractMission = projectHarborContractMission(this.contractProgress);
   private readonly paymentConfig = readAtlasClientPaymentConfig();
   private readonly wallet = createAtlasWalletAdapter();
   private readonly api = createAtlasApiClient({ baseUrl: import.meta.env.VITE_API_BASE ?? '' });
@@ -126,6 +135,9 @@ export class AtlasApp {
   private payHarborBuilderStation = 0;
 
   constructor(private readonly ui: HTMLElement, private readonly canvas: HTMLCanvasElement) {
+    if (!this.contractProgress.opened && this.progress.load().completedTrialIds.includes('last-lantern')) {
+      this.saveHarborContracts({ ...this.contractProgress, opened: true });
+    }
     this.renderer = new AtlasRenderer(canvas);
     installAtlasKeyboard(window, this.input);
     window.addEventListener('resize', this.resize);
@@ -293,8 +305,8 @@ export class AtlasApp {
      */
     const mission = element('div', 'atlas-mission-card');
     mission.append(
-      element('strong', '', '60-SECOND RUN / Meet Mara'),
-      element('p', '', 'Mara needs one safe NIM payment route. Restore it, carry the lantern, relight the harbor. Choose a path, meet the Commons guide, and learn why each move matters.'),
+      element('strong', '', this.contractProgress.opened ? 'THE HARBOR NEEDS YOU' : '60-SECOND RUN / Meet Mara'),
+      element('p', '', this.contractProgress.opened ? 'Your harbor is open. Deliver supplies, check orders, and improve your best ratings. Unfinished jobs resume where you left off.' : 'Mara needs one safe NIM payment route. Restore it, carry the lantern, relight the harbor. Choose a path, meet the Commons guide, and learn why each move matters.'),
     );
     const roles = element('div', 'atlas-role-choice');
     roles.append(element('strong', '', 'CHOOSE YOUR FIRST PATH'));
@@ -312,7 +324,9 @@ export class AtlasApp {
     const activeRole = ATLAS_PROLOGUE.roles.find((role) => role.id === this.selectedRole)!;
     roles.append(roleButtons, element('p', 'atlas-role-description', activeRole.description));
     const promise = element('p', 'atlas-quiet', this.selectedRole === 'builder' ? 'Builder: repair, predict, verify.' : 'Explorer: inspect, approve, confirm.');
-    const start = actionButton('Start 60-second run', this.openBeaconCommons, 'Start the 60-second NIM Atlas run and Meet Mara');
+    const start = this.contractProgress.opened
+      ? actionButton(this.contractProgress.active ? 'Resume harbor job' : 'Harbor contracts', () => { void this.enterPayHarbor(); }, 'Return to your open harbor')
+      : actionButton('Start 60-second run', this.openBeaconCommons, 'Start the 60-second NIM Atlas run and Meet Mara');
     start.classList.add('atlas-start');
     // Only `start` keeps the signal colour. Everything else here is a ghost, so
     // a first-time player has exactly one obvious next move. Three identical
@@ -643,7 +657,7 @@ export class AtlasApp {
   }
 
   private currentCityTargetAnchorId(): string {
-    if (this.screen === 'pay-harbor') return projectPayHarborPhysicalMission(this.lanternState, this.payHarborBuilderStation).targetAnchorId;
+    if (this.screen === 'pay-harbor') return this.currentPayHarborMission().targetAnchorId;
     if (this.cityQuestStep === 'meet-guide') return 'mission-guide';
     return 'travel-pay-harbor';
   }
@@ -681,7 +695,7 @@ export class AtlasApp {
       this.screen = 'pay-harbor';
       this.presentPayHarborWorld();
       this.audio.playWorldCue('city-interaction');
-      this.audio.narrate('You have reached Pay Harbor. Find Mara, inspect the lantern, and verify every payment field before the city changes.');
+      this.audio.narrate(this.contractProgress.opened ? this.currentPayHarborMission().detail : 'You have reached Pay Harbor. Find Mara, inspect the lantern, and verify every payment field before the city changes.');
       this.renderPayHarbor();
     } catch {
       this.toolkit?.setDetail('Pay Harbor could not open. Beacon Commons is still safe; try the gate again when the route is available.');
@@ -691,7 +705,7 @@ export class AtlasApp {
   private renderPayHarbor(): void {
     this.ui.replaceChildren();
     if (this.gateForLandscape()) return;
-    const mission = projectPayHarborPhysicalMission(this.lanternState, this.payHarborBuilderStation);
+    const mission = this.currentPayHarborMission();
     const citizens = this.livingCity?.crowdSnapshot() ?? [];
     const shell = element('section', 'atlas-play-shell atlas-living-city-play-shell atlas-pay-harbor-play-shell');
     shell.setAttribute('aria-label', 'Pay Harbor living city mission');
@@ -702,9 +716,13 @@ export class AtlasApp {
     population.setAttribute('role', 'status');
     const pause = actionButton(this.suspended ? 'Resume' : 'Pause', this.togglePause, this.suspended ? 'Resume Pay Harbor' : 'Pause Pay Harbor');
     pause.className = 'atlas-pause';
-    topbar.append(brand, population, pause);
+    if (this.contractProgress.opened) {
+      const jobs = actionButton('Jobs', () => this.openHarborBoard(), 'View harbor jobs or put aside your current job');
+      jobs.className = 'atlas-pause';
+      topbar.append(brand, jobs, pause);
+    } else topbar.append(brand, population, pause);
 
-    this.toolkit = createAtlasToolkit({ depth: 'glance', objective: mission.objective, detail: this.paymentNotice || mission.detail, status: mission.status });
+    this.toolkit = createAtlasToolkit({ depth: 'glance', objective: mission.objective, detail: this.contractProgress.opened ? this.contractStore.notice() || mission.detail : this.paymentNotice || mission.detail, status: mission.status });
     const controls = element('div', 'atlas-controls atlas-city-controls');
     const movement = element('div', 'atlas-mobile-movement');
     movement.setAttribute('aria-label', 'Movement controls');
@@ -756,9 +774,13 @@ export class AtlasApp {
   private interactInPayHarbor = (): void => {
     if (this.harborDialogue || this.suspended || this.paymentBusy) return;
     const player = this.livingCity?.playerSnapshot();
-    const mission = projectPayHarborPhysicalMission(this.lanternState, this.payHarborBuilderStation);
+    const mission = this.currentPayHarborMission();
     if (!player || !this.isNearBeaconAnchor(player, mission.targetAnchorId, 2.4)) {
       this.toolkit?.setDetail('Follow the pink target on the city map and move closer before acting.');
+      return;
+    }
+    if (this.contractProgress.opened) {
+      this.interactHarborContract();
       return;
     }
     if (this.lanternState.phase === 'street') {
@@ -800,7 +822,7 @@ export class AtlasApp {
     this.harborDialogue = {
       display,
       speakerName: 'Mara',
-      continueLabel: this.lanternState.phase === 'tower-lit' ? 'Explore the open harbor' : 'Find the lantern counter',
+      continueLabel: this.contractProgress.opened ? 'Continue' : this.lanternState.phase === 'tower-lit' ? 'Explore the open harbor' : 'Find the lantern counter',
       onChoose: onChoose ?? ((choiceId) => this.showHarborDialogue(this.conversations.choose(choiceId), onContinue)),
       onContinue: () => {
         this.closeHarborDialogue();
@@ -854,10 +876,11 @@ export class AtlasApp {
       if (this.lanternState.phase === 'tower-lit') {
         this.progress.completeDistrict('pay-harbor');
         this.progress.completeTrial('last-lantern');
+        if (!this.contractProgress.opened) this.saveHarborContracts({ ...this.contractProgress, opened: true });
       }
       this.presentPayHarborWorld();
       if (this.lanternState.phase === 'tower-lit' && action.type === 'reach-tower') {
-        this.showHarborDialogue(this.conversations.start('mara-lantern', 'tower-lit'), () => this.renderPayHarbor());
+        this.showHarborDialogue(this.conversations.start('mara-lantern', 'tower-lit'), () => this.openHarborBoard());
         return;
       }
       this.renderPayHarbor();
@@ -866,8 +889,83 @@ export class AtlasApp {
     }
   }
 
+  private currentPayHarborMission() {
+    return this.contractProgress.opened ? this.contractMission : projectPayHarborPhysicalMission(this.lanternState, this.payHarborBuilderStation);
+  }
+
+  private saveHarborContracts(next: HarborContractProgress): void {
+    this.contractStore.save(next);
+    this.contractProgress = this.contractStore.snapshot();
+    this.contractMission = projectHarborContractMission(this.contractProgress);
+  }
+
+  private openHarborBoard(): void {
+    if (!this.contractProgress.opened || this.suspended || this.paymentBusy) return;
+    const current = activeHarborContract(this.contractProgress);
+    const day = new Date().toISOString().slice(0, 10);
+    const contracts = harborContractsForDay(day);
+    const choices = current ? [
+      { id: 'close', label: `Resume: ${current.title}` },
+      { id: 'abandon', label: 'Put aside this job and choose another' },
+    ] : [
+      ...contracts.map((contract) => {
+        const best = this.contractProgress.records.find((record) => record.id === contract.id);
+        return { id: contract.kind, label: `${contract.title}${best ? ` / Best ${best.stars}/3 stars / Replay` : ''}` };
+      }),
+      { id: 'close', label: 'Keep exploring' },
+    ];
+    const subtitle = current ? `${current.title}. ${this.currentPayHarborMission().detail}` : `The harbor is open, but our neighbors still need help. Choose a job. Three stars for a first-try check; retry freely to learn. Supplies restored: ${this.contractProgress.stocked.length}/3. Daily orders use UTC. Free local practice: no payment or NIM reward.`;
+    this.showHarborDialogue(harborContractDialogue(`${subtitle} ${this.contractStore.notice()}`.trim(), choices), () => this.renderPayHarbor(), (id) => {
+      if (id === 'abandon') {
+        this.saveHarborContracts({ ...this.contractProgress, active: null });
+        this.presentPayHarborWorld();
+        this.openHarborBoard();
+        return;
+      }
+      if (id !== 'close') {
+        const contract = contracts.find((candidate) => candidate.kind === id);
+        if (!contract || this.contractProgress.active) return;
+        this.saveHarborContracts(startHarborContract(this.contractProgress, day, contract.kind));
+      }
+      this.closeHarborDialogue();
+      this.presentPayHarborWorld();
+      this.renderPayHarbor();
+    });
+  }
+
+  private interactHarborContract(): void {
+    const contract = activeHarborContract(this.contractProgress);
+    const run = this.contractProgress.active;
+    if (!contract || !run) { this.openHarborBoard(); return; }
+    if (run.step === 1) { this.reviewHarborContract(); return; }
+    const stars = harborContractStars(run.mistakes);
+    this.saveHarborContracts(advanceHarborContract(this.contractProgress, this.currentPayHarborMission().targetAnchorId));
+    this.presentPayHarborWorld();
+    this.audio.playWorldCue('city-interaction');
+    if (run.step === 2) {
+      const best = this.contractProgress.records.find((record) => record.id === contract.id)?.stars ?? stars;
+      this.showHarborDialogue(harborContractDialogue(`${contract.outcome} ${stars}/3 stars this run. Personal best: ${best}/3. Supplies restored: ${this.contractProgress.stocked.length}/3. Local practice only. ${this.contractStore.notice()}`), () => this.openHarborBoard());
+    } else this.renderPayHarbor();
+  }
+
+  private reviewHarborContract(retry = false): void {
+    const contract = activeHarborContract(this.contractProgress);
+    if (!contract || this.contractProgress.active?.step !== 1) return;
+    this.showHarborDialogue(harborContractDialogue(`${retry ? `${contract.retry} ` : ''}${contract.question}`, [...contract.choices, { id: 'close', label: 'Check later' }]), () => this.renderPayHarbor(), (id) => {
+      if (id === 'close') { this.closeHarborDialogue(); this.renderPayHarbor(); return; }
+      const player = this.livingCity?.playerSnapshot();
+      const target = this.currentPayHarborMission().targetAnchorId;
+      if (!player || !this.isNearBeaconAnchor(player, target, 2.4)) { this.closeHarborDialogue(); this.renderPayHarbor(); return; }
+      this.saveHarborContracts(advanceHarborContract(this.contractProgress, target, id));
+      if (this.contractProgress.active?.step === 1) { this.reviewHarborContract(true); return; }
+      this.closeHarborDialogue();
+      this.presentPayHarborWorld();
+      this.renderPayHarbor();
+    });
+  }
+
   private presentPayHarborWorld(): void {
-    const mission = projectPayHarborPhysicalMission(this.lanternState, this.payHarborBuilderStation);
+    const mission = this.currentPayHarborMission();
     const restoration = mission.restoration;
     const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
     this.livingCity?.setInteractionPresentation({
@@ -875,6 +973,8 @@ export class AtlasApp {
       relayCarried: this.selectedRole === 'builder' && this.lanternState.phase === 'fulfilled',
       builderStationIndex: this.payHarborBuilderStation,
       targetAnchorId: mission.targetAnchorId,
+      harborCargo: this.contractProgress.active !== null && this.contractProgress.active.step > 0,
+      harborStocked: this.contractProgress.stocked,
     });
     this.livingCity?.present(createPayHarborScene({ restoration, reducedMotion }).snapshot);
   }
