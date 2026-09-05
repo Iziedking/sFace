@@ -75,7 +75,10 @@ describe('Atlas character animation controller', () => {
     expect(atlasCitizenDetailLevel('balanced', false, 4)).toBe('near');
     expect(atlasCitizenDetailLevel('balanced', false, 18)).toBe('distant');
     expect(atlasCitizenDetailLevel('high', false, 18)).toBe('near');
-    expect(atlasCitizenDetailLevel('low', true, 2)).toBe('distant');
+    expect(atlasCitizenDetailLevel('low', true, 2)).toBe('near');
+    expect(atlasCitizenDetailLevel('low', true, 12)).toBe('distant');
+    expect(atlasCitizenDetailLevel('low', false, 7, 'near')).toBe('near');
+    expect(atlasCitizenDetailLevel('low', false, 7, 'distant')).toBe('distant');
   });
 });
 

@@ -28,8 +28,8 @@ import { AtlasGltfResourceCache } from './gltf-loader';
 import type { AtlasGltfHandle } from './gltf-loader';
 
 // Keep the authored character proportions intact while giving the city more breathing room on mobile.
-const PLAYER_WORLD_SCALE = 0.46;
-const NPC_WORLD_SCALE = 0.38;
+const PLAYER_WORLD_SCALE = 0.72;
+const NPC_WORLD_SCALE = 0.68;
 // Heavier than the default: a character is what the eye tracks, and a hairline
 // rim disappears against a busy street at phone size.
 const CHARACTER_OUTLINE_THICKNESS = 0.055;
@@ -478,6 +478,8 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
       slot.lastPosition.x = position[0];
       slot.lastPosition.z = position[2];
       const presentationBlend = 1 - Math.exp(-Math.max(8, motion.moving ? 12 : 7) * deltaSeconds);
+      const previousX = slot.displayPosition.x;
+      const previousZ = slot.displayPosition.z;
       slot.displayPosition.x += (position[0] - slot.displayPosition.x) * presentationBlend;
       slot.displayPosition.z += (position[2] - slot.displayPosition.z) * presentationBlend;
       const distanceFromPlayer = this.playerRoot ? Math.hypot(position[0] - this.playerRoot.position.x, position[2] - this.playerRoot.position.z) : Number.POSITIVE_INFINITY;
@@ -494,6 +496,7 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
         const leaving = slot.detailLevel === 'near' ? slot.lod1Animator : slot.lod2Animator;
         const arriving = detailLevel === 'near' ? slot.lod1Animator : slot.lod2Animator;
         arriving.mixer.setTime(leaving.mixer.time);
+        arriving.restoreGait(leaving.gaitState());
         slot.detailLevel = detailLevel;
       }
       const root = detailLevel === 'near' ? slot.lod1Root : slot.lod2Root;
@@ -503,11 +506,12 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
         characterRoot.rotation.y = dampRadians(characterRoot.rotation.y, motion.headingRadians, 1 - Math.exp(-9 * deltaSeconds));
       }
       const animator = root === slot.lod1Root ? slot.lod1Animator : slot.lod2Animator;
-      if (citizen.active || this.qualityTier !== 'low') {
+      if (motion.moving || detailLevel === 'near' || citizen.active || this.qualityTier !== 'low') {
         const requestedPace = motion.pace === 'run' ? 'run' : 'walk';
         const animationState = atlasCitizenAnimationState(motion.moving, requestedPace);
         const speedScale = citizenAnimationSpeed(animationState, motion.speedUnitsPerSecond);
-        animator.update(animationState, deltaSeconds, speedScale, atlasCitizenFacialCue(citizen.activity));
+        const renderedSpeed = deltaSeconds > 0 ? Math.hypot(slot.displayPosition.x - previousX, slot.displayPosition.z - previousZ) / deltaSeconds : 0;
+        animator.update(animationState, deltaSeconds, speedScale, atlasCitizenFacialCue(citizen.activity), { speedUnitsPerSecond: Math.min(3, renderedSpeed), worldScale: NPC_WORLD_SCALE });
       }
     }
   }
@@ -528,7 +532,7 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
     root.position.set(player.x, 0, player.z);
     root.rotation.y = player.headingRadians;
     const facialCue = player.pace === 'run' ? 'focused' : 'neutral';
-    this.playerAnimator?.update(player.pace, deltaSeconds, playerAnimationSpeed(player), facialCue);
+    this.playerAnimator?.update(player.pace, deltaSeconds, playerAnimationSpeed(player), facialCue, { speedUnitsPerSecond: player.speedUnitsPerSecond, worldScale: PLAYER_WORLD_SCALE });
   }
 
   private animationDeltaSeconds(tick: number): number {

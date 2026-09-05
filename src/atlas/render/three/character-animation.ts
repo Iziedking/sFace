@@ -2,6 +2,9 @@ import { AnimationMixer } from 'three';
 import type { AnimationAction, AnimationClip, Object3D } from 'three';
 import type { AtlasQualityTier } from '../../../../shared/atlas/city/types';
 import type { AtlasCitizenActivity } from '../../../../shared/atlas/city/crowd';
+import type { AtlasGaitState } from '../../../../shared/atlas/city/character-gait';
+import { createAtlasGaitRig, type AtlasLocomotionSample } from './character-gait-rig';
+import { findAtlasBone } from './character-bones';
 
 export type AtlasCharacterAnimationState = 'idle' | 'walk' | 'run';
 export type AtlasFacialCue = 'neutral' | 'focused' | 'talking' | 'pleased';
@@ -13,7 +16,9 @@ export interface AtlasCharacterAnimatorOptions {
 export interface AtlasCharacterAnimator {
   readonly mixer: AnimationMixer;
   state(): AtlasCharacterAnimationState;
-  update(state: AtlasCharacterAnimationState, deltaSeconds: number, speedScale?: number, facialCue?: AtlasFacialCue): void;
+  update(state: AtlasCharacterAnimationState, deltaSeconds: number, speedScale?: number, facialCue?: AtlasFacialCue, locomotion?: AtlasLocomotionSample): void;
+  gaitState(): AtlasGaitState | null;
+  restoreGait(state: AtlasGaitState | null): void;
   stop(): void;
 }
 
@@ -40,6 +45,7 @@ export function createAtlasCharacterAnimator(
     }),
   ) as Record<AtlasCharacterAnimationState, AnimationAction>;
   const face = createFacialRig(root, options.facialPhase ?? 0);
+  const gait = createAtlasGaitRig(root);
 
   let current: AtlasCharacterAnimationState = 'idle';
   actions.idle.reset().setEffectiveTimeScale(1).setEffectiveWeight(1).play();
@@ -47,7 +53,9 @@ export function createAtlasCharacterAnimator(
   return {
     mixer,
     state: () => current,
-    update(nextState, deltaSeconds, speedScale = 1, facialCue = 'neutral') {
+    gaitState: () => gait?.snapshot() ?? null,
+    restoreGait: (state) => { if (state) gait?.restore(state); },
+    update(nextState, deltaSeconds, speedScale = 1, facialCue = 'neutral', locomotion) {
       const safeDelta = Number.isFinite(deltaSeconds) ? Math.min(0.25, Math.max(0, deltaSeconds)) : 0;
       const safeSpeed = Number.isFinite(speedScale) ? Math.min(1.75, Math.max(0.5, speedScale)) : 1;
       const next = actions[nextState];
@@ -64,6 +72,7 @@ export function createAtlasCharacterAnimator(
         current = nextState;
       }
       mixer.update(safeDelta);
+      if (locomotion) gait?.update(safeDelta, locomotion, nextState === 'run');
       face?.update(safeDelta, facialCue);
     },
     stop() {
@@ -111,7 +120,7 @@ export function atlasCitizenDetailLevel(
   distanceFromPlayer: number,
   previous?: 'near' | 'distant',
 ): 'near' | 'distant' {
-  if (quality === 'low') return 'distant';
+  if (quality === 'low') return distanceFromPlayer <= (previous === 'near' ? 8.5 : 6) ? 'near' : 'distant';
   if (active) return 'near';
   const nearDistance = quality === 'high' ? 20 : 12;
   const threshold = previous === 'near' ? nearDistance + DETAIL_HYSTERESIS_METRES : nearDistance;
@@ -123,10 +132,10 @@ interface AtlasFacialRig {
 }
 
 function createFacialRig(root: Object3D, requestedPhase: number): AtlasFacialRig | null {
-  const leftEye = root.getObjectByName('eye.L');
-  const rightEye = root.getObjectByName('eye.R');
-  const leftEyelid = root.getObjectByName('eyelid.L');
-  const rightEyelid = root.getObjectByName('eyelid.R');
+  const leftEye = findAtlasBone(root, 'eye.L');
+  const rightEye = findAtlasBone(root, 'eye.R');
+  const leftEyelid = findAtlasBone(root, 'eyelid.L');
+  const rightEyelid = findAtlasBone(root, 'eyelid.R');
   const mouth = root.getObjectByName('mouth');
   if (!leftEye && !rightEye && !mouth) return null;
 

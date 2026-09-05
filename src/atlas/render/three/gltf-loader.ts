@@ -4,6 +4,7 @@ import type { AnimationClip, Group, Object3D } from 'three';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import type { AtlasAssetManager } from '../../assets/asset-manager';
 import { cloneAtlasScene, disposeAtlasSceneResources } from './scene-instance';
+import { refineAtlasCharacterSkin } from './character-skin';
 
 export interface AtlasGltfHandle {
   readonly root: Object3D;
@@ -80,6 +81,7 @@ export class AtlasGltfResourceCache {
     const bytes = await this.options.assetManager.loadBytes(url);
     const gltf = await this.parser(bytes, url);
     if (!gltf.scene) throw new Error(`GLB ${url} did not contain a scene.`);
+    if (/^\/atlas\/3d\/v1\/characters\/atlas-walker-(player|npc-lod1)\.glb$/.test(url)) refineAtlasCharacterSkin(gltf.scene, url.endsWith('player.glb') ? 'player' : 'npc');
     return { gltf, references: 0, disposed: false };
   }
 

@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atlas character motion review</title>
+<style>
+  body { margin: 0; background: #16222b; color: #fff; font: 16px system-ui; }
+  header { padding: 12px; } button { min-height: 44px; margin: 4px; padding: 8px 16px; }
+  canvas { display: block; width: 100%; height: 70vh; }
+  #status { margin: 8px 0; } .labels { display: flex; justify-content: space-around; }
+</style>
+<header>
+  <h1>Atlas character motion review</h1>
+  <p>Same native model and travel speed. Left: original clips. Right: connected limbs and distance-driven feet.</p>
+  <button data-pace="idle">Stop</button><button data-pace="walk">Walk</button><button data-pace="run">Run</button>
+  <button id="side">Side view</button><button id="front">Front view</button>
+  <p id="status" role="status">Loading local character assets...</p>
+  <div class="labels"><strong>Original</strong><strong>Updated</strong></div>
+</header>
+<script type="importmap">{"imports":{"three":"/vendor/three/build/three.module.js","three/addons/":"/vendor/three/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { refineAtlasCharacterSkin } from '/src/atlas/render/three/character-skin';
+import { createAtlasCharacterAnimator } from '/src/atlas/render/three/character-animation';
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+document.body.append(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#16222b');
+scene.add(new THREE.HemisphereLight(0xffffff, 0x546070, 2));
+const light = new THREE.DirectionalLight(0xffffff, 3);
+light.position.set(2, 4, 3); scene.add(light);
+const camera = new THREE.PerspectiveCamera(36, 1, 0.01, 30);
+camera.position.set(0, 1.3, 5); camera.lookAt(0, 0.7, 0);
+let pace = 'walk';
+const actors = [];
+const grids = [];
+try {
+  for (let i = 0; i < 2; i++) {
+    const gltf = await new GLTFLoader().loadAsync('/public/atlas/3d/v1/characters/atlas-walker-player.glb');
+    if (i === 1) refineAtlasCharacterSkin(gltf.scene);
+    gltf.scene.scale.setScalar(0.72);
+    gltf.scene.position.x = i === 0 ? -0.9 : 0.9;
+    scene.add(gltf.scene);
+    actors.push({ root: gltf.scene, animator: createAtlasCharacterAnimator(gltf.scene, gltf.animations) });
+    const grid = new THREE.GridHelper(1.5, 12, 0xa3b4bc, 0x51616b);
+    grid.position.x = gltf.scene.position.x; scene.add(grid); grids.push(grid);
+  }
+  document.querySelector('#status').textContent = 'Ready. Ground grid moves at travel speed; this is a motion fixture, not a full-game performance test.';
+} catch (error) { document.querySelector('#status').textContent = `Review failed: ${error.message}`; }
+document.querySelectorAll('[data-pace]').forEach(button => button.onclick = () => { pace = button.dataset.pace; });
+document.querySelector('#side').onclick = () => actors.forEach(actor => { actor.root.rotation.y = Math.PI / 2; });
+document.querySelector('#front').onclick = () => actors.forEach(actor => { actor.root.rotation.y = 0; });
+let previous, travel = 0;
+function frame(now) {
+  const dt = previous === undefined ? 0 : Math.min(0.1, (now - previous) / 1000); previous = now;
+  const speed = pace === 'run' ? 2.4 : pace === 'walk' ? 1.15 : 0;
+  actors.forEach((actor, index) => actor.animator.update(pace, dt, pace === 'run' ? speed / 2.28 : pace === 'walk' ? speed / 1.02 : 1, 'neutral', index === 1 ? { speedUnitsPerSecond: speed, worldScale: 0.72 } : undefined));
+  travel = (travel + speed * dt) % 0.125;
+  grids.forEach((grid, index) => {
+    const actor = actors[index].root;
+    grid.rotation.y = actor.rotation.y;
+    grid.position.x = actor.position.x - Math.sin(actor.rotation.y) * travel;
+    grid.position.z = -Math.cos(actor.rotation.y) * travel;
+  });
+  const width = document.documentElement.clientWidth, height = Math.max(260, innerHeight * 0.7);
+  if (renderer.domElement.clientWidth !== width || renderer.domElement.height !== Math.round(height * renderer.getPixelRatio())) {
+    renderer.setSize(width, height, false); camera.aspect = width / height; camera.updateProjectionMatrix();
+  }
+  renderer.render(scene, camera); requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</html>
