@@ -1,4 +1,4 @@
-import { BackSide, Mesh, MeshBasicMaterial, Vector3, type Object3D } from 'three';
+import { BackSide, Mesh, MeshBasicMaterial, SkinnedMesh, Vector3, type Object3D } from 'three';
 import { ATLAS_WORLD_PALETTE } from '../../palette';
 import type { AtlasQualityTier } from '../../../../shared/atlas/city/types';
 
@@ -33,6 +33,13 @@ export function attachAtlasOutline(root: Object3D, thickness = 0.03): number {
   const targets: Mesh[] = [];
   root.traverse((object) => {
     if (!(object instanceof Mesh)) return;
+    /*
+     * A plain Mesh hull cannot consume skin weights. It overlaps its SkinnedMesh
+     * parent while idle, then stays rigid as the skeleton moves and reads as a
+     * second body. Keep the inexpensive hull on rigid hair, gear and props; the
+     * animated body gets its silhouette from the toon material and lighting.
+     */
+    if (object instanceof SkinnedMesh) return;
     if (object.userData[OUTLINE_FLAG] || object.userData[NO_OUTLINE_FLAG]) return;
     targets.push(object);
   });

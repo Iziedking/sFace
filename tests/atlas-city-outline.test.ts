@@ -1,4 +1,4 @@
-import { BackSide, BoxGeometry, Group, Mesh, MeshStandardMaterial, Vector3 } from 'three';
+import { BackSide, BoxGeometry, Group, Mesh, MeshStandardMaterial, SkinnedMesh, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { attachAtlasOutline, outlinesEnabledForTier } from '../src/atlas/render/three/outline';
 import { createBlobShadow } from '../src/atlas/render/three/shadows';
@@ -103,5 +103,14 @@ describe('Atlas outlines do not ghost the character', () => {
     attachAtlasOutline(root);
     const hull = (root.children[0] as Mesh).children[0] as Mesh;
     expect(hull.scale.x).toBeGreaterThan(1);
+  });
+
+  it('does not attach a rigid hull to an animated skinned mesh', () => {
+    const root = new Group();
+    const body = new SkinnedMesh(new BoxGeometry(1, 2, 1), new MeshStandardMaterial());
+    root.add(body);
+
+    expect(attachAtlasOutline(root)).toBe(0);
+    expect(body.children).toHaveLength(0);
   });
 });
