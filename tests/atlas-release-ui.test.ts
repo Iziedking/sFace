@@ -13,13 +13,18 @@ describe('NIM Atlas release-quality UI contract', () => {
   });
 
   it('keeps the first decision and primary adventure above secondary systems', () => {
-    const welcome = app.slice(app.indexOf('private renderWelcome'), app.indexOf('private renderBeaconStatus'));
+    const welcome = app.slice(app.indexOf('private renderWelcome'), app.indexOf('private renderLandingSplash'));
     expect(welcome).toContain('atlas-home-grid');
     expect(welcome).toContain('atlas-quick-grid');
     // This previously compared two labels that no longer existed, so both sides
     // were -1 and the ordering was never actually checked. Both indexes are now
     // asserted to be real before they are compared.
-    const primaryAction = welcome.indexOf("actionButton('Start 60-second run'");
+    // The shared primary button now serves first-time and returning players.
+    // Check its placement independently of the selected label.
+    expect(welcome).toContain("'Start 60-second run'");
+    expect(welcome).toContain("'Resume harbor job'");
+    expect(welcome).toContain("'Harbor contracts'");
+    const primaryAction = welcome.indexOf('actionButton(startLabel, startAction, startDescription)');
     const secondaryAction = welcome.indexOf("ghostButton('Open Living Knowledge Book'");
     expect(primaryAction, 'primary adventure action missing').toBeGreaterThan(-1);
     expect(secondaryAction, 'secondary knowledge action missing').toBeGreaterThan(-1);
