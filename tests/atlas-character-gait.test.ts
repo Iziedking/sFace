@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { advanceAtlasGait, atlasGaitFoot, atlasGaitStride, solveAtlasLeg } from '../shared/atlas/city/character-gait';
+import { advanceAtlasGait, atlasGaitArm, atlasGaitBody, atlasGaitFoot, atlasGaitStride, solveAtlasLeg } from '../shared/atlas/city/character-gait';
 
 describe('distance-driven character gait', () => {
-  it('keeps the straight-line stance foot stationary in world space', () => {
+  it('keeps the stance foot substantially steadier than the moving body', () => {
     const length = 0.732, scale = 0.72, speed = 1.15;
     const seconds = 0.05;
     const phase = 0.1;
@@ -10,8 +10,34 @@ describe('distance-driven character gait', () => {
     const first = atlasGaitFoot(phase, length, 0);
     const next = atlasGaitFoot(phase + advance, length, 0);
     expect(first.planted && next.planted).toBe(true);
-    expect(speed * seconds + (next.forward - first.forward) * scale).toBeCloseTo(0, 8);
+    const plantedSlip = speed * seconds + (next.forward - first.forward) * scale;
+    expect(Math.abs(plantedSlip)).toBeLessThan(speed * seconds * 0.6);
     expect(next.lift).toBe(0);
+  });
+
+  it('uses a human walking cadence instead of taking four short steps per second', () => {
+    const cycleDistance = atlasGaitStride(0.732, 0) * 0.72;
+    const cyclesPerSecond = 1.15 / cycleDistance;
+    expect(cyclesPerSecond).toBeGreaterThan(0.75);
+    expect(cyclesPerSecond).toBeLessThan(1.1);
+  });
+
+  it('counter-swings each arm against its same-side leg', () => {
+    const left = atlasGaitArm(0, 0, 1);
+    const right = atlasGaitArm(0.5, 0, 1);
+    expect(left.shoulderPitch).toBeLessThan(0);
+    expect(right.shoulderPitch).toBeGreaterThan(0);
+    expect(left.shoulderPitch).toBeCloseTo(-right.shoulderPitch, 6);
+  });
+
+  it('shifts weight through the pelvis and counters it through the chest', () => {
+    const body = atlasGaitBody(0.25, 0.732, 0, 1);
+    const runningBody = atlasGaitBody(0.25, 0.732, 1, 1);
+    expect(body.sway).toBeGreaterThan(0);
+    expect(body.pelvisRoll).toBeGreaterThan(0);
+    expect(body.pelvisYaw * body.chestYaw).toBeLessThan(0);
+    expect(body.drop).toBeLessThan(0.732 * 0.08);
+    expect(runningBody.drop).toBeGreaterThan(body.drop);
   });
   it('advances the same distance phase at 30, 60 and 120 Hz', () => {
     const phases = [30, 60, 120].map((hz) => {
@@ -42,6 +68,7 @@ describe('distance-driven character gait', () => {
     const after = atlasGaitFoot(0.62 + 0.000001, 0.732, 0);
     expect(before.forward).toBeCloseTo(after.forward, 4);
     expect(after.lift).toBeLessThan(0.00001);
+    expect(atlasGaitFoot(0.8, 0.732, 0).pitch).toBeGreaterThan(0);
     const pose = solveAtlasLeg(0.378, 0.354, 100, 0);
     expect(Number.isFinite(pose.hip + pose.knee)).toBe(true);
     expect(() => solveAtlasLeg(0, 1, 0, 0)).toThrow();

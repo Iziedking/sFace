@@ -50,7 +50,10 @@ describe('native Walker deformation', () => {
     const ground = foot.getWorldPosition(new Vector3()).y;
     animator.restoreGait({ phase: 0.1, amount: 1, runBlend: 0 });
     animator.update('walk', 0, 1, 'neutral', { speedUnitsPerSecond: 1.15, worldScale: 0.72 });
-    expect(foot.getWorldPosition(new Vector3()).y).toBeCloseTo(ground, 4);
+    // Pelvis roll introduces a bounded sub-5 mm ankle variation while the foot
+    // remains visually planted. Requiring a perfectly flat pelvis recreates the
+    // rigid, weightless walk this gait replaces.
+    expect(foot.getWorldPosition(new Vector3()).y).toBeCloseTo(ground, 2);
     const other = await load();
     const arriving = createAtlasCharacterAnimator(other.scene, other.animations);
     arriving.restoreGait(animator.gaitState());
