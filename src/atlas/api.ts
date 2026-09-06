@@ -1,5 +1,6 @@
 import type { AtlasAction, AtlasSnapshot } from '../../shared/atlas/state';
 import type { AtlasCompetitiveTicket, AtlasAssistance, AtlasNetwork, AtlasRole } from '../../shared/atlas/types';
+import type { AtlasWalletBinding, AtlasWalletBindingChallenge } from '../../shared/atlas/wallet-binding';
 import { authenticatedRequest, type ApiFetch, type ApiResult } from '../net/api';
 import { createAtlasCoreRunSubmission, type AtlasCoreRunRequest } from './competitive-run';
 
@@ -99,6 +100,8 @@ export interface AtlasApiClient {
   issueCompetitiveTicket(input: { actorId: string; walletAddress: string; role: AtlasRole }): Promise<ApiResult<AtlasCompetitiveTicket>>;
   submitCompetitiveRun(input: AtlasCompetitiveRunInput): Promise<ApiResult<AtlasCompetitiveRunResult>>;
   submitCoreRun(input: AtlasCoreRunRequest): Promise<ApiResult<AtlasCompetitiveRunResult>>;
+  issueWalletChallenge(input: { actorId: string; seasonId: string; address: string; network: AtlasNetwork }): Promise<ApiResult<AtlasWalletBindingChallenge>>;
+  bindWallet(input: { actorId: string; challenge: AtlasWalletBindingChallenge; publicKey: string; signature: string }): Promise<ApiResult<AtlasWalletBinding>>;
   createOrder(input: { actorId: string; walletAddress: string; itemId: 'harbor-lantern'; idempotencyKey?: string }): Promise<AtlasOrderSummary>;
   submitTransactionLookup(orderId: string, lookup: string): Promise<AtlasOrderSummary>;
   reconcileOrder(orderId: string): Promise<AtlasOrderSummary>;
@@ -127,6 +130,8 @@ export function createAtlasApiClient(options: { baseUrl?: string; fetchImpl?: At
         return { ok: false, error: error instanceof Error ? error.message : 'Atlas run could not be prepared.' };
       }
     },
+    issueWalletChallenge: (input) => authenticatedRequest<AtlasWalletBindingChallenge>('/atlas/api/wallet/challenge', 'atlas.wallet.challenge', input.actorId, input, { apiBase: baseUrl, fetchImpl }, isWalletBindingChallenge),
+    bindWallet: (input) => authenticatedRequest<AtlasWalletBinding>('/atlas/api/wallet/bind', 'atlas.wallet.bind', input.actorId, input, { apiBase: baseUrl, fetchImpl }, isWalletBinding),
     createOrder: (input) => requestOrder(fetchImpl, `${baseUrl}/atlas/api/orders`, { method: 'POST', body: input }),
     submitTransactionLookup: (orderId, lookup) => requestOrder(fetchImpl, `${baseUrl}/atlas/api/orders/${encodeURIComponent(orderId)}/transaction`, { method: 'POST', body: { lookup } }),
     reconcileOrder: (orderId) => requestOrder(fetchImpl, `${baseUrl}/atlas/api/orders/${encodeURIComponent(orderId)}/reconcile`, { method: 'POST' }),
@@ -218,4 +223,36 @@ function isCompetition(value: unknown): value is AtlasCompetitionSummary[] {
       && ['estimating', 'pending', 'verified-paid', 'unawarded'].includes(String(daily.status))
       && (daily.amountLuna === null || Number.isSafeInteger(daily.amountLuna));
   });
+}
+
+function isWalletBindingChallenge(value: unknown): value is AtlasWalletBindingChallenge {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const challenge = value as Record<string, unknown>;
+  const issuedAt = challenge.issuedAt;
+  const expiresAt = challenge.expiresAt;
+  return typeof challenge.id === 'string'
+    && typeof challenge.domain === 'string'
+    && challenge.purpose === 'atlas-wallet-binding'
+    && typeof challenge.actorId === 'string'
+    && typeof challenge.seasonId === 'string'
+    && typeof challenge.address === 'string'
+    && (challenge.network === 'testalbatross' || challenge.network === 'mainalbatross')
+    && typeof challenge.nonce === 'string'
+    && typeof issuedAt === 'number'
+    && typeof expiresAt === 'number'
+    && Number.isSafeInteger(issuedAt)
+    && Number.isSafeInteger(expiresAt)
+    && expiresAt > issuedAt;
+}
+
+function isWalletBinding(value: unknown): value is AtlasWalletBinding {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const binding = value as Record<string, unknown>;
+  return typeof binding.actorId === 'string'
+    && typeof binding.seasonId === 'string'
+    && typeof binding.address === 'string'
+    && (binding.network === 'testalbatross' || binding.network === 'mainalbatross')
+    && typeof binding.publicKey === 'string'
+    && /^[0-9a-f]+$/i.test(binding.publicKey)
+    && Number.isSafeInteger(binding.boundAt);
 }

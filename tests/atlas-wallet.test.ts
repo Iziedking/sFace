@@ -4,7 +4,7 @@ import { createAtlasWalletAdapter } from '../src/atlas/wallet';
 
 describe('Nimiq Pay wallet boundary', () => {
   it('does not initialize or request accounts until an explicit wallet action', async () => {
-    const provider = { listAccounts: vi.fn().mockResolvedValue(['NQwallet']), sendBasicTransaction: vi.fn() };
+    const provider = { listAccounts: vi.fn().mockResolvedValue(['NQwallet']), sign: vi.fn(), sendBasicTransaction: vi.fn() };
     const initialize = vi.fn().mockResolvedValue(provider);
     const wallet = createAtlasWalletAdapter({ initialize });
     expect(initialize).not.toHaveBeenCalled();
@@ -21,7 +21,7 @@ describe('Nimiq Pay wallet boundary', () => {
   });
 
   it('sends only the reviewed exact payment and returns a lookup value, never verified proof', async () => {
-    const provider = { listAccounts: vi.fn().mockResolvedValue(['NQwallet']), sendBasicTransaction: vi.fn().mockResolvedValue('hash-1') };
+    const provider = { listAccounts: vi.fn().mockResolvedValue(['NQwallet']), sign: vi.fn(), sendBasicTransaction: vi.fn().mockResolvedValue('hash-1') };
     const wallet = createAtlasWalletAdapter({ initialize: vi.fn().mockResolvedValue(provider) });
     await wallet.initialize();
     await wallet.requestAccounts();
@@ -30,10 +30,35 @@ describe('Nimiq Pay wallet boundary', () => {
   });
 
   it('rejects provider error objects and malformed results without claiming payment', async () => {
-    const provider = { listAccounts: vi.fn().mockResolvedValue(['NQwallet']), sendBasicTransaction: vi.fn().mockResolvedValue({ error: { type: 'PermissionDeniedError', message: 'cancelled' } }) };
+    const provider = { listAccounts: vi.fn().mockResolvedValue(['NQwallet']), sign: vi.fn(), sendBasicTransaction: vi.fn().mockResolvedValue({ error: { type: 'PermissionDeniedError', message: 'cancelled' } }) };
     const wallet = createAtlasWalletAdapter({ initialize: vi.fn().mockResolvedValue(provider) });
     await wallet.initialize();
     await wallet.requestAccounts();
     await expect(wallet.sendBasicPayment({ recipient: 'NQrecipient', valueLuna: 100_000 })).rejects.toThrow(/cancel|provider/i);
+  });
+
+  it('signs a readable identity message and validates the provider result', async () => {
+    const provider = {
+      listAccounts: vi.fn().mockResolvedValue(['NQwallet']),
+      sign: vi.fn().mockResolvedValue({ publicKey: 'a1b2', signature: 'c3d4' }),
+      sendBasicTransaction: vi.fn(),
+    };
+    const wallet = createAtlasWalletAdapter({ initialize: vi.fn().mockResolvedValue(provider) });
+    await wallet.initialize();
+    await expect(wallet.signWalletMessage('sface identity challenge')).resolves.toEqual({ publicKey: 'a1b2', signature: 'c3d4' });
+    expect(provider.sign).toHaveBeenCalledWith('sface identity challenge');
+  });
+
+  it('rejects a cancelled or malformed identity signature', async () => {
+    const provider = {
+      listAccounts: vi.fn().mockResolvedValue(['NQwallet']),
+      sign: vi.fn().mockResolvedValue({ error: { type: 'PermissionDeniedError', message: 'cancelled' } }),
+      sendBasicTransaction: vi.fn(),
+    };
+    const wallet = createAtlasWalletAdapter({ initialize: vi.fn().mockResolvedValue(provider) });
+    await wallet.initialize();
+    await expect(wallet.signWalletMessage('sface identity challenge')).rejects.toThrow(/cancel/i);
+    provider.sign.mockResolvedValue({ publicKey: 'not-hex', signature: '' });
+    await expect(wallet.signWalletMessage('sface identity challenge')).rejects.toThrow(/malformed/i);
   });
 });

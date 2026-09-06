@@ -51,6 +51,7 @@ export async function authenticatedRequest<T>(
   actorId: string,
   body: object,
   transport: ApiTransport = {},
+  guard?: (value: unknown) => value is T,
 ): Promise<ApiResult<T>> {
   const credential = await getOrCreateCredential();
   if (credential.playerId !== actorId) return { ok: false, error: 'Identity changed. Reload.' };
@@ -69,7 +70,7 @@ export async function authenticatedRequest<T>(
       ...body,
       auth: deviceProof(challenged.value.challenge, credential.publicKeyJwk, signature),
     }),
-  }, transport);
+  }, transport, guard);
 }
 
 /**
@@ -471,7 +472,7 @@ export async function reportSettlement(
   );
 }
 
-async function request<T>(path: string, init: RequestInit = {}, transport: ApiTransport = {}): Promise<ApiResult<T>> {
+async function request<T>(path: string, init: RequestInit = {}, transport: ApiTransport = {}, guard?: (value: unknown) => value is T): Promise<ApiResult<T>> {
   const apiBase = transport.apiBase ?? API_BASE;
   if (!apiBase) {
     return { ok: false, error: 'No service configured.' };
@@ -512,7 +513,9 @@ async function request<T>(path: string, init: RequestInit = {}, transport: ApiTr
       return { ok: false, error: said ?? `Service returned ${response.status}.` };
     }
 
-    return { ok: true, value: (await response.json()) as T };
+    const value: unknown = await response.json();
+    if (guard && !guard(value)) return { ok: false, error: 'Service returned invalid data.' };
+    return { ok: true, value: value as T };
   } catch (error) {
     const aborted = error instanceof DOMException && error.name === 'AbortError';
     return { ok: false, error: aborted ? 'The service timed out.' : 'The service is unreachable.' };

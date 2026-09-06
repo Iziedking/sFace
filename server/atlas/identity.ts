@@ -5,37 +5,22 @@ import { encodeSignedMessage } from '../attest';
 import { PlayerAuth } from '../player-auth';
 import type { Challenge, DeviceProof } from '../../src/net/player-auth-protocol';
 import type { AtlasNetwork } from '../../shared/atlas/types';
+import {
+  canonicalAtlasWalletBindingMessage as sharedCanonicalAtlasWalletBindingMessage,
+  type AtlasWalletBinding,
+  type AtlasWalletBindingChallenge,
+} from '../../shared/atlas/wallet-binding';
+
+export type { AtlasWalletBinding, AtlasWalletBindingChallenge } from '../../shared/atlas/wallet-binding';
 
 const WALLET_BINDING_TTL_MS = 5 * 60 * 1_000;
 const DEFAULT_DOMAIN = 'https://sface.site';
 const PURPOSE = 'atlas-wallet-binding';
 
-export interface AtlasWalletBindingChallenge {
-  id: string;
-  domain: string;
-  purpose: typeof PURPOSE;
-  actorId: string;
-  seasonId: string;
-  address: string;
-  network: AtlasNetwork;
-  nonce: string;
-  issuedAt: number;
-  expiresAt: number;
-}
-
 export interface AtlasWalletBindingProof {
   challenge: AtlasWalletBindingChallenge;
   publicKey: string;
   signature: string;
-}
-
-export interface AtlasWalletBinding {
-  actorId: string;
-  seasonId: string;
-  address: string;
-  network: AtlasNetwork;
-  publicKey: string;
-  boundAt: number;
 }
 
 export interface AtlasIdentityAuditEvent {
@@ -72,9 +57,7 @@ export class AtlasIdentityError extends Error {
   }
 }
 
-export function canonicalAtlasWalletBindingMessage(challenge: AtlasWalletBindingChallenge): string {
-  return [challenge.domain, challenge.purpose, challenge.actorId, challenge.seasonId, challenge.address, challenge.network, challenge.nonce, String(challenge.issuedAt), String(challenge.expiresAt)].join('\n');
-}
+export const canonicalAtlasWalletBindingMessage = sharedCanonicalAtlasWalletBindingMessage;
 
 export function verifyAtlasWalletSignature(input: AtlasWalletBindingProof, now = Date.now(), expectedDomain = DEFAULT_DOMAIN): { address: string } | null {
   try {

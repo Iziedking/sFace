@@ -18,6 +18,9 @@ import { ATLAS_EVERGREEN_ADVENTURES, replayEvergreenAdventure, type EvergreenAct
 import { ATLAS_MAINNET_SHOP_ITEMS } from '../../../shared/atlas/shop';
 import { createAtlasApiClient, type AtlasCompetitionSummary } from '../api';
 import { createAtlasWalletAdapter } from '../wallet';
+import { createAtlasWalletBindingFlow } from '../wallet-binding';
+import { getOrCreateCredential } from '../../net/player-credential';
+import type { AtlasWalletBinding } from '../../../shared/atlas/wallet-binding';
 import { AtlasPaymentController } from './payment-controller';
 import { readAtlasClientPaymentConfig } from '../payment-config';
 import { dailyChallengeChoices, dailyRetryHint, evergreenTeachBackChoices, formatDailyChoice, selectDailyChallenge } from '../product-model';
@@ -75,6 +78,7 @@ export class AtlasApp {
   private readonly paymentConfig = readAtlasClientPaymentConfig();
   private readonly wallet = createAtlasWalletAdapter();
   private readonly api = createAtlasApiClient({ baseUrl: import.meta.env.VITE_API_BASE ?? '' });
+  private readonly walletBinding = createAtlasWalletBindingFlow({ api: this.api, wallet: this.wallet });
   private readonly coreRun = createAtlasCoreRunController({ api: this.api });
   private readonly sessionActorId = getAtlasSessionActorId(safeStorage());
   private selectedRole: AtlasRole = this.progress.load().activeRole;
@@ -94,6 +98,9 @@ export class AtlasApp {
   private evergreenNotice = '';
   private paymentNotice = '';
   private paymentBusy = false;
+  private walletBindingBusy = false;
+  private walletBindingNotice = '';
+  private atlasWalletBinding: AtlasWalletBinding | null = null;
   private atlasServiceStatus: 'loading' | 'local-first' | 'unavailable' = 'loading';
   private atlasBeaconStatus: 'loading' | 'live' | 'stale' | 'unavailable' = 'loading';
   private atlasContributorCount = 0;
@@ -1197,6 +1204,39 @@ export class AtlasApp {
     this.renderCoreRun();
   };
 
+  private bindCoreRunWallet = async (): Promise<void> => {
+    if (this.walletBindingBusy || this.atlasWalletBinding) return;
+    const seasonId = import.meta.env.VITE_ATLAS_COMPETITIVE_SEASON_ID ?? '';
+    if (!/^[a-z0-9-]{1,80}$/.test(seasonId)) {
+      this.walletBindingNotice = 'Competitive season identity is not configured on this deployment yet. Your local run remains playable.';
+      this.renderCoreRun();
+      return;
+    }
+    this.walletBindingBusy = true;
+    this.walletBindingNotice = 'Opening Nimiq Pay for an identity signature. No NIM payment will be requested.';
+    this.renderCoreRun();
+    try {
+      const initialized = await this.wallet.initialize();
+      if (!initialized.ok) {
+        this.walletBindingNotice = initialized.reason === 'timeout' ? 'Nimiq Pay took too long to respond. Try Connect wallet again.' : 'Nimiq Pay is unavailable. Try Connect wallet again.';
+        return;
+      }
+      const credential = await getOrCreateCredential();
+      const result = await this.walletBinding.bind({ actorId: credential.playerId, seasonId, network: 'testalbatross' });
+      if (result.ok) {
+        this.atlasWalletBinding = result.value;
+        this.walletBindingNotice = 'Wallet identity bound for this season. The next step is requesting a server competitive ticket.';
+      } else {
+        this.walletBindingNotice = result.error;
+      }
+    } catch (error) {
+      this.walletBindingNotice = error instanceof Error ? error.message : 'Wallet identity binding could not be completed.';
+    } finally {
+      this.walletBindingBusy = false;
+      this.renderCoreRun();
+    }
+  };
+
   private renderCoreRun(): void {
     this.ui.replaceChildren();
     const view = this.coreRun.state();
@@ -1240,9 +1280,17 @@ export class AtlasApp {
       const proof = element('section', 'atlas-core-proof');
       proof.append(
         element('strong', '', view.submission === 'verified' ? 'SERVER VERIFIED' : 'LOCAL RUN COMPLETE'),
-        element('p', '', view.submission === 'verified' ? view.notice : 'The replay is complete on this device. Wallet identity and challenge binding are required before a score can enter the verified board or qualify for rewards.'),
+        element('p', '', view.submission === 'verified' ? view.notice : 'The replay is complete on this device. Bind a wallet identity before a score can enter the verified board or qualify for rewards.'),
       );
       if (view.result) proof.append(element('p', 'atlas-core-proof-score', `VERIFIED SCORE ${view.result.run.score} / ${view.result.run.role.toUpperCase()}`));
+      if (this.atlasWalletBinding) {
+        proof.append(element('p', 'atlas-builder-success', `WALLET BOUND / ${this.atlasWalletBinding.address}`));
+      } else {
+        const bind = actionButton(this.walletBindingBusy ? 'Waiting for wallet...' : 'Connect Nimiq wallet identity', this.bindCoreRunWallet, 'Connect Nimiq Pay and sign the Atlas identity challenge');
+        bind.disabled = this.walletBindingBusy;
+        proof.append(bind);
+      }
+      if (this.walletBindingNotice) proof.append(element('p', this.walletBindingNotice.includes('bound') ? 'atlas-builder-success' : 'atlas-quiet', this.walletBindingNotice));
       panel.append(proof);
     }
     this.ui.append(panel);
