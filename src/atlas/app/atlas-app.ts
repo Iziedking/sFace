@@ -11,6 +11,7 @@ import { harborInvoiceLesson } from '../conversations/harbor-invoice';
 import { isPortraitNow, rotateGate, shouldGateForLandscape, watchOrientation } from '../ui/shell/rotate-gate';
 import { ATLAS_PROLOGUE } from '../../../shared/atlas/prologue';
 import type { AtlasRole } from '../../../shared/atlas/types';
+import type { AtlasAction } from '../../../shared/atlas/state';
 import { LAST_LANTERN, createLastLanternState, replayLastLantern, type LastLanternAction, type LastLanternState } from '../../../shared/atlas/adventures/last-lantern';
 import { ATLAS_KNOWLEDGE_BOOK, createKnowledgeBookState, gradeKnowledgeTeachBack, unlockKnowledgeFragment, type KnowledgeBookState } from '../../../shared/atlas/knowledge';
 import { ATLAS_EVERGREEN_ADVENTURES, replayEvergreenAdventure, type EvergreenAction, type EvergreenAdventure, type EvergreenState } from '../../../shared/atlas/adventures/evergreen';
@@ -27,6 +28,7 @@ import { ATLAS_HOW_TO_PLAY_PATHS, ATLAS_HOW_TO_PLAY_SNAPSHOTS, ATLAS_HOW_TO_PLAY
 import { createAtlasAssetManager } from '../assets/asset-manager';
 import { createAtlasKnowledgeBookView } from '../ui/knowledge-book';
 import { createCompetitionView } from '../ui/competition';
+import { createAtlasCoreRunController, type AtlasCoreRunView } from './core-run-controller';
 import { BEACON_CORE_WORLD } from '../../../shared/atlas/districts/beacon-core-world';
 import { parseAtlasAssetManifest } from '../assets/manifest';
 import { AtlasLivingCityController, type AtlasLivingCityNavigation } from '../city/living-city-controller';
@@ -73,9 +75,10 @@ export class AtlasApp {
   private readonly paymentConfig = readAtlasClientPaymentConfig();
   private readonly wallet = createAtlasWalletAdapter();
   private readonly api = createAtlasApiClient({ baseUrl: import.meta.env.VITE_API_BASE ?? '' });
+  private readonly coreRun = createAtlasCoreRunController({ api: this.api });
   private readonly sessionActorId = getAtlasSessionActorId(safeStorage());
   private selectedRole: AtlasRole = this.progress.load().activeRole;
-  private screen: 'welcome' | 'how-to-play' | 'lantern' | 'trial' | 'book' | 'daily' | 'evergreen' | 'beacon-commons' | 'pay-harbor' = 'welcome';
+  private screen: 'welcome' | 'how-to-play' | 'lantern' | 'trial' | 'book' | 'daily' | 'evergreen' | 'core-run' | 'beacon-commons' | 'pay-harbor' = 'welcome';
   private lanternState: LastLanternState = createLastLanternState('explorer', 'practice');
   private suspended = false;
   private builderStep = 0;
@@ -340,6 +343,7 @@ export class AtlasApp {
     const book = ghostButton('Open Living Knowledge Book', this.openKnowledgeBook, 'Open Living Knowledge Book');
     const daily = ghostButton('Play today\'s Atlas puzzle', this.openDailyPuzzle, 'Play today\'s Atlas puzzle');
     const districts = ghostButton('Walk the District Atlas', this.openEvergreen, 'Walk the evergreen District Atlas');
+    const coreRun = ghostButton('Play the verified core run', this.openCoreRun, 'Play the replay-backed Atlas core run');
     const primary = element('div', 'atlas-home-primary');
     primary.append(mission, roles, promise, start, howToPlay);
     const introduction = element('div', 'atlas-home-intro');
@@ -350,7 +354,7 @@ export class AtlasApp {
     routes.className = 'atlas-home-routes';
     routes.append(element('summary', '', 'More ways to learn in the city'));
     const quick = element('div', 'atlas-quick-grid');
-    quick.append(daily, book, districts);
+    quick.append(daily, book, districts, coreRun);
     routes.append(quick);
     const saved = this.progress.load().completedAdventureIds.includes('genesis-garden');
     panel.append(homeGrid, routes, this.renderStatusDrawer());
@@ -1178,6 +1182,72 @@ export class AtlasApp {
     this.renderDailyPuzzle();
   };
 
+  private openCoreRun = (): void => {
+    void this.stopLivingCity();
+    this.screen = 'core-run';
+    this.canvas.hidden = false;
+    this.coreRun.reset();
+    this.renderCoreRun();
+  };
+
+  private advanceCoreRun = (): void => {
+    const view = this.coreRun.state();
+    if (view.phase !== 'running') return;
+    this.coreRun.step(nextCoreRunAction(view));
+    this.renderCoreRun();
+  };
+
+  private renderCoreRun(): void {
+    this.ui.replaceChildren();
+    const view = this.coreRun.state();
+    this.canvas.hidden = false;
+    this.renderer.drawDistrict('genesis-garden', view.phase === 'completed');
+    const panel = this.screenPanel('atlas-core-run');
+    panel.setAttribute('aria-label', 'Atlas verified core run');
+    panel.append(
+      this.screenNav('Core run'),
+      element('p', 'atlas-eyebrow', 'VERIFIED CORE RUN / GENESIS GARDEN'),
+      element('h1', '', view.phase === 'completed' ? 'The district is alive.' : 'Restore the relay line.'),
+      element('p', 'atlas-trial-copy', 'Use the right Nimiq action at each landmark. Your inputs are recorded and replayed through the same rules the server will verify.'),
+      element('p', 'atlas-book-sequence', `STEP ${Math.min(view.actions + 1, 22)} OF 22 / ${view.actions} ACTIONS / LOCAL SCORE ${view.score}`),
+    );
+
+    const objective = element('section', 'atlas-core-objective');
+    objective.setAttribute('aria-label', 'Current core run objective');
+    objective.append(
+      element('strong', '', coreRunObjective(view)),
+      element('p', '', coreRunDetail(view)),
+    );
+    panel.append(objective);
+
+    const rail = element('ol', 'atlas-core-rail');
+    for (const step of coreRunSteps(view)) {
+      const item = element('li', `atlas-core-step${step.complete ? ' is-complete' : step.current ? ' is-current' : ''}`);
+      item.append(element('span', 'atlas-core-step-mark', step.complete ? '✓' : step.current ? '→' : '·'), element('span', '', step.label));
+      rail.append(item);
+    }
+    panel.append(rail);
+
+    const actions = element('div', 'atlas-core-actions');
+    const next = actionButton(view.phase === 'completed' ? 'Run complete' : coreRunActionLabel(view), this.advanceCoreRun, coreRunActionLabel(view));
+    next.disabled = view.phase !== 'running';
+    next.classList.add('atlas-start');
+    const reset = ghostButton('Restart run', () => { this.coreRun.reset(); this.renderCoreRun(); }, 'Restart the Atlas core run');
+    actions.append(next, reset);
+    panel.append(actions);
+
+    if (view.phase === 'completed') {
+      const proof = element('section', 'atlas-core-proof');
+      proof.append(
+        element('strong', '', view.submission === 'verified' ? 'SERVER VERIFIED' : 'LOCAL RUN COMPLETE'),
+        element('p', '', view.submission === 'verified' ? view.notice : 'The replay is complete on this device. Wallet identity and challenge binding are required before a score can enter the verified board or qualify for rewards.'),
+      );
+      if (view.result) proof.append(element('p', 'atlas-core-proof-score', `VERIFIED SCORE ${view.result.run.score} / ${view.result.run.role.toUpperCase()}`));
+      panel.append(proof);
+    }
+    this.ui.append(panel);
+  }
+
   private renderDailyPuzzle(): void {
     this.ui.replaceChildren();
     const challenge = selectDailyChallenge(new Date());
@@ -1636,6 +1706,7 @@ export class AtlasApp {
   private resize = (): void => {
     this.renderer.resize();
     if (this.isLivingCityScreen()) this.livingCity?.resize(window.innerWidth, window.innerHeight, 1);
+    else if (this.screen === 'core-run') this.renderer.drawDistrict('genesis-garden', this.coreRun.state().phase === 'completed');
     else if (this.screen === 'evergreen') this.renderer.drawDistrict(this.evergreenAdventure.districtId, this.evergreenState.phase === 'completed');
     else this.renderer.drawHarbor(this.lanternState.phase, this.selectedRole);
   };
@@ -1864,6 +1935,57 @@ export class AtlasApp {
     if (!anchor) return false;
     return Math.hypot(player.x - anchor.position[0], player.z - anchor.position[2]) <= Math.max(anchor.radius, fallbackRadius);
   }
+}
+
+function nextCoreRunAction(view: AtlasCoreRunView): AtlasAction {
+  const actionNumber = view.actions;
+  if (actionNumber === 0) return { moveX: 127, moveY: 0, tool: 'shield-pulse', interact: false };
+  if (actionNumber < 8) return { moveX: 127, moveY: 0, tool: 'none', interact: false };
+  if (actionNumber === 8) return { moveX: 127, moveY: 0, tool: 'scanner', interact: false };
+  if (actionNumber === 9) return { moveX: 127, moveY: 0, tool: 'relay-tether', interact: false };
+  if (actionNumber < 15) return { moveX: 127, moveY: 0, tool: 'none', interact: false };
+  if (actionNumber === 15) return { moveX: 0, moveY: 0, tool: 'none', interact: true };
+  if (actionNumber < 21) return { moveX: 127, moveY: 0, tool: 'none', interact: false };
+  return { moveX: 0, moveY: 0, tool: 'none', interact: true };
+}
+
+function coreRunActionLabel(view: AtlasCoreRunView): string {
+  if (view.phase === 'completed') return 'Run complete';
+  if (view.phase === 'failed') return 'Restart the run';
+  if (view.actions === 0) return 'Shield the stale route';
+  if (view.actions < 8) return 'Move to the relay';
+  if (view.actions === 8) return 'Scan the relay';
+  if (view.actions === 9) return 'Connect the relay';
+  if (view.actions < 15) return 'Move to Courier Ada';
+  if (view.actions === 15) return 'Rescue Courier Ada';
+  if (view.actions < 21) return 'Move to the garden gate';
+  return 'Open the garden gate';
+}
+
+function coreRunObjective(view: AtlasCoreRunView): string {
+  if (view.phase === 'completed') return 'MISSION COMPLETE';
+  if (view.phase === 'failed') return 'REPLAY FAILED';
+  return coreRunActionLabel(view).toUpperCase();
+}
+
+function coreRunDetail(view: AtlasCoreRunView): string {
+  if (view.phase === 'completed') return 'The courier is safe and the district gate is open. You just learned the Nimiq loop: protect the route, inspect the relay, connect it, then confirm the outcome.';
+  if (view.phase === 'failed') return 'The run did not survive the route. Restart and follow the objective rail one move at a time.';
+  if (view.actions === 0) return 'A stale route is ahead. Shield first so the fault cannot damage the delivery path.';
+  if (view.actions <= 9) return 'Move right through the district. The relay must be scanned before it can be connected.';
+  if (view.actions <= 15) return 'The relay is live. Keep moving to Courier Ada, then interact when you arrive.';
+  return 'The courier is safe. Walk to the gate and interact only after the route has been unlocked.';
+}
+
+function coreRunSteps(view: AtlasCoreRunView): Array<{ label: string; complete: boolean; current: boolean }> {
+  const completed = view.phase === 'completed';
+  const steps = [
+    { label: 'Shield the stale route', complete: view.actions >= 1, current: view.actions === 0 },
+    { label: 'Scan and connect the relay', complete: view.actions >= 10, current: view.actions >= 8 && view.actions < 10 },
+    { label: 'Rescue Courier Ada', complete: view.actions >= 16, current: view.actions >= 10 && view.actions < 16 },
+    { label: 'Open the garden gate', complete: completed, current: view.actions >= 16 && !completed },
+  ];
+  return steps.map((step) => ({ ...step, current: completed ? false : step.current }));
 }
 
 function livingCityNavigation(scene: AtlasCitySceneV1): AtlasLivingCityNavigation {
