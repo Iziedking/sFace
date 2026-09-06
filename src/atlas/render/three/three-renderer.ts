@@ -798,8 +798,8 @@ function stableHash(value: string): number {
 }
 
 function playerAnimationSpeed(player: AtlasCityPlayerState): number {
-  if (player.pace === 'walk') return clampNumber(player.speedUnitsPerSecond / 1.02, 0.52, 1.12);
-  if (player.pace === 'run') return clampNumber(player.speedUnitsPerSecond / 2.28, 0.82, 1.16);
+  if (player.pace === 'walk') return clampNumber(player.speedUnitsPerSecond / 1.35, 0.52, 1.22);
+  if (player.pace === 'run') return clampNumber(player.speedUnitsPerSecond / 2.65, 0.86, 1.42);
   return 1;
 }
 

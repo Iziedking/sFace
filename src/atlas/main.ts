@@ -1,9 +1,11 @@
 import { AtlasApp } from './app/atlas-app';
+import { trackViewport } from '../core/viewport';
 
 const ui = document.querySelector<HTMLElement>('#ui');
 const canvas = document.querySelector<HTMLCanvasElement>('#stage');
 
 if (ui && canvas) {
+  trackViewport();
   const app = new AtlasApp(ui, canvas);
   app.boot();
   /*

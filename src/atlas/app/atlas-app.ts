@@ -489,7 +489,7 @@ export class AtlasApp {
   private openBeaconCommons = (): void => {
     this.canvas.hidden = true;
     this.audio.unlock();
-    this.audio.narrate('Beacon Commons is a living city. Walk the pink route, meet the Nimiq team, and learn what each working district does.');
+    this.audio.narrate('Pay Harbor has gone dark. Follow the pink marker to the Commons Guide and learn how Nimiq can restore the city.');
     this.screen = 'beacon-commons';
     this.beaconTravelNotice = '';
     this.cityQuestStep = 'meet-guide';
@@ -524,14 +524,14 @@ export class AtlasApp {
       ? {
           depth: 'glance' as const,
           objective: 'MEET THE COMMONS GUIDE',
-          detail: this.beaconTravelNotice || 'Walk toward the pink guide beside the market. The Nimiq team and community are already working around you.',
-          status: `${this.selectedRole.toUpperCase()} PATH / MOVE THROUGH THE CITY / TALK WHEN CLOSE`,
+          detail: this.beaconTravelNotice || 'Pay Harbor has gone dark. Follow the pink marker to the guide, then talk when you are close.',
+          status: `${this.selectedRole.toUpperCase()} PATH / LEFT STICK MOVES / PUSH OUTER RING TO RUN`,
         }
       : {
           depth: 'glance' as const,
           objective: 'FIND THE PAY HARBOR GATE',
-          detail: 'The guide marked the pink route. Follow the working district toward the transport building.',
-          status: 'MISSION ACCEPTED / PAY HARBOR ROUTE OPEN',
+          detail: "Mara's Last Lantern is dark. Follow the pink street to Pay Harbor before its trade route closes.",
+          status: 'MISSION ACCEPTED / FOLLOW PINK / TRAVEL AT THE GATE',
         };
     this.toolkit = createAtlasToolkit(objective);
 
@@ -565,7 +565,7 @@ export class AtlasApp {
     this.audio.unlock();
     this.audio.stopTheme();
     this.audio.playCityAmbience();
-    this.livingCity?.resize(window.innerWidth, window.innerHeight, 1);
+    this.resizeLivingCity();
   }
 
   private interactWithCommonsGuide = (): void => {
@@ -582,7 +582,7 @@ export class AtlasApp {
     this.cityQuestStep = 'guide-met';
     this.beaconTravelNotice = '';
     this.audio.playWorldCue('city-interaction');
-    this.audio.narrate('Welcome to Beacon Commons. Follow the pink route to learn how Nimiq connects people and builders.');
+    this.audio.narrate("Mara's Last Lantern is dark. Run the pink route to Pay Harbor and learn how a verified Nimiq payment can relight it.");
     this.renderBeaconCommons();
   };
 
@@ -774,7 +774,7 @@ export class AtlasApp {
     this.audio.unlock();
     this.audio.stopTheme();
     this.audio.playCityAmbience();
-    this.livingCity?.resize(window.innerWidth, window.innerHeight, 1);
+    this.resizeLivingCity();
   }
 
   private createCityBrand(locationLabel: string, ariaLabel: string): HTMLButtonElement {
@@ -1753,7 +1753,7 @@ export class AtlasApp {
 
   private resize = (): void => {
     this.renderer.resize();
-    if (this.isLivingCityScreen()) this.livingCity?.resize(window.innerWidth, window.innerHeight, 1);
+    if (this.isLivingCityScreen()) this.resizeLivingCity();
     else if (this.screen === 'core-run') this.renderer.drawDistrict('genesis-garden', this.coreRun.state().phase === 'completed');
     else if (this.screen === 'evergreen') this.renderer.drawDistrict(this.evergreenAdventure.districtId, this.evergreenState.phase === 'completed');
     else this.renderer.drawHarbor(this.lanternState.phase, this.selectedRole);
@@ -1761,6 +1761,13 @@ export class AtlasApp {
 
   private isLivingCityScreen(): boolean {
     return this.screen === 'beacon-commons' || this.screen === 'pay-harbor';
+  }
+
+  private resizeLivingCity(): void {
+    const visualViewport = window.visualViewport;
+    const width = Math.ceil(visualViewport?.width ?? window.innerWidth);
+    const height = Math.ceil(visualViewport?.height ?? window.innerHeight);
+    this.livingCity?.resize(width, height, 1);
   }
 
   private movementButton(label: string, direction: AtlasDirection, glyph: string): HTMLButtonElement {

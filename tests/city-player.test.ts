@@ -41,6 +41,26 @@ describe('Atlas living-city player', () => {
     expect(walking.pace).toBe('walk');
   });
 
+  it('starts running from a reachable outer-ring drag without demanding perfect full tilt', () => {
+    let player = createAtlasCityPlayer({ x: 0, z: 4.2, facing: 'up' });
+    for (let index = 0; index < 3; index += 1) {
+      player = stepAtlasCityPlayer(player, { moveX: 102, moveY: 0 }, 0.1, bounds);
+    }
+
+    expect(player.pace).toBe('run');
+    expect(player.speedUnitsPerSecond).toBeGreaterThan(2);
+  });
+
+  it('crosses a short city route at a mobile adventure pace', () => {
+    let player = createAtlasCityPlayer({ x: 0, z: 4.2, facing: 'up' });
+    for (let index = 0; index < 10; index += 1) {
+      player = stepAtlasCityPlayer(player, { moveX: 127, moveY: 0 }, 0.1, bounds);
+    }
+
+    expect(player.x).toBeGreaterThan(2.5);
+    expect(player.speedUnitsPerSecond).toBeGreaterThan(3.1);
+  });
+
   it('accelerates through a real walk before running and eases to a stop', () => {
     let player = createAtlasCityPlayer({ x: 0, z: 4.2, facing: 'up' });
     player = stepAtlasCityPlayer(player, { moveX: 127, moveY: 0 }, 0.1, bounds);

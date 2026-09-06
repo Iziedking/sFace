@@ -56,12 +56,12 @@ const WALK_PROOF_METRES = 2;
 const STEPS: readonly AtlasTutorialStep[] = [
   {
     id: 'walk',
-    prompt: 'Drag the circle to walk.',
+    prompt: 'Drag the circle to move. Push near its edge to run.',
     spotlight: 'joystick',
   },
   {
     id: 'approach',
-    prompt: 'Walk to the pink guide.',
+    prompt: 'Follow the pink marker to the Commons Guide.',
     spotlight: 'joystick',
   },
   {

@@ -62,6 +62,34 @@ describe('the keyboard and the fixed app box', () => {
   });
 });
 
+describe('NIM Atlas inside an in-app browser', () => {
+  it('starts the visual viewport tracker and sizes the game from its measured height', () => {
+    const main = read('../src/atlas/main.ts');
+    const app = read('../src/atlas/app/atlas-app.ts');
+    const css = read('../src/atlas/atlas.css');
+
+    expect(main).toContain("import { trackViewport } from '../core/viewport'");
+    expect(main).toContain('trackViewport();');
+    expect(css).toContain('--atlas-viewport-height: var(--app-h, 100dvh)');
+    expect(css).toContain('height: var(--atlas-viewport-height)');
+    expect(app).toContain('private resizeLivingCity(): void');
+    expect(app).toContain('window.visualViewport');
+    expect(app).not.toContain('this.livingCity?.resize(window.innerWidth, window.innerHeight, 1)');
+  });
+
+  it('has a compact landscape HUD for wallet chrome and short WebViews', () => {
+    const css = read('../src/atlas/atlas.css');
+    const compact = css.slice(css.indexOf('@media (orientation: landscape) and (max-height: 680px)'));
+
+    expect(compact).toContain('.atlas-mini-map');
+    expect(compact).toContain('width: 112px');
+    expect(compact).toContain('.atlas-city-waypoint');
+    expect(compact).toContain('.atlas-mobile-movement, .atlas-joystick');
+    expect(compact).toContain('width: 104px');
+    expect(compact).toContain('min-height: 44px');
+  });
+});
+
 describe('the tour card in landscape', () => {
   it('declares the flush arrival after the centred one it overrides', () => {
     const css = read('../src/style.css');
