@@ -1,6 +1,7 @@
 import type { AtlasAction, AtlasSnapshot } from '../../shared/atlas/state';
 import type { AtlasCompetitiveTicket, AtlasAssistance, AtlasNetwork, AtlasRole } from '../../shared/atlas/types';
 import { authenticatedRequest, type ApiFetch, type ApiResult } from '../net/api';
+import { createAtlasCoreRunSubmission, type AtlasCoreRunRequest } from './competitive-run';
 
 export interface AtlasOrderSummary {
   id: string;
@@ -97,6 +98,7 @@ export interface AtlasApiClient {
   getCompetitiveLeaderboard(seasonId: string, role: AtlasRole): Promise<AtlasLeaderboardRow[]>;
   issueCompetitiveTicket(input: { actorId: string; walletAddress: string; role: AtlasRole }): Promise<ApiResult<AtlasCompetitiveTicket>>;
   submitCompetitiveRun(input: AtlasCompetitiveRunInput): Promise<ApiResult<AtlasCompetitiveRunResult>>;
+  submitCoreRun(input: AtlasCoreRunRequest): Promise<ApiResult<AtlasCompetitiveRunResult>>;
   createOrder(input: { actorId: string; walletAddress: string; itemId: 'harbor-lantern'; idempotencyKey?: string }): Promise<AtlasOrderSummary>;
   submitTransactionLookup(orderId: string, lookup: string): Promise<AtlasOrderSummary>;
   reconcileOrder(orderId: string): Promise<AtlasOrderSummary>;
@@ -117,6 +119,14 @@ export function createAtlasApiClient(options: { baseUrl?: string; fetchImpl?: At
     getCompetitiveLeaderboard: (seasonId, role) => requestData(fetchImpl, `${baseUrl}/atlas/api/competitive/leaderboard?seasonId=${encodeURIComponent(seasonId)}&role=${role}`, isLeaderboard),
     issueCompetitiveTicket: (input) => authenticatedRequest<AtlasCompetitiveTicket>('/atlas/api/competitive/tickets', 'atlas.ticket.issue', input.actorId, input, { apiBase: baseUrl, fetchImpl }),
     submitCompetitiveRun: (input) => authenticatedRequest<AtlasCompetitiveRunResult>('/atlas/api/competitive/runs', 'atlas.run.submit', input.actorId, input, { apiBase: baseUrl, fetchImpl }),
+    submitCoreRun: async (input) => {
+      try {
+        const submission = await createAtlasCoreRunSubmission(input);
+        return authenticatedRequest<AtlasCompetitiveRunResult>('/atlas/api/competitive/runs', 'atlas.run.submit', submission.actorId, submission, { apiBase: baseUrl, fetchImpl });
+      } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : 'Atlas run could not be prepared.' };
+      }
+    },
     createOrder: (input) => requestOrder(fetchImpl, `${baseUrl}/atlas/api/orders`, { method: 'POST', body: input }),
     submitTransactionLookup: (orderId, lookup) => requestOrder(fetchImpl, `${baseUrl}/atlas/api/orders/${encodeURIComponent(orderId)}/transaction`, { method: 'POST', body: { lookup } }),
     reconcileOrder: (orderId) => requestOrder(fetchImpl, `${baseUrl}/atlas/api/orders/${encodeURIComponent(orderId)}/reconcile`, { method: 'POST' }),
