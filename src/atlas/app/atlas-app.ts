@@ -595,6 +595,7 @@ export class AtlasApp {
     );
     movement.append(accessibleDirections);
     const actions = element('div', 'atlas-actions');
+    actions.append(this.createCitySprint());
     const routeAction = this.routeRun?.stage === 'arrive' ? 'Talk' : this.routeRun?.stage === 'evidence' ? 'Inspect' : this.routeRun?.stage === 'verified' ? 'Install' : this.routeRun?.stage === 'complete' ? 'Travel' : 'Mission';
     const interact = actionButton(
       this.routeRun ? routeAction : this.cityQuestStep === 'meet-guide' ? 'Talk' : 'Travel',
@@ -604,7 +605,7 @@ export class AtlasApp {
     interact.className = 'atlas-tool atlas-context-action';
     actions.append(interact);
     controls.append(movement, actions);
-    const hint = element('p', 'atlas-key-hint', this.livingCity ? `${this.livingCity.qualityTier().toUpperCase()} PROFILE / DRAG TO WALK / FULL TILT TO RUN` : 'LOADING VERIFIED PROCEDURAL 3D ASSETS');
+    const hint = element('p', 'atlas-key-hint', this.livingCity ? `${this.livingCity.qualityTier().toUpperCase()} PROFILE / DRAG TO WALK / HOLD RUN TO SPRINT` : 'LOADING VERIFIED PROCEDURAL 3D ASSETS');
     const cameraCenter = actionButton('Center', () => this.livingCity?.recenterCamera(), 'Center the camera behind the player');
     cameraCenter.className = 'atlas-camera-center';
     const cameraMode = actionButton(this.cameraOverview ? 'Follow' : 'Overview', () => {
@@ -873,6 +874,7 @@ export class AtlasApp {
     );
     movement.append(accessibleDirections);
     const actions = element('div', 'atlas-actions');
+    actions.append(this.createCitySprint());
     const interact = actionButton(mission.actionLabel, this.interactInPayHarbor, `${mission.actionLabel}: ${mission.objective}`);
     interact.className = 'atlas-tool atlas-context-action';
     actions.append(interact);
@@ -1173,7 +1175,7 @@ export class AtlasApp {
       sampleMovement: () => {
         const action = this.input.sample();
         if (this.suspended || (this.screen === 'pay-harbor' && this.harborDialogue)) return { moveX: 0, moveY: 0 };
-        return { moveX: action.moveX, moveY: action.moveY };
+        return { moveX: action.moveX, moveY: action.moveY, run: action.run };
       },
       onFrame: ({ player }) => {
         this.runtimeStats?.sample(performance.now(), controller.stats(), controller.qualityTier());
@@ -1982,6 +1984,45 @@ export class AtlasApp {
     return button;
   }
 
+  private createCitySprint(): HTMLButtonElement {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'atlas-tool atlas-sprint';
+    button.textContent = 'RUN';
+    button.setAttribute('aria-label', 'Hold to run');
+    button.setAttribute('aria-pressed', 'false');
+    const press = (event: PointerEvent): void => {
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
+      event.preventDefault();
+      button.setPointerCapture?.(event.pointerId);
+      this.input.setRun(true);
+      button.classList.add('is-held');
+      button.setAttribute('aria-pressed', 'true');
+    };
+    const release = (): void => {
+      this.input.setRun(false);
+      button.classList.remove('is-held');
+      button.setAttribute('aria-pressed', 'false');
+    };
+    button.onpointerdown = press;
+    button.onpointerup = release;
+    button.onpointercancel = release;
+    button.onlostpointercapture = release;
+    button.onkeydown = (event) => {
+      if (event.key !== ' ' && event.key !== 'Enter') return;
+      event.preventDefault();
+      this.input.setRun(true);
+      button.classList.add('is-held');
+      button.setAttribute('aria-pressed', 'true');
+    };
+    button.onkeyup = (event) => {
+      if (event.key !== ' ' && event.key !== 'Enter') return;
+      event.preventDefault();
+      release();
+    };
+    return button;
+  }
+
   private createCityJoystick(): HTMLElement {
     const pad = element('div', 'atlas-joystick');
     pad.setAttribute('role', 'application');
@@ -2313,9 +2354,9 @@ function lanternDetail(phase: LastLanternState['phase']): string {
   return {
     street: 'Mara is waiting at the Pay Harbor shop.',
     shop: 'The lantern is a real item in this practice scene. Inspect it to see the request.',
-    selected: 'A safe payment has a network, recipient, and exact integer Luna amount.',
+    selected: 'NIM is the payment. Lunas are the smaller units. Check the network, recipient, and exact amount before approving.',
     review: 'Confirm the three lines before a wallet would ever be asked to approve.',
-    confirming: 'A transaction hash alone is not proof. Keep waiting for authoritative evidence.',
+    confirming: 'A transaction hash alone is not proof. Atlas is checking the network record before delivery.',
     verified: 'The simulated evidence matches. Now the lantern is yours to carry.',
     fulfilled: 'Take the item to the tower. This is the first functional inventory item.',
     'tower-lit': 'One verified event changed the harbor state.',

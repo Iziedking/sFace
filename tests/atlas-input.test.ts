@@ -119,6 +119,16 @@ describe('Atlas semantic controls', () => {
     expect(input.sample()).toMatchObject({ moveX: 0, moveY: 0 });
   });
 
+  it('keeps a dedicated run hold separate from one-shot tools', () => {
+    const input = new AtlasInputController();
+    input.setJoystick({ x: 0.35, y: -1 });
+    input.setRun(true);
+    expect(input.sample()).toMatchObject({ moveX: 44, moveY: -127, run: true });
+    input.setRun(false);
+    expect(input.sample()).toMatchObject({ moveX: 44, moveY: -127 });
+    expect(input.sample().run).toBeUndefined();
+  });
+
   it('rejects non-finite joystick input and preserves keyboard tool parity', () => {
     const input = new AtlasInputController();
     expect(() => input.setJoystick({ x: Number.NaN, y: 0 })).toThrow('finite');

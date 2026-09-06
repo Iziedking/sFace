@@ -31,6 +31,13 @@ describe('Atlas living-city player', () => {
     expect(running.x - start.x).toBeGreaterThan((walking.x - start.x) * 2);
   });
 
+  it('runs immediately when the player explicitly holds the run action', () => {
+    let player = createAtlasCityPlayer({ x: 0, z: 4.2, facing: 'up' });
+    for (let index = 0; index < 3; index += 1) player = stepAtlasCityPlayer(player, { moveX: 48, moveY: 0, run: true }, 0.1, bounds);
+    expect(player.pace).toBe('run');
+    expect(player.speedUnitsPerSecond).toBeGreaterThan(2);
+  });
+
   it('uses run hysteresis so small thumb wobble does not switch gait every frame', () => {
     const start = createAtlasCityPlayer({ x: 0, z: 4.2, facing: 'up' });
     let running = start;

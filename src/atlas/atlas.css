@@ -297,6 +297,8 @@ button:focus-visible, input:focus-visible, a:focus-visible, [tabindex]:focus-vis
 .atlas-tool { width: 100%; min-height: 52px; margin: 0; padding: 8px; border: 2px solid var(--atlas-ink); border-radius: 0; box-shadow: 3px 3px 0 var(--atlas-ink); font: 700 13px/1.25 system-ui, sans-serif; text-transform: uppercase; cursor: pointer; }
 .atlas-shield { background: var(--atlas-selected); color: var(--atlas-on-accent); }
 .atlas-context-action { background: var(--atlas-signal); color: var(--atlas-on-accent); }
+.atlas-sprint { background: var(--atlas-verified); color: var(--atlas-on-accent); touch-action: none; user-select: none; }
+.atlas-sprint.is-held { background: var(--atlas-pace-run); color: var(--atlas-on-accent); transform: translate(1px, 1px); box-shadow: 1px 1px 0 var(--atlas-ink); }
 .atlas-key-hint { align-self: end; margin: 7px 0 0; padding: 7px 12px; width: fit-content; max-width: 100%; border-radius: var(--atlas-radius-pill); background: var(--atlas-raised); backdrop-filter: var(--atlas-glass-blur); color: var(--atlas-ink); font: 700 12px/1.35 system-ui, sans-serif; pointer-events: auto; }
 @media (max-width: 520px) {
   .atlas-living-city-play-shell { height: calc(100svh - max(22px, env(safe-area-inset-top) + env(safe-area-inset-bottom))); }

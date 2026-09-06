@@ -51,6 +51,7 @@ export class AtlasInputController {
   private system: NonNullable<AtlasAction['system']> = 'active';
   private destination: AtlasWorldPoint | null = null;
   private joystick: AtlasWorldPoint | null = null;
+  private runHeld = false;
 
   setJoystick(vector: AtlasWorldPoint): void {
     assertFinitePoint(vector);
@@ -59,6 +60,10 @@ export class AtlasInputController {
 
   clearJoystick(): void {
     this.joystick = null;
+  }
+
+  setRun(pressed: boolean): void {
+    this.runHeld = pressed;
   }
 
   setDestination(point: AtlasWorldPoint): void {
@@ -100,6 +105,7 @@ export class AtlasInputController {
       this.held.clear();
       this.clearJoystick();
       this.cancelDestination();
+      this.runHeld = false;
     }
   }
 
@@ -144,7 +150,7 @@ export class AtlasInputController {
     };
     this.pendingTool = 'none';
     this.pendingInteract = false;
-    return action;
+    return this.runHeld ? { ...action, run: true } : action;
   }
 
   private joystickMovement(): { moveX: number; moveY: number } {
@@ -182,12 +188,13 @@ export function installAtlasKeyboard(target: Window, input: AtlasInputController
     if (event.repeat) return;
     if (event.key === 'q' || event.key === 'Q') input.triggerScan();
     else if (event.key === 'e' || event.key === 'E') input.triggerContextTool('relay-tether');
-    else if (event.key === 'Shift') input.triggerContextTool('shield-pulse');
+    else if (event.key === 'Shift') { input.setRun(true); input.triggerContextTool('shield-pulse'); }
     else if (event.key === ' ' || event.key === 'Enter') { event.preventDefault(); input.triggerInteract(); }
   };
   const up = (event: KeyboardEvent): void => {
     const direction = directions[event.key];
     if (direction) input.setDirection(direction, false);
+    if (event.key === 'Shift') input.setRun(false);
   };
   target.addEventListener('keydown', down);
   target.addEventListener('keyup', up);

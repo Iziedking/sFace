@@ -6,6 +6,7 @@ export type AtlasActionTool = AtlasTool | 'none';
 export interface AtlasAction {
   moveX: number;
   moveY: number;
+  run?: boolean;
   tool: AtlasActionTool;
   interact: boolean;
   system?: 'active' | 'paused' | 'hidden';
