@@ -100,6 +100,16 @@ export function atlasCitizenFacialCue(activity: AtlasCitizenActivity): AtlasFaci
   return 'neutral';
 }
 
+export function atlasCharacterHeadingBlend(current: number, target: number, deltaSeconds: number, moving: boolean): { heading: number; turnRate: number } {
+  const safeDelta = Number.isFinite(deltaSeconds) ? Math.min(0.25, Math.max(0, deltaSeconds)) : 0;
+  const response = moving ? 14 : 8;
+  const amount = 1 - Math.exp(-response * safeDelta);
+  const difference = Math.atan2(Math.sin(target - current), Math.cos(target - current));
+  const heading = current + difference * amount;
+  const appliedTurn = Math.atan2(Math.sin(heading - current), Math.cos(heading - current));
+  return { heading, turnRate: safeDelta > 0 ? appliedTurn / safeDelta : 0 };
+}
+
 /*
  * Which body a citizen is drawn with, as a band rather than a line.
  *

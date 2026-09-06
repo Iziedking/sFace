@@ -20,6 +20,7 @@ import { createBlobShadow, shadowPlanForTier } from './shadows';
 import { attachAtlasOutline, outlinesEnabledForTier, NO_OUTLINE_FLAG } from './outline';
 import {
   atlasCitizenAnimationState,
+  atlasCharacterHeadingBlend,
   atlasCitizenDetailLevel,
   atlasCitizenFacialCue,
   createAtlasCharacterAnimator,
@@ -95,7 +96,7 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
   private reducedMotion = false;
   private onPlayerFootstep: (() => void) | undefined;
   private lastPlayerSpeed = 0;
-  private lastPlayerHeading: number | null = null;
+  private playerVisualHeading: number | null = null;
 
   async initialize(host: HTMLElement, options: AtlasRendererOptions): Promise<void> {
     this.reducedMotion = options.reducedMotion;
@@ -235,6 +236,7 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
         this.npcSlots = [];
         this.lastAnimationTick = null;
         this.playerRoot = null;
+        this.playerVisualHeading = null;
         this.districtScene = null;
         this.routedPaths.clear();
         throw error;
@@ -317,6 +319,7 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
       this.districtScene = null;
       this.routedPaths.clear();
       this.playerRoot = null;
+      this.playerVisualHeading = null;
       this.lastAnimationTick = null;
       this.npcSlots = [];
     }
@@ -337,6 +340,7 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
     this.districtScene = null;
     this.routedPaths.clear();
     this.playerRoot = null;
+    this.playerVisualHeading = null;
     this.lastAnimationTick = null;
     this.npcSlots = [];
     for (const handles of this.districtHandles.values()) for (const handle of [...handles].reverse()) handle.release();
@@ -562,16 +566,18 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
     const root = this.playerRoot;
     if (!root || !player) return;
     root.position.set(player.x, 0, player.z);
-    root.rotation.y = player.headingRadians;
+    if (this.playerVisualHeading === null) this.playerVisualHeading = player.headingRadians;
+    const blend = atlasCharacterHeadingBlend(this.playerVisualHeading, player.headingRadians, deltaSeconds, player.moving);
+    this.playerVisualHeading = blend.heading;
+    root.rotation.y = blend.heading;
+    root.rotation.z = this.reducedMotion ? 0 : clampNumber(-blend.turnRate * 0.032, -0.1, 0.1);
     const facialCue = player.pace === 'run' ? 'focused' : 'neutral';
     const gaitBefore = this.playerAnimator?.gaitState();
-    const turn = this.lastPlayerHeading === null ? 0 : Math.atan2(Math.sin(player.headingRadians - this.lastPlayerHeading), Math.cos(player.headingRadians - this.lastPlayerHeading));
     const dt = Math.max(deltaSeconds, 0.001);
-    this.playerAnimator?.update(player.pace, deltaSeconds, playerAnimationSpeed(player), facialCue, { speedUnitsPerSecond: player.speedUnitsPerSecond, worldScale: PLAYER_WORLD_SCALE, acceleration: this.reducedMotion ? 0 : (player.speedUnitsPerSecond - this.lastPlayerSpeed) / dt, turnRate: this.reducedMotion ? 0 : turn / dt });
+    this.playerAnimator?.update(player.pace, deltaSeconds, playerAnimationSpeed(player), facialCue, { speedUnitsPerSecond: player.speedUnitsPerSecond, worldScale: PLAYER_WORLD_SCALE, acceleration: this.reducedMotion ? 0 : (player.speedUnitsPerSecond - this.lastPlayerSpeed) / dt, turnRate: this.reducedMotion ? 0 : blend.turnRate });
     const gaitAfter = this.playerAnimator?.gaitState();
     if (gaitBefore && gaitAfter && player.moving && Math.floor(gaitBefore.phase * 2) !== Math.floor(gaitAfter.phase * 2)) this.onPlayerFootstep?.();
     this.lastPlayerSpeed = player.speedUnitsPerSecond;
-    this.lastPlayerHeading = player.headingRadians;
   }
 
   private animationDeltaSeconds(tick: number): number {

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   atlasCitizenAnimationState,
   atlasCitizenDetailLevel,
+  atlasCharacterHeadingBlend,
   createAtlasCharacterAnimator,
   type AtlasCharacterAnimationState,
 } from '../src/atlas/render/three/character-animation';
@@ -87,6 +88,16 @@ describe('Atlas character animation controller', () => {
     expect(atlasCitizenDetailLevel('low', true, 12)).toBe('distant');
     expect(atlasCitizenDetailLevel('low', false, 7, 'near')).toBe('near');
     expect(atlasCitizenDetailLevel('low', false, 7, 'distant')).toBe('distant');
+  });
+
+  it('smooths player turns without changing the target simulation heading', () => {
+    const first = atlasCharacterHeadingBlend(0, Math.PI / 2, 1 / 30, true);
+    const second = atlasCharacterHeadingBlend(first.heading, Math.PI / 2, 1 / 30, true);
+    expect(first.heading).toBeGreaterThan(0);
+    expect(first.heading).toBeLessThan(Math.PI / 2);
+    expect(second.heading).toBeGreaterThan(first.heading);
+    expect(second.heading).toBeLessThan(Math.PI / 2);
+    expect(first.turnRate).toBeGreaterThan(0);
   });
 });
 
