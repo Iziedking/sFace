@@ -1,4 +1,5 @@
 import type { AtlasRole } from '../types';
+import { ATLAS_LANTERN_PRICE_LUNA } from '../economy';
 
 export type LanternNetwork = 'testalbatross' | 'mainalbatross';
 export type LanternPhase = 'street' | 'shop' | 'selected' | 'review' | 'confirming' | 'verified' | 'fulfilled' | 'tower-lit';
@@ -42,13 +43,13 @@ export interface LastLanternState {
 export const LAST_LANTERN = Object.freeze({
   id: 'last-lantern',
   recipient: 'NQATLASLANTERNSHOP',
-  priceLuna: 100_000,
+  priceLuna: ATLAS_LANTERN_PRICE_LUNA,
   minimumConfirmations: 3,
   request: {
     itemId: 'harbor-lantern',
     network: 'testalbatross',
     recipient: 'NQATLASLANTERNSHOP',
-    valueLuna: 100_000,
+    valueLuna: ATLAS_LANTERN_PRICE_LUNA,
   } satisfies LanternPaymentRequest,
 });
 

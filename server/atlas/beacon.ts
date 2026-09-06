@@ -1,5 +1,6 @@
 import type { AtlasBeaconSnapshot, AtlasDistrictId } from '../../shared/atlas/types';
 import type { AtlasEchoDescriptor } from './echoes';
+import type { AtlasStateStore } from './persistence';
 
 const BEACON_DISTRICTS: AtlasDistrictId[] = ['genesis-garden', 'light-forest', 'pay-harbor', 'albatross-causeway', 'validator-peaks', 'builder-city'];
 const DEFAULT_TARGET = 100;
@@ -32,7 +33,7 @@ export interface AtlasBeaconRead extends AtlasBeaconProjection {
   snapshot: AtlasBeaconProjection | null;
 }
 
-interface BeaconRepositoryState {
+export interface BeaconRepositoryState {
   version: 1;
   projection: AtlasBeaconProjection;
   contributions: Record<string, AtlasBeaconContribution>;
@@ -51,16 +52,23 @@ export interface AtlasBeaconService {
   read(): Promise<AtlasBeaconRead>;
 }
 
-export function createAtlasBeaconRepository(): AtlasBeaconRepository {
+export function createAtlasBeaconRepository(options: { stateStore?: AtlasStateStore } = {}): AtlasBeaconRepository {
   let state = createState();
+  let hydrated = false;
   const repository: AtlasBeaconRepository = {
     failReads: false,
     async load() {
       if (repository.failReads) throw new Error('Atlas Beacon repository unavailable.');
+      if (options.stateStore && !hydrated) {
+        state = await options.stateStore.load('beacon', state);
+        hydrated = true;
+      }
       return structuredClone(state);
     },
     async save(next) {
       state = structuredClone(next);
+      hydrated = true;
+      await options.stateStore?.save('beacon', state);
     },
   };
   return repository;

@@ -47,6 +47,13 @@ export interface AtlasIdentityAuditEvent {
   reason?: string;
 }
 
+export interface AtlasIdentitySnapshot {
+  version: 1;
+  challenges: AtlasWalletBindingChallenge[];
+  bindings: AtlasWalletBinding[];
+  audit: AtlasIdentityAuditEvent[];
+}
+
 export interface AtlasIdentityService {
   issueWalletChallenge(input: { actorId: string; seasonId: string; address: string; network: AtlasNetwork; now?: number }): AtlasWalletBindingChallenge;
   bindWallet(input: AtlasWalletBindingProof, now?: number): Promise<AtlasWalletBinding>;
@@ -54,6 +61,8 @@ export interface AtlasIdentityService {
   recoverWallet(input: { actorId: string; seasonId: string; address: string; network: AtlasNetwork; reason: string; bodyDigest: string; proof: DeviceProof; now?: number }): Promise<AtlasWalletBinding>;
   getBinding(actorId: string, seasonId: string): AtlasWalletBinding | null;
   audit(): AtlasIdentityAuditEvent[];
+  serialise(): AtlasIdentitySnapshot;
+  restore(raw: unknown): void;
 }
 
 export class AtlasIdentityError extends Error {
@@ -144,6 +153,18 @@ export function createAtlasIdentityService(options: { auth: PlayerAuth; now?: ()
     },
     audit() {
       return structuredClone(audit);
+    },
+    serialise() {
+      return { version: 1, challenges: [...challenges.values()], bindings: [...bindings.values()], audit: [...audit] };
+    },
+    restore(raw) {
+      if (!raw || typeof raw !== 'object' || (raw as { version?: unknown }).version !== 1) throw new AtlasIdentityError('invalid', 'Atlas identity snapshot is unsupported.');
+      challenges.clear();
+      bindings.clear();
+      audit.length = 0;
+      for (const challenge of (raw as AtlasIdentitySnapshot).challenges) if (challenge?.id && challenge.actorId && challenge.seasonId) challenges.set(challenge.id, structuredClone(challenge));
+      for (const binding of (raw as AtlasIdentitySnapshot).bindings) if (binding?.actorId && binding.seasonId && binding.address) bindings.set(`${binding.seasonId}:${binding.actorId}`, structuredClone(binding));
+      for (const event of (raw as AtlasIdentitySnapshot).audit) if (event?.type && event.actorId && event.seasonId) audit.push(structuredClone(event));
     },
   };
 }

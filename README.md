@@ -61,9 +61,10 @@ amount, and chain-confirmation rules are configured.
 Scores, replay verification, wallet binding, prize eligibility, daily puzzles,
 Explorer and Builder leaderboards, and the shared Network Beacon are server
 responsibilities. Purchased assistance, when eventually enabled, marks a run
-assisted and removes it from prize eligibility. The declared launch allocation
-is 8,000,000,000 Lunas (80,000 NIM); it is not a claim that funds are present or
-that a payout has occurred.
+assisted and removes it from prize eligibility. The declared first-season
+allocation is 5,000,000,000 Lunas (50,000 NIM); it is not a claim that funds are
+present or that a payout has occurred. The payout gate remains closed until the
+owner approves the recipient, close cadence, and chain-verification runbook.
 
 ## How to play NIM Atlas
 

@@ -1,4 +1,5 @@
 import type { AtlasDistrictId } from '../../shared/atlas/types';
+import type { AtlasStateStore } from './persistence';
 
 const STALE_AFTER_MS = 5 * 60_000;
 const MAX_ECHOES = 100;
@@ -41,7 +42,7 @@ interface StoredEcho {
   key: string;
 }
 
-interface EchoRepositoryState {
+export interface EchoRepositoryState {
   version: 1;
   lastUpdatedAt: number;
   echoes: StoredEcho[];
@@ -58,16 +59,23 @@ export interface AtlasEchoService {
   read(): Promise<AtlasEchoRead>;
 }
 
-export function createAtlasEchoRepository(): AtlasEchoRepository {
+export function createAtlasEchoRepository(options: { stateStore?: AtlasStateStore } = {}): AtlasEchoRepository {
   let state: EchoRepositoryState = { version: 1, lastUpdatedAt: 0, echoes: [] };
+  let hydrated = false;
   const repository: AtlasEchoRepository = {
     failReads: false,
     async load() {
       if (repository.failReads) throw new Error('Atlas Echo repository unavailable.');
+      if (options.stateStore && !hydrated) {
+        state = await options.stateStore.load('echoes', state);
+        hydrated = true;
+      }
       return structuredClone(state);
     },
     async save(next) {
       state = structuredClone(next);
+      hydrated = true;
+      await options.stateStore?.save('echoes', state);
     },
   };
   return repository;

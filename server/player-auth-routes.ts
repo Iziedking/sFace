@@ -18,7 +18,8 @@ const PLAYER_ACTIONS = [
   'clan.join', 'clan.decide', 'contest.create', 'contest.join',
   'contest.settle', 'challenge.create', 'challenge.accept',
   'challenge.settle', 'signals.unlock', 'score.post', 'score.sign',
-  'score.anchor', 'ghost.post',
+  'score.anchor', 'ghost.post', 'atlas.wallet.challenge', 'atlas.wallet.bind',
+  'atlas.ticket.issue', 'atlas.run.submit',
 ] as const satisfies readonly AuthAction[];
 
 export interface PlayerAuthRoutesDeps {

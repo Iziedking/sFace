@@ -1,4 +1,5 @@
 import type { Express, RequestHandler } from 'express';
+import { z } from 'zod';
 import { Address } from '@nimiq/core';
 
 import { validateAtlasCurriculum } from '../../shared/atlas/curriculum';
@@ -9,6 +10,10 @@ import type { AtlasBeaconService } from './beacon';
 import type { AtlasChainReader } from './chain';
 import type { AtlasEchoService } from './echoes';
 import type { AtlasCompetitionSummary } from './rewards';
+import type { AtlasCompetitiveRuntime } from './competitive';
+import type { AtlasIdentityService, AtlasWalletBindingChallenge } from './identity';
+import type { AuthAction, DeviceProof } from '../../src/net/player-auth-protocol';
+import type { AtlasSnapshot } from '../../shared/atlas/state';
 
 export interface AtlasOrderCatalog {
   itemId: 'harbor-lantern';
@@ -32,6 +37,9 @@ export interface AtlasApi {
   orders?: AtlasOrderStore;
   orderCatalog?: AtlasOrderCatalog;
   chain?: AtlasChainReader;
+  identity?: AtlasIdentityService;
+  competitive?: AtlasCompetitiveRuntime;
+  authorize?: (proof: DeviceProof, action: AuthAction, actorId: string, body: unknown) => Promise<boolean>;
 }
 
 export function createAtlasApi(options: {
@@ -44,6 +52,9 @@ export function createAtlasApi(options: {
   competition?: () => Promise<AtlasCompetitionSummary[]>;
   orderCatalog?: AtlasOrderCatalog;
   chain?: AtlasChainReader;
+  identity?: AtlasIdentityService;
+  competitive?: AtlasCompetitiveRuntime;
+  authorize?: (proof: DeviceProof, action: AuthAction, actorId: string, body: unknown) => Promise<boolean>;
 }): AtlasApi {
   const curriculum = validateAtlasCurriculum(options.curriculum, options.now?.() ?? new Date());
   return {
@@ -65,6 +76,9 @@ export function createAtlasApi(options: {
     orders: options.orders,
     orderCatalog: options.orderCatalog,
     chain: options.chain,
+    identity: options.identity,
+    competitive: options.competitive,
+    authorize: options.authorize,
   };
 }
 
@@ -95,6 +109,45 @@ export function mountAtlasRoutes(options: {
     if (!options.api.competition) { response.status(503).json({ ok: false, error: 'Atlas competition is unavailable.' }); return; }
     response.setHeader('cache-control', 'no-store');
     response.json({ ok: true, data: await options.api.competition() });
+  });
+  options.app.get('/atlas/api/competitive/leaderboard', options.limit(120, 40), async (request, response) => {
+    if (!options.api.competitive) { response.status(503).json({ ok: false, error: 'Atlas competition is unavailable.' }); return; }
+    const role = request.query.role === 'builder' ? 'builder' : request.query.role === 'explorer' ? 'explorer' : null;
+    const seasonId = typeof request.query.seasonId === 'string' ? request.query.seasonId : '';
+    if (!role || !/^[a-z0-9-]{1,80}$/.test(seasonId)) { response.status(400).json({ ok: false, error: 'Atlas leaderboard query is invalid.' }); return; }
+    response.setHeader('cache-control', 'no-store');
+    response.json({ ok: true, data: await options.api.competitive.leaderboard(seasonId, role) });
+  });
+  options.app.post('/atlas/api/wallet/challenge', options.limit(24, 8), async (request, response) => {
+    if (!options.api.identity || !options.api.authorize) { response.status(503).json({ ok: false, error: 'Atlas wallet identity is unavailable.' }); return; }
+    const parsed = walletChallengeBody.safeParse(request.body);
+    if (!parsed.success || !(await options.api.authorize(parsed.data.auth, 'atlas.wallet.challenge', parsed.data.actorId, withoutAuth(parsed.data)))) { response.status(403).json({ ok: false, error: 'Atlas wallet challenge was rejected.' }); return; }
+    try { response.json({ ok: true, data: options.api.identity.issueWalletChallenge(withoutAuth(parsed.data)) }); }
+    catch (error) { response.status(400).json({ ok: false, error: safeError(error) }); }
+  });
+  options.app.post('/atlas/api/wallet/bind', options.limit(16, 6), async (request, response) => {
+    if (!options.api.identity || !options.api.authorize) { response.status(503).json({ ok: false, error: 'Atlas wallet identity is unavailable.' }); return; }
+    const parsed = walletBindBody.safeParse(request.body);
+    if (!parsed.success || !(await options.api.authorize(parsed.data.auth, 'atlas.wallet.bind', parsed.data.actorId, { actorId: parsed.data.actorId, challenge: parsed.data.challenge, publicKey: parsed.data.publicKey, signature: parsed.data.signature }))) { response.status(403).json({ ok: false, error: 'Atlas wallet binding was rejected.' }); return; }
+    try {
+      const challenge = parsed.data.challenge as AtlasWalletBindingChallenge;
+      response.json({ ok: true, data: await options.api.identity.bindWallet({ challenge, publicKey: parsed.data.publicKey, signature: parsed.data.signature }) });
+    }
+    catch (error) { response.status(400).json({ ok: false, error: safeError(error) }); }
+  });
+  options.app.post('/atlas/api/competitive/tickets', options.limit(24, 8), async (request, response) => {
+    if (!options.api.competitive || !options.api.authorize) { response.status(503).json({ ok: false, error: 'Atlas competition is unavailable.' }); return; }
+    const parsed = ticketBody.safeParse(request.body);
+    if (!parsed.success || !(await options.api.authorize(parsed.data.auth, 'atlas.ticket.issue', parsed.data.actorId, withoutAuth(parsed.data)))) { response.status(403).json({ ok: false, error: 'Atlas ticket request was rejected.' }); return; }
+    try { response.status(201).json({ ok: true, data: await options.api.competitive.issueServerTicket({ actorId: parsed.data.actorId, walletAddress: parsed.data.walletAddress, role: parsed.data.role }) }); }
+    catch (error) { response.status(400).json({ ok: false, error: safeError(error) }); }
+  });
+  options.app.post('/atlas/api/competitive/runs', options.limit(12, 4), async (request, response) => {
+    if (!options.api.competitive || !options.api.authorize) { response.status(503).json({ ok: false, error: 'Atlas competition is unavailable.' }); return; }
+    const parsed = submissionBody.safeParse(request.body);
+    if (!parsed.success || !(await options.api.authorize(parsed.data.auth, 'atlas.run.submit', parsed.data.actorId, withoutAuth(parsed.data)))) { response.status(403).json({ ok: false, error: 'Atlas run submission was rejected.' }); return; }
+    try { response.status(201).json({ ok: true, data: await options.api.competitive.submit({ ...withoutAuth(parsed.data), claimedSnapshot: parsed.data.claimedSnapshot as AtlasSnapshot }) }); }
+    catch (error) { response.status(400).json({ ok: false, error: safeError(error) }); }
   });
   options.app.post('/atlas/api/orders', options.limit(30, 10), async (request, response) => {
     if (!options.api.orders) { response.status(503).json({ ok: false, error: 'Atlas orders are unavailable.' }); return; }
@@ -158,6 +211,15 @@ function requiredString(value: unknown): string {
   if (typeof value !== 'string' || value.length === 0 || value.length > 256) throw new Error('Atlas order field is invalid.');
   return value;
 }
+
+const authProof = z.object({ challengeId: z.string().min(1).max(128), publicKeyJwk: z.object({ kty: z.literal('EC'), crv: z.literal('P-256'), x: z.string().min(1).max(100), y: z.string().min(1).max(100) }), signature: z.string().regex(/^[0-9a-f]+$/i).max(1024) });
+const actorId = z.string().regex(/^[0-9a-f]{16,64}$/i);
+const walletChallengeBody = z.object({ actorId, seasonId: z.string().regex(/^[a-z0-9-]{1,80}$/), address: z.string().min(1).max(64), network: z.enum(['testalbatross', 'mainalbatross']), auth: authProof });
+const walletBindBody = z.object({ actorId, challenge: z.unknown(), publicKey: z.string().regex(/^[0-9a-f]+$/i).max(256), signature: z.string().regex(/^[0-9a-f]+$/i).max(512), auth: authProof });
+const ticketBody = z.object({ actorId, walletAddress: z.string().min(1).max(64), role: z.enum(['explorer', 'builder']), auth: authProof });
+const actionBody = z.object({ moveX: z.number().finite(), moveY: z.number().finite(), tool: z.enum(['none', 'scanner', 'relay-tether', 'shield-pulse']), interact: z.boolean(), system: z.enum(['active', 'paused', 'hidden']).optional() });
+const submissionBody = z.object({ runId: z.string().regex(/^[a-zA-Z0-9:_-]{1,128}$/), ticketId: z.string().regex(/^[a-f0-9]{32}$/), actorId, walletAddress: z.string().min(1).max(64), network: z.literal('testalbatross'), role: z.enum(['explorer', 'builder']), seasonId: z.string().regex(/^[a-z0-9-]{1,80}$/), challengeId: z.string().regex(/^[a-z0-9-]{1,80}$/), origin: z.string().url().max(256), campaignHash: z.string().regex(/^[a-f0-9]{64}$/), curriculumHash: z.string().regex(/^[a-f0-9]{64}$/), rulesetHash: z.string().regex(/^[a-f0-9]{64}$/), assistance: z.enum(['none', 'free-hint', 'purchased-hint', 'answer-reveal', 'debug']), actions: z.array(actionBody).max(20_000), claimedSnapshot: z.unknown(), replayHash: z.string().regex(/^[a-f0-9]{64}$/), auth: authProof });
+function withoutAuth<T extends { auth: unknown }>(value: T): Omit<T, 'auth'> { const { auth: _auth, ...body } = value; return body; }
 
 function requiredNimiqAddress(value: unknown): string {
   const address = requiredString(value);

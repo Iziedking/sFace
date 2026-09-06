@@ -18,6 +18,10 @@ export type AuthAction =
   | 'score.sign'
   | 'score.anchor'
   | 'ghost.post'
+  | 'atlas.wallet.challenge'
+  | 'atlas.wallet.bind'
+  | 'atlas.ticket.issue'
+  | 'atlas.run.submit'
   | 'atlas.wallet.recover';
 
 export interface MergeClaim {

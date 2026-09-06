@@ -94,10 +94,18 @@ import { legacyConfig } from './legacy/mode';
 import { mountLegacyArchiveRoutes } from './legacy/archive-routes';
 import { legacyMutationMiddleware } from './legacy/mode';
 import { assertSingleRelayWriter } from './relay/writer';
-import { ATLAS_PRODUCTION_GATE, parseAtlasPaymentConfig } from './atlas/config';
+import { ATLAS_COMPETITIVE_POLICY, ATLAS_PRODUCTION_GATE, parseAtlasPaymentConfig } from './atlas/config';
 import { createAtlasOrderStore } from './atlas/orders';
 import { createAtlasChainReader } from './atlas/chain';
-import { createAtlasJsonRepository } from './atlas/persistence';
+import { createAtlasBeaconRepository, createAtlasBeaconService } from './atlas/beacon';
+import { createAtlasEchoRepository, createAtlasEchoService } from './atlas/echoes';
+import { createAtlasJsonRepository, createAtlasStateStore } from './atlas/persistence';
+import { createAtlasIdentityService } from './atlas/identity';
+import { createAtlasTicketService } from './atlas/tickets';
+import { createAtlasSubmissionService } from './atlas/submissions';
+import { createAtlasLeaderboardService } from './atlas/leaderboard';
+import { createAtlasCompetitiveRuntime } from './atlas/competitive';
+import { ATLAS_CORE_FIXTURE } from '../shared/atlas/world';
 
 const PORT = Number(process.env.PORT ?? 8790);
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
@@ -151,6 +159,17 @@ const relayChain = createNimiqRelayChainReader({ network: RELAY_CONFIG.network, 
 const relayPayouts = createRelayPayoutService({ store: getRelayStore(), chain: relayChain, treasuryAddress: RELAY_CONFIG.treasuryAddress ?? '', minConfirmations: RELAY_CONFIG.minConfirmations, network: RELAY_CONFIG.network });
 const atlasOrders = ATLAS_PAYMENT_CONFIG.enabled ? createAtlasOrderStore({ recipient: ATLAS_PAYMENT_CONFIG.recipient!, priceLuna: ATLAS_PAYMENT_CONFIG.valueLuna, minimumConfirmations: ATLAS_PAYMENT_CONFIG.minConfirmations, repository: createAtlasJsonRepository({ directory: join(DATA_DIR, 'atlas') }) }) : undefined;
 const atlasChain = ATLAS_PAYMENT_CONFIG.enabled ? createAtlasChainReader({ network: ATLAS_PAYMENT_CONFIG.network, rpcUrls: ATLAS_PAYMENT_CONFIG.rpcUrls, minConfirmations: ATLAS_PAYMENT_CONFIG.minConfirmations }) : undefined;
+const atlasStateStore = createAtlasStateStore(createAtlasJsonRepository({ directory: join(DATA_DIR, 'atlas-state') }));
+const atlasBeacon = ATLAS_PRODUCTION_GATE.durableRepository ? createAtlasBeaconService({ repository: createAtlasBeaconRepository({ stateStore: atlasStateStore }) }) : undefined;
+const atlasEchoes = ATLAS_PRODUCTION_GATE.durableRepository ? createAtlasEchoService({ repository: createAtlasEchoRepository({ stateStore: atlasStateStore }) }) : undefined;
+const atlasIdentity = createAtlasIdentityService({ auth: playerAuth, domain: ALLOWED_ORIGINS[0] ?? 'https://www.sface.site' });
+const atlasTickets = createAtlasTicketService({ identity: atlasIdentity });
+const atlasSubmissions = createAtlasSubmissionService({ tickets: atlasTickets, expectedOrigin: ALLOWED_ORIGINS[0] ?? 'https://www.sface.site', mission: ATLAS_CORE_FIXTURE });
+const atlasLeaderboard = createAtlasLeaderboardService();
+const atlasCompetitive = ATLAS_PRODUCTION_GATE.competitive && atlasBeacon && atlasEchoes
+  ? createAtlasCompetitiveRuntime({ identity: atlasIdentity, tickets: atlasTickets, submissions: atlasSubmissions, leaderboard: atlasLeaderboard, beacon: atlasBeacon, echoes: atlasEchoes, stateStore: atlasStateStore, ticketPolicy: ATLAS_COMPETITIVE_POLICY! })
+  : undefined;
+const provesActor = createActorVerifier(playerAuth);
 installRequestLogging(app, { record: recordAdminLog });
 mountRelayRoutes({ app, limit: rateLimiter.limit, api: createRelayApi({ config: RELAY_CONFIG, tickets: relayTickets, walletBindings: relayWalletBindings, daily: relayDaily, repository: relayRepository, actorExists: (actorId) => playerAuth.hasCredential(actorId), world: relayWorld, leaderboard: relayLeaderboard, rewards: relayRewards }) });
 mountAtlasRoutes({ app, limit: rateLimiter.limit, api: createAtlasApi({
@@ -158,11 +177,15 @@ mountAtlasRoutes({ app, limit: rateLimiter.limit, api: createAtlasApi({
   competitiveExpeditions: ATLAS_PRODUCTION_GATE.competitive,
   orders: atlasOrders,
   chain: atlasChain,
+  beacon: atlasBeacon,
+  echoes: atlasEchoes,
+  identity: atlasIdentity,
+  competitive: atlasCompetitive,
+  competition: atlasCompetitive ? () => atlasCompetitive.competition() : undefined,
+  authorize: (proof, action, actorId, body) => provesActor(proof, action, actorId, body),
   orderCatalog: ATLAS_PAYMENT_CONFIG.enabled ? { itemId: ATLAS_PAYMENT_CONFIG.itemId, network: ATLAS_PAYMENT_CONFIG.network, recipient: ATLAS_PAYMENT_CONFIG.recipient!, valueLuna: ATLAS_PAYMENT_CONFIG.valueLuna } : undefined,
 }) });
 app.use(['/chat', '/tips', '/tips/seen', '/board', '/board/anchor', '/board/sign', '/contests', '/clans/join', '/signals/unlock', '/profile/merge'], legacyMutationMiddleware(LEGACY_CONFIG));
-const provesActor = createActorVerifier(playerAuth);
-
 // Schemas ------------------------------------------------------------------
 
 const deviceId = z.string().regex(/^[0-9a-f]{16,64}$/i, 'Device id must be hex.');
@@ -1519,6 +1542,7 @@ function snapshot() {
 
 async function main(): Promise<void> {
   await initialiseAdminLogs();
+  if (ATLAS_PRODUCTION_GATE.durableRepository) await atlasStateStore.initialise();
   await loadRelayState();
   await relayDaily.load();
   const loaded = await loadSnapshot();

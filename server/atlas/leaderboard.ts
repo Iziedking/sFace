@@ -18,9 +18,16 @@ export interface AtlasLeaderboardRow extends AtlasLeaderboardRun {
   rank: number;
 }
 
+export interface AtlasLeaderboardSnapshot {
+  version: 1;
+  runs: AtlasLeaderboardRun[];
+}
+
 export interface AtlasLeaderboardService {
   accept(run: AtlasLeaderboardRun): Promise<AtlasLeaderboardRow>;
   list(seasonId: string, role: AtlasRole): Promise<AtlasLeaderboardRow[]>;
+  serialise(): AtlasLeaderboardSnapshot;
+  restore(raw: unknown): void;
 }
 
 export class AtlasLeaderboardError extends Error {
@@ -60,6 +67,23 @@ export function createAtlasLeaderboardService(): AtlasLeaderboardService {
         previousScore = score;
         return { ...run, rank };
       });
+    },
+    serialise() {
+      return { version: 1, runs: [...best.values()].map((run) => structuredClone(run)) };
+    },
+    restore(raw) {
+      if (!raw || typeof raw !== 'object' || (raw as { version?: unknown }).version !== 1 || !Array.isArray((raw as { runs?: unknown }).runs)) throw new AtlasLeaderboardError('invalid', 'Atlas leaderboard snapshot is unsupported.');
+      best.clear();
+      actorWallet.clear();
+      walletActor.clear();
+      for (const run of (raw as AtlasLeaderboardSnapshot).runs) {
+        validate(run);
+        const actorKey = `${run.seasonId}:${run.actorId}`;
+        const walletKey = `${run.seasonId}:${run.walletAddress}`;
+        actorWallet.set(actorKey, run.walletAddress);
+        walletActor.set(walletKey, run.actorId);
+        best.set(`${run.seasonId}:${run.role}:${run.actorId}`, structuredClone(run));
+      }
     },
   };
 }

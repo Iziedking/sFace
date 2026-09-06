@@ -1,4 +1,5 @@
 import type { AtlasAssistance, AtlasRole } from './types';
+import { ATLAS_FIRST_SEASON_ALLOCATION_LUNA } from './economy';
 
 export type AtlasRewardPeriod = 'week-1' | 'week-2' | 'week-3' | 'finale';
 
@@ -40,11 +41,14 @@ export interface AtlasTrackRewardAllocation {
 }
 
 export const ATLAS_LAUNCH_ALLOCATION = {
-  totalLuna: 8_000_000_000,
-  dailyLuna: 2_240_000_000,
-  dailyPoolLuna: 80_000_000,
-  weekPoolsLuna: [1_200_000_000, 1_200_000_000, 1_200_000_000] as const,
-  finaleLuna: 2_160_000_000,
+  // First season treasury cap: 50,000 NIM. Keep this allocation proportional
+  // and deterministic; no payout is enabled until the owner approves the
+  // recipient, close cadence, and chain-verification runbook.
+  totalLuna: ATLAS_FIRST_SEASON_ALLOCATION_LUNA,
+  dailyLuna: 1_400_000_000,
+  dailyPoolLuna: 50_000_000,
+  weekPoolsLuna: [750_000_000, 750_000_000, 750_000_000] as const,
+  finaleLuna: 1_350_000_000,
 } as const;
 
 const TRACK_PERCENTAGES_BPS = [5_000, 3_000, 2_000] as const;

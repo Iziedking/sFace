@@ -13,7 +13,7 @@ describe('Pay Harbor physical mission projection', () => {
     replayLastLantern([{ type: 'select-lantern' }], state);
     expect(projectPayHarborPhysicalMission(state)).toMatchObject({ targetAnchorId: 'payment-review', actionLabel: 'Review' });
 
-    replayLastLantern([{ type: 'review-request', request: { itemId: 'harbor-lantern', network: 'testalbatross', recipient: 'NQATLASLANTERNSHOP', valueLuna: 100_000 } }], state);
+    replayLastLantern([{ type: 'review-request', request: { itemId: 'harbor-lantern', network: 'testalbatross', recipient: 'NQATLASLANTERNSHOP', valueLuna: 10_000 } }], state);
     expect(projectPayHarborPhysicalMission(state)).toMatchObject({ targetAnchorId: 'payment-review', actionLabel: 'Confirm practice' });
   });
 
@@ -22,13 +22,13 @@ describe('Pay Harbor physical mission projection', () => {
     replayLastLantern([
       { type: 'enter-shop' },
       { type: 'select-lantern' },
-      { type: 'review-request', request: { itemId: 'harbor-lantern', network: 'testalbatross', recipient: 'NQATLASLANTERNSHOP', valueLuna: 100_000 } },
+      { type: 'review-request', request: { itemId: 'harbor-lantern', network: 'testalbatross', recipient: 'NQATLASLANTERNSHOP', valueLuna: 10_000 } },
       { type: 'await-evidence' },
     ], state);
     expect(projectPayHarborPhysicalMission(state).restoration).toBe('confirming');
 
     replayLastLantern([
-      { type: 'receive-evidence', source: 'local-simulation', evidence: { txHash: 'practice', network: 'testalbatross', recipient: 'NQATLASLANTERNSHOP', valueLuna: 100_000, canonical: true, success: true, confirmations: 3 } },
+      { type: 'receive-evidence', source: 'local-simulation', evidence: { txHash: 'practice', network: 'testalbatross', recipient: 'NQATLASLANTERNSHOP', valueLuna: 10_000, canonical: true, success: true, confirmations: 3 } },
       { type: 'fulfill-lantern' },
       { type: 'reach-tower' },
     ], state);
@@ -40,8 +40,8 @@ describe('Pay Harbor physical mission projection', () => {
     replayLastLantern([
       { type: 'enter-shop' },
       { type: 'select-lantern' },
-      { type: 'review-request', request: { itemId: 'harbor-lantern', network: 'testalbatross', recipient: 'NQATLASLANTERNSHOP', valueLuna: 100_000 } },
-      { type: 'receive-evidence', source: 'local-simulation', evidence: { txHash: 'builder-practice', network: 'testalbatross', recipient: 'NQATLASLANTERNSHOP', valueLuna: 100_000, canonical: true, success: true, confirmations: 3 } },
+      { type: 'review-request', request: { itemId: 'harbor-lantern', network: 'testalbatross', recipient: 'NQATLASLANTERNSHOP', valueLuna: 10_000 } },
+      { type: 'receive-evidence', source: 'local-simulation', evidence: { txHash: 'builder-practice', network: 'testalbatross', recipient: 'NQATLASLANTERNSHOP', valueLuna: 10_000, canonical: true, success: true, confirmations: 3 } },
       { type: 'fulfill-lantern' },
     ], state);
 

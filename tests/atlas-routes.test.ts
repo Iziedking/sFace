@@ -7,6 +7,7 @@ import { createAtlasBeaconRepository, createAtlasBeaconService } from '../server
 import { createAtlasOrderStore } from '../server/atlas/orders';
 import { mountAtlasRoutes } from '../server/atlas/routes';
 import { createAtlasEchoRepository, createAtlasEchoService } from '../server/atlas/echoes';
+import type { AtlasCompetitiveRuntime } from '../server/atlas/competitive';
 
 describe('NIM Atlas public curriculum boundary', () => {
   it('serves an honest local-first bootstrap and validated curriculum', async () => {
@@ -90,6 +91,36 @@ describe('NIM Atlas public curriculum boundary', () => {
       const response = await fetch(`http://127.0.0.1:${address.port}/atlas/api/echoes`);
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toEqual({ ok: true, data: { status: 'live', echoes: [] } });
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
+  });
+
+  it('does not accept client-controlled competitive ticket seeds or content hashes', async () => {
+    let issued: unknown;
+    const competitive = {
+      issueServerTicket: async (input: unknown) => { issued = input; return { ticketId: 'server-ticket' }; },
+    } as unknown as AtlasCompetitiveRuntime;
+    const api = createAtlasApi({
+      curriculum: ATLAS_CURRICULUM,
+      competitive,
+      authorize: async () => true,
+      now: () => new Date('2026-08-25T12:00:00.000Z'),
+    });
+    const app = express();
+    app.use(express.json());
+    mountAtlasRoutes({ app, limit: () => (_request, _response, next) => next(), api });
+    const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => { const listening = app.listen(0, () => resolve(listening)); });
+    try {
+      const address = server.address();
+      if (!address || typeof address === 'string') throw new Error('Test server did not expose a port.');
+      const response = await fetch(`http://127.0.0.1:${address.port}/atlas/api/competitive/tickets`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ actorId: 'a'.repeat(16), walletAddress: 'wallet', role: 'explorer', seed: 'attacker-seed', campaignHash: 'a'.repeat(64), curriculumHash: 'b'.repeat(64), rulesetHash: 'c'.repeat(64), auth: { challengeId: 'device-challenge', publicKeyJwk: { kty: 'EC', crv: 'P-256', x: 'x', y: 'y' }, signature: 'aa' } }),
+      });
+      expect(response.status).toBe(201);
+      expect(issued).toEqual({ actorId: 'a'.repeat(16), walletAddress: 'wallet', role: 'explorer' });
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     }

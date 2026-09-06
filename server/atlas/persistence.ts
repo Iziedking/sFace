@@ -21,6 +21,45 @@ export interface AtlasRepository {
   listBackups(): Promise<Array<{ name: string; sizeBytes: number; modifiedAt: number }>>;
 }
 
+export interface AtlasStateStore {
+  load<T>(key: string, fallback: T): Promise<T>;
+  save<T>(key: string, value: T): Promise<void>;
+}
+
+/**
+ * Keeps all Atlas projections inside one atomically replaced file while still
+ * giving each service a narrow typed record. The store loads once, serializes
+ * mutations, and writes the complete snapshot after every accepted change.
+ */
+export function createAtlasStateStore(repository: AtlasRepository, now: () => number = Date.now): AtlasStateStore & { initialise(): Promise<void> } {
+  let records: Record<string, unknown> = {};
+  let initialised = false;
+  let operations: Promise<void> = Promise.resolve();
+
+  async function initialise(): Promise<void> {
+    if (initialised) return;
+    const loaded = await repository.load();
+    records = loaded?.snapshot?.records ?? {};
+    initialised = true;
+  }
+
+  return {
+    initialise,
+    async load<T>(key: string, fallback: T): Promise<T> {
+      await initialise();
+      return structuredClone((records[key] as T | undefined) ?? fallback);
+    },
+    save<T>(key: string, value: T): Promise<void> {
+      operations = operations.catch(() => undefined).then(async () => {
+        await initialise();
+        records[key] = structuredClone(value);
+        await repository.save({ version: 1, updatedAt: now(), records });
+      });
+      return operations;
+    },
+  };
+}
+
 export function createAtlasJsonRepository(options: {
   directory?: string;
   now?: () => number;

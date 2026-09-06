@@ -11,10 +11,17 @@ export interface AtlasTicketRecord extends AtlasCompetitiveTicket {
   consumedAt: number | null;
 }
 
+export interface AtlasTicketSnapshot {
+  version: 1;
+  tickets: AtlasTicketRecord[];
+}
+
 export interface AtlasTicketService {
   issue(input: { actorId: string; walletAddress: string; network: 'testalbatross' | 'mainalbatross'; role: AtlasRole; seasonId: string; challengeId: string; seed: string; campaignHash: string; curriculumHash: string; rulesetHash: string; now?: number }): Promise<AtlasTicketRecord>;
   consume(input: { ticketId: string; actorId: string; walletAddress: string; runId: string; now?: number }): Promise<AtlasTicketRecord>;
   get(ticketId: string): AtlasTicketRecord | null;
+  serialise(): AtlasTicketSnapshot;
+  restore(raw: unknown): void;
 }
 
 export class AtlasTicketError extends Error {
@@ -54,6 +61,14 @@ export function createAtlasTicketService(options: { identity: AtlasIdentityServi
     get(ticketId) {
       const ticket = tickets.get(ticketId);
       return ticket ? structuredClone(ticket) : null;
+    },
+    serialise() {
+      return { version: 1, tickets: [...tickets.values()].map((ticket) => structuredClone(ticket)) };
+    },
+    restore(raw) {
+      if (!raw || typeof raw !== 'object' || (raw as { version?: unknown }).version !== 1 || !Array.isArray((raw as { tickets?: unknown }).tickets)) throw new AtlasTicketError('unavailable', 'Atlas ticket snapshot is unsupported.');
+      tickets.clear();
+      for (const ticket of (raw as AtlasTicketSnapshot).tickets) if (ticket?.ticketId && ticket.actorId && ticket.walletAddress) tickets.set(ticket.ticketId, structuredClone(ticket));
     },
   };
 }

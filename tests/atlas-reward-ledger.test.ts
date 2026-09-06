@@ -11,8 +11,8 @@ describe('NIM Atlas append-only reward ledger', () => {
     ledger.appendDailyClose('2026-08-26', closeAtlasDailyPool(0));
 
     expect(ledger.summary()).toEqual({
-      dailyObligationsLuna: 79_999_998,
-      rolloverToFinaleLuna: 80_000_002,
+      dailyObligationsLuna: 49_999_998,
+      rolloverToFinaleLuna: 50_000_002,
       weeklyObligationsLuna: 0,
       finaleObligationsLuna: 0,
       paidLuna: 0,

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { ATLAS_PRODUCTION_GATE } from '../server/atlas/config';
+import { ATLAS_PRODUCTION_GATE, parseAtlasProductionGate } from '../server/atlas/config';
 import { createAtlasJsonRepository, type AtlasRepositorySnapshot } from '../server/atlas/persistence';
 import { closeAtlasDailyPool } from '../shared/atlas/rewards';
 
@@ -30,6 +30,14 @@ function checkpointSnapshot(stage: string, payload: unknown): AtlasRepositorySna
 }
 
 describe('isolated Atlas persistence', () => {
+  const competitivePolicy = {
+    ATLAS_COMPETITIVE_SEASON_ID: 'season-1',
+    ATLAS_COMPETITIVE_CHALLENGE_ID: 'expedition-1',
+    ATLAS_COMPETITIVE_SEED: 'seed-1',
+    ATLAS_COMPETITIVE_CAMPAIGN_HASH: 'a'.repeat(64),
+    ATLAS_COMPETITIVE_CURRICULUM_HASH: 'b'.repeat(64),
+    ATLAS_COMPETITIVE_RULESET_HASH: 'c'.repeat(64),
+  };
   it('uses an Atlas-only path and atomically saves, backs up, and loads snapshots', async () => {
     const store = await repository();
     await store.save(snapshot('one'));
@@ -96,6 +104,12 @@ describe('isolated Atlas persistence', () => {
 
   it('keeps competitive, reward, and durable-production switches off pending owner approval', () => {
     expect(ATLAS_PRODUCTION_GATE).toEqual({ competitive: false, rewards: false, durableRepository: false });
+  });
+
+  it('requires durable state before opening competition or rewards', () => {
+    expect(parseAtlasProductionGate({ ATLAS_COMPETITIVE_ENABLED: 'true', ATLAS_REWARDS_ENABLED: 'true' })).toEqual({ competitive: false, rewards: false, durableRepository: false });
+    expect(parseAtlasProductionGate({ ATLAS_DURABLE_REPOSITORY_ENABLED: 'true', ATLAS_COMPETITIVE_ENABLED: 'true', ...competitivePolicy })).toEqual({ competitive: true, rewards: false, durableRepository: true });
+    expect(parseAtlasProductionGate({ ATLAS_DURABLE_REPOSITORY_ENABLED: 'true', ATLAS_COMPETITIVE_ENABLED: 'true', ATLAS_REWARDS_ENABLED: 'true', ...competitivePolicy })).toEqual({ competitive: true, rewards: true, durableRepository: true });
   });
 
   it('gates the live server on that constant instead of on its own copies of it', () => {
