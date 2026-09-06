@@ -31,6 +31,7 @@ export interface AtlasCityInteractionPresentation {
   readonly targetAnchorId?: string;
   readonly cameraMode?: 'follow' | 'overview';
   readonly harborCargo?: boolean;
+  readonly lanternCarried?: boolean;
   readonly harborStocked?: readonly ('market' | 'ferry' | 'workshop')[];
 }
 

@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   LAST_LANTERN,
   createLastLanternState,
+  recoverLastLanternState,
   replayLastLantern,
+  serializeLastLanternState,
   type LanternEvidence,
 } from '../shared/atlas/adventures/last-lantern';
 
@@ -97,5 +99,44 @@ describe('The Last Lantern local vertical slice', () => {
     expect(state.phase).toBe('confirming');
     expect(state.inventoryItemIds).toEqual([]);
     expect(state.world.lightsOn).toBe(false);
+  });
+
+  it('round-trips a practice journey so a refresh keeps the player in the mission', () => {
+    const state = createLastLanternState('builder', 'practice');
+    replayLastLantern([
+      { type: 'enter-shop' },
+      { type: 'select-lantern' },
+      { type: 'review-request', request: { ...LAST_LANTERN.request } },
+    ], state);
+
+    const recovered = recoverLastLanternState(serializeLastLanternState(state), 'builder', 'practice');
+    expect(recovered).toEqual(state);
+  });
+
+  it('rejects malformed or cross-role saved mission state', () => {
+    expect(recoverLastLanternState(null, 'explorer', 'practice')).toBeNull();
+    expect(recoverLastLanternState({ version: 99, state: {} }, 'explorer', 'practice')).toBeNull();
+
+    const builder = serializeLastLanternState(createLastLanternState('builder', 'practice'));
+    expect(recoverLastLanternState(builder, 'explorer', 'practice')).toBeNull();
+  });
+
+  it('downgrades a live saved verification to confirmation without restoring the item', () => {
+    const recipient = `NQ00${'A'.repeat(32)}`;
+    const state = createLastLanternState('explorer', 'live');
+    replayLastLantern([
+      { type: 'enter-shop' },
+      { type: 'select-lantern' },
+      { type: 'review-request', request: { ...LAST_LANTERN.request, recipient } },
+      { type: 'receive-evidence', source: 'server-verified', evidence: { ...verifiedEvidence, recipient } },
+      { type: 'fulfill-lantern' },
+    ], state);
+
+    const recovered = recoverLastLanternState(serializeLastLanternState(state), 'explorer', 'live');
+    expect(recovered?.phase).toBe('confirming');
+    expect(recovered?.request).toEqual({ ...LAST_LANTERN.request, recipient });
+    expect(recovered?.inventoryItemIds).toEqual([]);
+    expect(recovered?.evidence).toBeNull();
+    expect(recovered?.world.lightsOn).toBe(false);
   });
 });

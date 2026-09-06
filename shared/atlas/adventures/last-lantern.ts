@@ -40,6 +40,13 @@ export interface LastLanternState {
   };
 }
 
+export const LAST_LANTERN_STATE_VERSION = 1 as const;
+
+export interface LastLanternPersistedState {
+  version: typeof LAST_LANTERN_STATE_VERSION;
+  state: LastLanternState;
+}
+
 export const LAST_LANTERN = Object.freeze({
   id: 'last-lantern',
   recipient: 'NQATLASLANTERNSHOP',
@@ -82,6 +89,35 @@ export function createLastLanternState(role: AtlasRole, mode: LastLanternState['
     fulfillmentCount: 0,
     world: { lightsOn: false, ferriesRunning: false, npcSchedule: 'closed', music: 'quiet', pathsOpen: false },
   };
+}
+
+/**
+ * Copies the mission into a versioned envelope suitable for browser storage.
+ * The copy is deliberate: UI rendering must never be able to mutate the
+ * in-memory authority while a storage adapter is serialising it.
+ */
+export function serializeLastLanternState(state: LastLanternState): LastLanternPersistedState {
+  return { version: LAST_LANTERN_STATE_VERSION, state: cloneLastLanternState(state) };
+}
+
+/**
+ * Restores only a structurally valid journey. Live and competitive journeys
+ * are always fail-closed: a saved verified/fulfilled state returns to
+ * confirmation, so a refresh can never mint an item or reopen the harbor.
+ */
+export function recoverLastLanternState(input: unknown, role: AtlasRole, mode: LanternMode): LastLanternState | null {
+  if (!isRecord(input) || input.version !== LAST_LANTERN_STATE_VERSION || !isRecord(input.state)) return null;
+  const state = parsePersistedState(input.state);
+  if (!state || state.role !== role || state.mode !== mode) return null;
+  if (mode === 'practice') return state;
+  if (state.phase === 'verified' || state.phase === 'fulfilled' || state.phase === 'tower-lit') {
+    if (!state.request) return null;
+    const pending = createLastLanternState(role, mode);
+    pending.phase = 'confirming';
+    pending.request = { ...state.request };
+    return pending;
+  }
+  return state;
 }
 
 export function replayLastLantern(actions: LastLanternAction[], state = createLastLanternState('explorer')): LastLanternState {
@@ -161,6 +197,92 @@ function assertEvidence(request: LanternPaymentRequest | null, evidence: Lantern
   if (!evidence.canonical || !evidence.success) throw new Error('Lantern evidence is not canonical and successful.');
   if (!Number.isSafeInteger(evidence.confirmations) || evidence.confirmations < LAST_LANTERN.minimumConfirmations) throw new Error('Lantern payment is still confirming.');
 }
+
+function cloneLastLanternState(state: LastLanternState): LastLanternState {
+  return {
+    mode: state.mode,
+    role: state.role,
+    phase: state.phase,
+    inventoryItemIds: [...state.inventoryItemIds],
+    request: state.request ? { ...state.request } : null,
+    evidence: state.evidence ? { ...state.evidence } : null,
+    fulfillmentCount: state.fulfillmentCount,
+    world: { ...state.world },
+  };
+}
+
+function parsePersistedState(value: Record<string, unknown>): LastLanternState | null {
+  const phase = value.phase;
+  const role = value.role;
+  const mode = value.mode;
+  const inventory = value.inventoryItemIds;
+  const world = value.world;
+  if (!isLanternPhase(phase) || !isRole(role) || !isLanternMode(mode) || !Array.isArray(inventory) || !inventory.every((item) => typeof item === 'string')) return null;
+  const fulfillmentCount = value.fulfillmentCount;
+  if (typeof fulfillmentCount !== 'number' || !Number.isSafeInteger(fulfillmentCount) || fulfillmentCount < 0 || !isRecord(world)) return null;
+  if (typeof world.lightsOn !== 'boolean' || typeof world.ferriesRunning !== 'boolean' || !isNpcSchedule(world.npcSchedule) || !isMusic(world.music) || typeof world.pathsOpen !== 'boolean') return null;
+
+  const request = value.request === null ? null : parsePersistedRequest(value.request);
+  if (value.request !== null && !request) return null;
+  const evidence = value.evidence === null ? null : parsePersistedEvidence(value.evidence);
+  if (value.evidence !== null && !evidence) return null;
+  const state: LastLanternState = {
+    mode,
+    role,
+    phase,
+    inventoryItemIds: [...inventory],
+    request,
+    evidence,
+    fulfillmentCount,
+    world: {
+      lightsOn: world.lightsOn,
+      ferriesRunning: world.ferriesRunning,
+      npcSchedule: world.npcSchedule,
+      music: world.music,
+      pathsOpen: world.pathsOpen,
+    },
+  };
+  if (!isCoherentPersistedState(state)) return null;
+  return state;
+}
+
+function parsePersistedRequest(value: unknown): LanternPaymentRequest | null {
+  if (!isRecord(value) || value.itemId !== LAST_LANTERN.request.itemId || !isLanternNetwork(value.network) || typeof value.recipient !== 'string' || typeof value.valueLuna !== 'number' || !Number.isSafeInteger(value.valueLuna) || value.valueLuna <= 0) return null;
+  return { itemId: value.itemId, network: value.network, recipient: value.recipient, valueLuna: value.valueLuna };
+}
+
+function parsePersistedEvidence(value: unknown): LanternEvidence | null {
+  if (!isRecord(value) || typeof value.txHash !== 'string' || value.txHash.length === 0 || !isLanternNetwork(value.network) || typeof value.recipient !== 'string' || typeof value.valueLuna !== 'number' || !Number.isSafeInteger(value.valueLuna) || value.valueLuna <= 0 || typeof value.canonical !== 'boolean' || typeof value.success !== 'boolean' || typeof value.confirmations !== 'number' || !Number.isSafeInteger(value.confirmations) || value.confirmations < 0) return null;
+  return { txHash: value.txHash, network: value.network, recipient: value.recipient, valueLuna: value.valueLuna, canonical: value.canonical, success: value.success, confirmations: value.confirmations };
+}
+
+function isCoherentPersistedState(state: LastLanternState): boolean {
+  const fresh = createLastLanternState(state.role, state.mode);
+  if (state.phase === 'street' || state.phase === 'shop' || state.phase === 'selected') {
+    return state.request === null && state.evidence === null && state.fulfillmentCount === 0 && state.inventoryItemIds.length === 0 && JSON.stringify(state.world) === JSON.stringify(fresh.world);
+  }
+  if (!state.request || !isRequestAllowedForMode(state.request, state.mode)) return false;
+  if (state.phase === 'review' || state.phase === 'confirming') {
+    return state.evidence === null && state.fulfillmentCount === 0 && state.inventoryItemIds.length === 0 && JSON.stringify(state.world) === JSON.stringify(fresh.world);
+  }
+  if (!state.evidence) return false;
+  try { assertEvidence(state.request, state.evidence); } catch { return false; }
+  if (state.phase === 'verified') return state.fulfillmentCount === 0 && state.inventoryItemIds.length === 0 && JSON.stringify(state.world) === JSON.stringify(fresh.world);
+  if (state.phase === 'fulfilled') return state.fulfillmentCount === 1 && state.inventoryItemIds.length === 1 && state.inventoryItemIds[0] === 'harbor-lantern' && JSON.stringify(state.world) === JSON.stringify(fresh.world);
+  return state.fulfillmentCount === 1 && state.inventoryItemIds.length === 1 && state.inventoryItemIds[0] === 'harbor-lantern' && JSON.stringify(state.world) === JSON.stringify({ lightsOn: true, ferriesRunning: true, npcSchedule: 'market-open', music: 'harbor-theme', pathsOpen: true });
+}
+
+function isRequestAllowedForMode(request: LanternPaymentRequest, mode: LanternMode): boolean {
+  try { assertRequest(request, mode); return true; } catch { return false; }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null; }
+function isRole(value: unknown): value is AtlasRole { return value === 'explorer' || value === 'builder'; }
+function isLanternMode(value: unknown): value is LanternMode { return value === 'practice' || value === 'live' || value === 'competitive'; }
+function isLanternPhase(value: unknown): value is LanternPhase { return value === 'street' || value === 'shop' || value === 'selected' || value === 'review' || value === 'confirming' || value === 'verified' || value === 'fulfilled' || value === 'tower-lit'; }
+function isLanternNetwork(value: unknown): value is LanternNetwork { return value === 'testalbatross' || value === 'mainalbatross'; }
+function isNpcSchedule(value: unknown): value is LastLanternState['world']['npcSchedule'] { return value === 'closed' || value === 'market-open'; }
+function isMusic(value: unknown): value is LastLanternState['world']['music'] { return value === 'quiet' || value === 'harbor-theme'; }
 
 function requirePhase(state: LastLanternState, phases: LanternPhase[]): void {
   if (!phases.includes(state.phase)) throw new Error(`Lantern action is invalid in phase ${state.phase}.`);

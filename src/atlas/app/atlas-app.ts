@@ -15,7 +15,8 @@ import { isPortraitNow, rotateGate, shouldGateForLandscape, watchOrientation } f
 import { ATLAS_PROLOGUE } from '../../../shared/atlas/prologue';
 import type { AtlasRole } from '../../../shared/atlas/types';
 import type { AtlasAction } from '../../../shared/atlas/state';
-import { LAST_LANTERN, createLastLanternState, replayLastLantern, type LastLanternAction, type LastLanternState } from '../../../shared/atlas/adventures/last-lantern';
+import { LAST_LANTERN, createLastLanternState, recoverLastLanternState, replayLastLantern, serializeLastLanternState, type LastLanternAction, type LastLanternState } from '../../../shared/atlas/adventures/last-lantern';
+import { ATLAS_LANTERN_PRICE_NIM, ATLAS_LUNAS_PER_NIM } from '../../../shared/atlas/economy';
 import { ATLAS_KNOWLEDGE_BOOK, createKnowledgeBookState, gradeKnowledgeTeachBack, unlockKnowledgeFragment, type KnowledgeBookState } from '../../../shared/atlas/knowledge';
 import { ATLAS_EVERGREEN_ADVENTURES, replayEvergreenAdventure, type EvergreenAction, type EvergreenAdventure, type EvergreenState } from '../../../shared/atlas/adventures/evergreen';
 import { ATLAS_MAINNET_SHOP_ITEMS } from '../../../shared/atlas/shop';
@@ -817,13 +818,17 @@ export class AtlasApp {
       await controller.activateDistrict('pay-harbor');
       controller.setNavigation(livingCityNavigation(scene));
       this.beaconScene = scene;
-      this.lanternState = createLastLanternState(this.selectedRole, this.paymentConfig.enabled ? 'live' : 'practice');
+      const lanternMode = this.paymentConfig.enabled ? 'live' : 'practice';
+      this.lanternState = this.readLastLanternState(lanternMode) ?? createLastLanternState(this.selectedRole, lanternMode);
       this.harborDialogue = null;
-      this.paymentNotice = '';
+      this.paymentNotice = this.lanternState.phase === 'confirming' && lanternMode !== 'practice'
+        ? 'A submitted payment was restored safely. Atlas is checking the network; no second approval is needed.'
+        : '';
       this.liveOrderId = null;
       this.liveLookup = null;
       this.paymentController = this.paymentConfig.enabled ? this.createPaymentController() : null;
-      this.payHarborBuilderStation = 0;
+      this.payHarborBuilderStation = this.lanternState.phase === 'fulfilled' && this.selectedRole === 'builder' ? this.readBuilderStation() : 0;
+      this.restorePaymentJourney();
       this.screen = 'pay-harbor';
       this.presentPayHarborWorld();
       this.audio.playWorldCue('city-interaction');
@@ -940,6 +945,7 @@ export class AtlasApp {
     if (this.lanternState.phase === 'verified') return this.advancePhysicalLantern({ type: 'fulfill-lantern' });
     if (this.lanternState.phase === 'fulfilled' && this.selectedRole === 'builder' && this.payHarborBuilderStation < 6) {
       this.payHarborBuilderStation += 1;
+      this.saveLastLanternState();
       this.audio.playWorldCue('city-interaction');
       this.renderPayHarbor();
       return;
@@ -994,9 +1000,12 @@ export class AtlasApp {
     review.append(
       element('dt', '', 'NETWORK'), element('dd', '', request.network),
       element('dt', '', 'RECIPIENT'), element('dd', '', request.recipient),
-      element('dt', '', 'AMOUNT'), element('dd', '', `${request.valueLuna.toLocaleString()} Lunas`),
+      element('dt', '', 'AMOUNT'), element('dd', '', formatLanternAmount(request.valueLuna)),
       element('dt', '', 'FEE'), element('dd', '', fee),
       element('dt', '', 'TOTAL'), element('dd', '', total),
+      element('dt', '', 'SAFETY'), element('dd', '', this.lanternState.phase === 'confirming'
+        ? 'CHECKING / Atlas is verifying the payment on the network. Approval is not proof of delivery.'
+        : 'Approval gives permission to request this payment. It does not prove the shop received NIM.'),
     );
     return review;
   }
@@ -1004,6 +1013,7 @@ export class AtlasApp {
   private advancePhysicalLantern(action: LastLanternAction): void {
     try {
       replayLastLantern([action], this.lanternState);
+      this.saveLastLanternState();
       this.audio.setState({ phase: this.lanternState.phase, evidenceSource: action.type === 'receive-evidence' ? action.source : undefined });
       if (this.lanternState.phase === 'tower-lit') {
         this.progress.completeDistrict('pay-harbor');
@@ -1103,6 +1113,7 @@ export class AtlasApp {
     this.livingCity?.setInteractionPresentation({
       districtId: 'pay-harbor',
       relayCarried: this.selectedRole === 'builder' && this.lanternState.phase === 'fulfilled',
+      lanternCarried: this.lanternState.phase === 'fulfilled',
       builderStationIndex: this.payHarborBuilderStation,
       targetAnchorId: mission.targetAnchorId,
       harborCargo: this.contractProgress.active !== null && this.contractProgress.active.step > 0,
@@ -1254,9 +1265,12 @@ export class AtlasApp {
     void this.stopLivingCity();
     this.canvas.hidden = false;
     this.audio.unlock();
-    this.lanternState = createLastLanternState(this.selectedRole, this.paymentConfig.enabled ? 'live' : 'practice');
+    const lanternMode = this.paymentConfig.enabled ? 'live' : 'practice';
+    this.lanternState = this.readLastLanternState(lanternMode) ?? createLastLanternState(this.selectedRole, lanternMode);
     this.audio.setState({ phase: this.lanternState.phase });
-    this.paymentNotice = '';
+    this.paymentNotice = this.lanternState.phase === 'confirming' && lanternMode !== 'practice'
+      ? 'A submitted payment was restored safely. Atlas is checking the network; no second approval is needed.'
+      : '';
     this.liveOrderId = null;
     this.liveLookup = null;
     this.paymentController = this.paymentConfig.enabled ? this.createPaymentController() : null;
@@ -1268,10 +1282,11 @@ export class AtlasApp {
 
   private createPaymentController(): AtlasPaymentController {
     const request = this.currentLanternRequest();
-    if (!this.paymentConfig.enabled || request.recipient === LAST_LANTERN.recipient) throw new Error('A real TestAlbatross recipient is required for live payment.');
+    if (!this.paymentConfig.enabled || request.network !== 'testalbatross' || request.recipient === LAST_LANTERN.recipient) throw new Error('A real TestAlbatross recipient is required for live payment.');
+    const paymentRequest = { ...request, network: 'testalbatross' as const };
     return new AtlasPaymentController({
       actorId: this.sessionActorId,
-      request,
+      request: paymentRequest,
       wallet: this.wallet,
       api: this.api,
       minimumConfirmations: LAST_LANTERN.minimumConfirmations,
@@ -1283,15 +1298,49 @@ export class AtlasApp {
     const state = this.paymentController?.state;
     if (!state || !state.orderId || !state.lookup || !['confirming', 'verified', 'fulfilled'].includes(state.status)) return;
     const request = this.currentLanternRequest();
-    replayLastLantern([
-      { type: 'enter-shop' },
-      { type: 'select-lantern' },
-      { type: 'review-request', request },
-      { type: 'await-evidence' },
-    ], this.lanternState);
+    const recoveryActions: LastLanternAction[] = this.lanternState.phase === 'street'
+      ? [{ type: 'enter-shop' }, { type: 'select-lantern' }, { type: 'review-request', request }, { type: 'await-evidence' }]
+      : this.lanternState.phase === 'shop'
+        ? [{ type: 'select-lantern' }, { type: 'review-request', request }, { type: 'await-evidence' }]
+        : this.lanternState.phase === 'selected'
+          ? [{ type: 'review-request', request }, { type: 'await-evidence' }]
+          : this.lanternState.phase === 'review' ? [{ type: 'await-evidence' }] : [];
+    if (recoveryActions.length > 0) {
+      replayLastLantern(recoveryActions, this.lanternState);
+      this.saveLastLanternState();
+    }
+    if (this.lanternState.phase !== 'confirming') return;
     this.liveOrderId = state.orderId;
     this.liveLookup = state.lookup;
     this.paymentNotice = 'A submitted payment was restored safely. Atlas will re-check canonical evidence before unlocking the harbor.';
+  }
+
+  private saveLastLanternState(): void {
+    const storage = safeStorage();
+    try {
+      storage.setItem(lastLanternStorageKey(this.sessionActorId, this.selectedRole, this.lanternState.mode), JSON.stringify(serializeLastLanternState(this.lanternState)));
+      storage.setItem(builderStationStorageKey(this.sessionActorId, this.selectedRole, this.lanternState.mode), String(this.payHarborBuilderStation));
+    } catch {
+      // Mission authority remains in memory when browser storage is unavailable.
+    }
+  }
+
+  private readLastLanternState(mode: LastLanternState['mode']): LastLanternState | null {
+    try {
+      const raw = safeStorage().getItem(lastLanternStorageKey(this.sessionActorId, this.selectedRole, mode));
+      return raw ? recoverLastLanternState(JSON.parse(raw) as unknown, this.selectedRole, mode) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private readBuilderStation(): number {
+    try {
+      const value = Number.parseInt(safeStorage().getItem(builderStationStorageKey(this.sessionActorId, this.selectedRole, this.lanternState.mode)) ?? '', 10);
+      return Number.isSafeInteger(value) ? Math.max(0, Math.min(6, value)) : 0;
+    } catch {
+      return 0;
+    }
   }
 
   private openKnowledgeBook = (): void => {
@@ -1641,7 +1690,7 @@ export class AtlasApp {
       request.append(
         element('dt', '', 'NETWORK'), element('dd', '', requestValue.network),
         element('dt', '', 'RECIPIENT'), element('dd', '', requestValue.recipient),
-        element('dt', '', 'AMOUNT'), element('dd', '', `${requestValue.valueLuna.toLocaleString()} Lunas`),
+        element('dt', '', 'AMOUNT'), element('dd', '', formatLanternAmount(requestValue.valueLuna)),
       );
       panel.append(request);
     }
@@ -1669,9 +1718,9 @@ export class AtlasApp {
   }
 
   private currentLanternRequest() {
-    return this.paymentConfig.enabled
+    return this.lanternState.request ?? (this.paymentConfig.enabled
       ? { itemId: 'harbor-lantern' as const, network: 'testalbatross' as const, recipient: this.paymentConfig.recipient!, valueLuna: this.paymentConfig.valueLuna }
-      : { ...LAST_LANTERN.request };
+      : { ...LAST_LANTERN.request });
   }
 
   private paymentButton(label: string, action: () => void, ariaLabel: string): HTMLButtonElement {
@@ -2208,6 +2257,15 @@ function livingCityNavigation(scene: AtlasCitySceneV1): AtlasLivingCityNavigatio
  * so a storage failure degrades to showing it again rather than to a crash.
  */
 const TUTORIAL_DONE_KEY = 'sface.atlas.tutorial.v1';
+const LAST_LANTERN_STORAGE_PREFIX = 'sface.atlas.last-lantern.v1';
+
+function lastLanternStorageKey(actorId: string, role: AtlasRole, mode: LastLanternState['mode']): string {
+  return `${LAST_LANTERN_STORAGE_PREFIX}:${actorId}:${role}:${mode}`;
+}
+
+function builderStationStorageKey(actorId: string, role: AtlasRole, mode: LastLanternState['mode']): string {
+  return `${LAST_LANTERN_STORAGE_PREFIX}:builder-station:${actorId}:${role}:${mode}`;
+}
 
 function readTutorialDone(): boolean {
   try {
@@ -2224,6 +2282,11 @@ function writeTutorialDone(): void {
     // A player in private browsing sees the tutorial again. That is a far
     // better failure than refusing to play.
   }
+}
+
+function formatLanternAmount(valueLuna: number): string {
+  const nim = valueLuna === LAST_LANTERN.priceLuna ? ATLAS_LANTERN_PRICE_NIM : `${valueLuna / ATLAS_LUNAS_PER_NIM}`;
+  return `${nim} NIM (${valueLuna.toLocaleString()} Lunas)`;
 }
 
 function element<K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = ''): HTMLElementTagNameMap[K] {

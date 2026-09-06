@@ -646,7 +646,7 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
     if (this.reducedMotion) tick = 0;
     if (!this.relayRoot) return;
     const isPayHarbor = interaction?.districtId === 'pay-harbor' && this.loadedDistrict === 'pay-harbor';
-    this.harborSupplies?.update(isPayHarbor && interaction?.harborCargo === true, isPayHarbor ? interaction?.harborStocked ?? [] : []);
+    this.harborSupplies?.update(isPayHarbor && interaction?.harborCargo === true, isPayHarbor ? interaction?.harborStocked ?? [] : [], isPayHarbor && interaction?.lanternCarried === true);
     const isCity = interaction?.districtId === this.loadedDistrict;
     const relayVisible = isCity && interaction?.relayCarried === true;
     this.relayRoot.visible = relayVisible;
