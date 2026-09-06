@@ -1,3 +1,7 @@
+import type { AtlasAction, AtlasSnapshot } from '../../shared/atlas/state';
+import type { AtlasCompetitiveTicket, AtlasAssistance, AtlasNetwork, AtlasRole } from '../../shared/atlas/types';
+import { authenticatedRequest, type ApiFetch, type ApiResult } from '../net/api';
+
 export interface AtlasOrderSummary {
   id: string;
   status: string;
@@ -31,11 +35,68 @@ export interface AtlasCompetitionSummary {
   dailyObligation: { status: 'estimating' | 'pending' | 'verified-paid' | 'unawarded'; amountLuna: number | null };
 }
 
+export interface AtlasCompetitiveRunInput {
+  runId: string;
+  ticketId: string;
+  actorId: string;
+  walletAddress: string;
+  network: AtlasNetwork;
+  role: AtlasRole;
+  seasonId: string;
+  challengeId: string;
+  origin: string;
+  campaignHash: string;
+  curriculumHash: string;
+  rulesetHash: string;
+  assistance: AtlasAssistance;
+  actions: AtlasAction[];
+  claimedSnapshot: AtlasSnapshot;
+  replayHash: string;
+}
+
+export interface AtlasCompetitiveRunResult {
+  run: {
+    runId: string;
+    actorId: string;
+    walletAddress: string;
+    role: AtlasRole;
+    seasonId: string;
+    challengeId: string;
+    score: number;
+    correct: true;
+    assistance: AtlasAssistance;
+    prizeEligible: boolean;
+    replayHash: string;
+    verifiedAt: number;
+    status: 'verified';
+    mastery?: { knowledge: number; execution: number; safety: number; efficiency: number; total: number };
+  };
+  row: AtlasLeaderboardRow;
+  beacon: AtlasBeaconSummary | null;
+}
+
+export interface AtlasLeaderboardRow {
+  runId: string;
+  actorId: string;
+  walletAddress: string;
+  role: AtlasRole;
+  seasonId: string;
+  score: number;
+  rank: number;
+  assistance: AtlasAssistance;
+  prizeEligible: boolean;
+  replayHash: string;
+  mastery?: { knowledge: number; execution: number; safety: number; efficiency: number; total: number };
+}
+
 export interface AtlasApiClient {
   getBootstrap(): Promise<AtlasBootstrapSummary>;
   getBeacon(): Promise<AtlasBeaconSummary>;
   getEchoes(): Promise<AtlasEchoSummary>;
   getCompetition(): Promise<AtlasCompetitionSummary[]>;
+  getCompetitiveLeaderboard(seasonId: string, role: AtlasRole): Promise<AtlasLeaderboardRow[]>;
+  issueCompetitiveTicket(input: { actorId: string; walletAddress: string; role: AtlasRole }): Promise<ApiResult<AtlasCompetitiveTicket>>;
+  submitCompetitiveRun(input: AtlasCompetitiveRunInput): Promise<ApiResult<AtlasCompetitiveRunResult>>;
   createOrder(input: { actorId: string; walletAddress: string; itemId: 'harbor-lantern'; idempotencyKey?: string }): Promise<AtlasOrderSummary>;
   submitTransactionLookup(orderId: string, lookup: string): Promise<AtlasOrderSummary>;
   reconcileOrder(orderId: string): Promise<AtlasOrderSummary>;
@@ -43,7 +104,7 @@ export interface AtlasApiClient {
   getOrder(orderId: string): Promise<AtlasOrderSummary>;
 }
 
-type AtlasFetch = (input: string | URL, init?: RequestInit) => Promise<Response>;
+type AtlasFetch = ApiFetch;
 
 export function createAtlasApiClient(options: { baseUrl?: string; fetchImpl?: AtlasFetch } = {}): AtlasApiClient {
   const baseUrl = (options.baseUrl ?? '').replace(/\/$/, '');
@@ -53,12 +114,33 @@ export function createAtlasApiClient(options: { baseUrl?: string; fetchImpl?: At
     getBeacon: () => requestData(fetchImpl, `${baseUrl}/atlas/api/beacon`, isBeacon),
     getEchoes: () => requestData(fetchImpl, `${baseUrl}/atlas/api/echoes`, isEchoes),
     getCompetition: () => requestData(fetchImpl, `${baseUrl}/atlas/api/competition`, isCompetition),
+    getCompetitiveLeaderboard: (seasonId, role) => requestData(fetchImpl, `${baseUrl}/atlas/api/competitive/leaderboard?seasonId=${encodeURIComponent(seasonId)}&role=${role}`, isLeaderboard),
+    issueCompetitiveTicket: (input) => authenticatedRequest<AtlasCompetitiveTicket>('/atlas/api/competitive/tickets', 'atlas.ticket.issue', input.actorId, input, { apiBase: baseUrl, fetchImpl }),
+    submitCompetitiveRun: (input) => authenticatedRequest<AtlasCompetitiveRunResult>('/atlas/api/competitive/runs', 'atlas.run.submit', input.actorId, input, { apiBase: baseUrl, fetchImpl }),
     createOrder: (input) => requestOrder(fetchImpl, `${baseUrl}/atlas/api/orders`, { method: 'POST', body: input }),
     submitTransactionLookup: (orderId, lookup) => requestOrder(fetchImpl, `${baseUrl}/atlas/api/orders/${encodeURIComponent(orderId)}/transaction`, { method: 'POST', body: { lookup } }),
     reconcileOrder: (orderId) => requestOrder(fetchImpl, `${baseUrl}/atlas/api/orders/${encodeURIComponent(orderId)}/reconcile`, { method: 'POST' }),
     cancelOrder: (orderId, reason) => requestOrder(fetchImpl, `${baseUrl}/atlas/api/orders/${encodeURIComponent(orderId)}/cancel`, { method: 'POST', body: { reason } }),
     getOrder: (orderId) => requestOrder(fetchImpl, `${baseUrl}/atlas/api/orders/${encodeURIComponent(orderId)}`),
   };
+}
+
+function isLeaderboard(value: unknown): value is AtlasLeaderboardRow[] {
+  if (!Array.isArray(value)) return false;
+  return value.every((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+    const row = item as Record<string, unknown>;
+    return typeof row.runId === 'string'
+      && typeof row.actorId === 'string'
+      && typeof row.walletAddress === 'string'
+      && (row.role === 'explorer' || row.role === 'builder')
+      && typeof row.seasonId === 'string'
+      && Number.isSafeInteger(row.score)
+      && Number.isSafeInteger(row.rank)
+      && ['none', 'free-hint', 'purchased-hint', 'answer-reveal', 'debug'].includes(String(row.assistance))
+      && typeof row.prizeEligible === 'boolean'
+      && typeof row.replayHash === 'string';
+  });
 }
 
 async function requestOrder(fetchImpl: AtlasFetch, url: string, options: { method?: string; body?: unknown } = {}): Promise<AtlasOrderSummary> {

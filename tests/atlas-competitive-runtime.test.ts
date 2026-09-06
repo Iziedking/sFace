@@ -47,9 +47,23 @@ describe('NIM Atlas competitive runtime', () => {
     const echoes = createAtlasEchoService({ repository: createAtlasEchoRepository({ stateStore }), now: () => 1_000 });
     const runtime = createAtlasCompetitiveRuntime({ identity, tickets, submissions, leaderboard, beacon, echoes, stateStore, date: () => '2026-09-06', repairUnits: () => 4, ticketPolicy: { network: 'testalbatross', seasonId: 'season-1', challengeId: 'expedition-1', seed: 'seed-1', campaignHash: 'a'.repeat(64), curriculumHash: 'b'.repeat(64), rulesetHash: 'c'.repeat(64) } });
     const ticket = await runtime.issueServerTicket({ actorId: registered.value.playerId, walletAddress, role: 'explorer' });
-    const actions: AtlasAction[] = [{ moveX: 0, moveY: 0, tool: 'none', interact: false }];
+    const actions: AtlasAction[] = [
+      { moveX: 127, moveY: 0, tool: 'shield-pulse', interact: false },
+      ...Array.from({ length: 7 }, () => ({ moveX: 127, moveY: 0, tool: 'none' as const, interact: false })),
+      { moveX: 127, moveY: 0, tool: 'scanner', interact: false },
+      { moveX: 127, moveY: 0, tool: 'relay-tether', interact: false },
+      ...Array.from({ length: 5 }, () => ({ moveX: 127, moveY: 0, tool: 'none' as const, interact: false })),
+      { moveX: 0, moveY: 0, tool: 'none', interact: true },
+      ...Array.from({ length: 5 }, () => ({ moveX: 127, moveY: 0, tool: 'none' as const, interact: false })),
+      { moveX: 0, moveY: 0, tool: 'none', interact: true },
+    ];
+    expect(replayAtlasActions(ATLAS_CORE_FIXTURE, actions).phase).toBe('completed');
     const input: AtlasSubmissionInput = { runId: `run-${ticket.ticketId}`, ticketId: ticket.ticketId, actorId: registered.value.playerId, walletAddress, network: 'testalbatross', role: 'explorer', seasonId: 'season-1', challengeId: 'expedition-1', origin: 'https://local.sface.test', campaignHash: 'a'.repeat(64), curriculumHash: 'b'.repeat(64), rulesetHash: 'c'.repeat(64), assistance: 'none', actions, claimedSnapshot: replayAtlasActions(ATLAS_CORE_FIXTURE, actions), replayHash: await hashAtlasActions(actions) };
     await expect(runtime.submit(input)).resolves.toMatchObject({ run: { status: 'verified' }, row: { rank: 1 }, beacon: { systems: expect.arrayContaining([expect.objectContaining({ districtId: 'pay-harbor', repairTotal: 4 })]) } });
+    const incompleteTicket = await runtime.issueServerTicket({ actorId: registered.value.playerId, walletAddress, role: 'explorer' });
+    const incompleteActions: AtlasAction[] = [{ moveX: 0, moveY: 0, tool: 'none', interact: false }];
+    const incompleteInput: AtlasSubmissionInput = { ...input, runId: `incomplete-${incompleteTicket.ticketId}`, ticketId: incompleteTicket.ticketId, actions: incompleteActions, claimedSnapshot: replayAtlasActions(ATLAS_CORE_FIXTURE, incompleteActions), replayHash: await hashAtlasActions(incompleteActions) };
+    await expect(runtime.submit(incompleteInput)).rejects.toThrow(/objectives/i);
     await expect(runtime.leaderboard('season-1', 'explorer')).resolves.toMatchObject([{ actorId: registered.value.playerId, rank: 1 }]);
     await expect(runtime.competition()).resolves.toEqual(expect.arrayContaining([
       expect.objectContaining({ role: 'explorer', bestVerifiedScore: expect.any(Number), eligibility: 'eligible' }),

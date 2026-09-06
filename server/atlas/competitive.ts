@@ -106,6 +106,7 @@ export function createAtlasCompetitiveRuntime(options: {
       await load();
       return serialise(async () => {
         const run = await options.submissions.submit(input);
+        if (!run.correct) throw new Error('Atlas run did not complete the expedition objectives.');
         const row = await options.leaderboard.accept({ runId: run.runId, actorId: run.actorId, walletAddress: run.walletAddress, role: run.role, seasonId: run.seasonId, score: run.score, assistance: run.assistance, prizeEligible: run.prizeEligible, replayHash: run.replayHash, mastery: run.mastery });
         const today = date();
         const beacon = run.prizeEligible ? await options.beacon.apply({ date: today, districtId: 'pay-harbor', actorId: run.actorId, walletAddress: run.walletAddress, runId: run.runId, score: row.score, repairUnits: repairUnits(run), verified: true, prizeEligible: run.prizeEligible }) : null;

@@ -24,36 +24,43 @@ const API_BASE = import.meta.env.VITE_API_BASE ?? '';
 const TIMEOUT_MS = 6000;
 
 export type ApiResult<T> = { ok: true; value: T } | { ok: false; error: string };
+export type ApiFetch = (input: string | URL, init?: RequestInit) => Promise<Response>;
+export interface ApiTransport {
+  apiBase?: string;
+  fetchImpl?: ApiFetch;
+}
 
 let registeredPlayerId: string | null = null;
 
 export async function registerPlayerCredential(
   publicKeyJwk: PublicKeyJwk,
+  transport: ApiTransport = {},
 ): Promise<ApiResult<{ playerId: string }>> {
   if (registeredPlayerId) return { ok: true, value: { playerId: registeredPlayerId } };
   const result = await request<{ playerId: string }>('/auth/player/register', {
     method: 'POST',
     body: JSON.stringify({ publicKeyJwk }),
-  });
+  }, transport);
   if (result.ok) registeredPlayerId = result.value.playerId;
   return result;
 }
 
-async function authenticatedRequest<T>(
+export async function authenticatedRequest<T>(
   path: string,
   action: AuthAction,
   actorId: string,
   body: object,
+  transport: ApiTransport = {},
 ): Promise<ApiResult<T>> {
   const credential = await getOrCreateCredential();
   if (credential.playerId !== actorId) return { ok: false, error: 'Identity changed. Reload.' };
-  const registered = await registerPlayerCredential(credential.publicKeyJwk);
+  const registered = await registerPlayerCredential(credential.publicKeyJwk, transport);
   if (!registered.ok) return registered;
   const digest = await bodyDigest(body);
   const challenged = await request<{ challenge: PlayerChallenge }>('/auth/player/challenge', {
     method: 'POST',
     body: JSON.stringify({ playerId: actorId, action, bodyDigest: digest }),
-  });
+  }, transport);
   if (!challenged.ok) return challenged;
   const signature = await signChallenge(credential.pair, challenged.value.challenge);
   return request<T>(path, {
@@ -62,7 +69,7 @@ async function authenticatedRequest<T>(
       ...body,
       auth: deviceProof(challenged.value.challenge, credential.publicKeyJwk, signature),
     }),
-  });
+  }, transport);
 }
 
 /**
@@ -464,8 +471,9 @@ export async function reportSettlement(
   );
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<ApiResult<T>> {
-  if (!API_BASE) {
+async function request<T>(path: string, init: RequestInit = {}, transport: ApiTransport = {}): Promise<ApiResult<T>> {
+  const apiBase = transport.apiBase ?? API_BASE;
+  if (!apiBase) {
     return { ok: false, error: 'No service configured.' };
   }
 
@@ -473,7 +481,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<ApiResu
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const response = await fetch(`${API_BASE}${path}`, {
+    const response = await (transport.fetchImpl ?? fetch)(`${apiBase}${path}`, {
       ...init,
       signal: controller.signal,
       headers: {

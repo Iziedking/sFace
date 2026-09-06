@@ -51,4 +51,13 @@ describe('NIM Atlas order API client', () => {
     const api = createAtlasApiClient({ baseUrl: 'https://atlas.test', fetchImpl });
     await expect(api.getCompetition()).resolves.toEqual([{ role: 'explorer', bestVerifiedScore: null, eligibility: 'not-verified', dailyObligation: { status: 'estimating', amountLuna: null } }]);
   });
+
+  it('reads the verified competitive board through the server-pinned season query', async () => {
+    const fetchImpl = vi.fn(async (input: string | URL) => {
+      expect(String(input)).toBe('https://atlas.test/atlas/api/competitive/leaderboard?seasonId=season-1&role=explorer');
+      return new Response(JSON.stringify({ ok: true, data: [{ runId: 'run-1', actorId: 'actor-1', walletAddress: 'NQWALLET', role: 'explorer', seasonId: 'season-1', score: 535, rank: 1, assistance: 'none', prizeEligible: true, replayHash: 'a'.repeat(64) }] }));
+    });
+    const api = createAtlasApiClient({ baseUrl: 'https://atlas.test', fetchImpl });
+    await expect(api.getCompetitiveLeaderboard('season-1', 'explorer')).resolves.toMatchObject([{ runId: 'run-1', rank: 1, prizeEligible: true }]);
+  });
 });
