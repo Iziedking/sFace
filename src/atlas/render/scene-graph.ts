@@ -38,7 +38,8 @@ class ResilientAtlasRenderer implements AtlasSceneRenderer {
 
   async initialize(host: HTMLElement, options: AtlasRendererOptions): Promise<void> {
     const normalized = normalizeOptions(options);
-    for (const renderer of [this.three, this.pixi, this.fallback]) {
+    const candidates = options.preferredRenderer === 'canvas' ? [this.fallback] : options.preferredRenderer === 'pixi' ? [this.pixi, this.fallback] : [this.three, this.pixi, this.fallback];
+    for (const renderer of candidates) {
       try {
         await renderer.initialize(host, normalized);
         this.active = renderer;
@@ -66,6 +67,14 @@ class ResilientAtlasRenderer implements AtlasSceneRenderer {
 
   setQuality(tier: Parameters<NonNullable<AtlasSceneRenderer['setQuality']>>[0]): void {
     this.requireActive().setQuality?.(tier);
+  }
+
+  setPlayerRole(role: 'explorer' | 'builder'): void {
+    this.requireActive().setPlayerRole?.(role);
+  }
+
+  setReducedMotion(reduced: boolean): void {
+    this.requireActive().setReducedMotion?.(reduced);
   }
 
   stats(): NonNullable<AtlasSceneRenderer['stats']> extends (...args: never[]) => infer Result ? Result : never {
@@ -100,6 +109,7 @@ function normalizeOptions(options: AtlasRendererOptions): AtlasRendererOptions {
     qualityTier: options.qualityTier,
     maxPixelRatio: clampFinite(options.maxPixelRatio ?? options.resolution, 0.5, 2),
     assetManager: options.assetManager,
+    onPlayerFootstep: options.onPlayerFootstep,
   };
 }
 

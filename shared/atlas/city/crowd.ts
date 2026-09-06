@@ -95,6 +95,9 @@ export function scheduleCrowd(input: AtlasCrowdScheduleInput, roster: readonly A
 }
 
 function activityFor(role: AtlasCitizenRole, hash: number, restorationState: AtlasCrowdScheduleInput['restorationState']): AtlasCitizenActivity {
+  if (restorationState !== 'restored' && role === 'community-merchant') return 'queueing';
+  if (restorationState !== 'restored' && role === 'community-traveller' && hash % 2 === 0) return 'queueing';
+  if (restorationState === 'restored' && role === 'community-merchant') return 'trading';
   if (restorationState === 'restored' && (role === 'community-repairer' || role === 'nimiq-team-builder')) return hash % 2 === 0 ? 'celebrating' : 'repairing';
   const activities: Record<AtlasCitizenRole, readonly AtlasCitizenActivity[]> = {
     'nimiq-team-guide': ['talking', 'planning'],

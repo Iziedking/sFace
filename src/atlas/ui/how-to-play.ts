@@ -19,20 +19,20 @@ export interface AtlasNimiqBridge {
 export const ATLAS_HOW_TO_PLAY_STEPS: readonly AtlasHowToPlayStep[] = Object.freeze([
   { number: '01', label: 'CHOOSE', title: 'Pick a path', copy: 'Explorer uses the world. Builder repairs it.' },
   { number: '02', label: 'WALK', title: 'Find the need', copy: 'Move through the district until a person or system needs help.' },
-  { number: '03', label: 'LEARN', title: 'Use the Nimiq idea', copy: 'Read one clue, take one action, and solve the scene.' },
+  { number: '03', label: 'CHECK', title: 'Check before you approve', copy: 'Confirm who gets the NIM and the exact amount. Then approve it yourself.' },
   { number: '04', label: 'CHANGE', title: 'See the result', copy: 'The district improves when the right evidence is complete.' },
 ]);
 
 export const ATLAS_HOW_TO_PLAY_PATHS: readonly AtlasHowToPlayPath[] = Object.freeze([
   { label: 'EXPLORER', title: 'Use the network', copy: 'Walk Mara\'s shop, review a NIM payment, and reopen the harbor.' },
-  { label: 'BUILDER', title: 'Repair the network', copy: 'Fix consent, exact Lunas, and canonical confirmation in order.' },
+  { label: 'BUILDER', title: 'Repair the network', copy: 'Keep permission, the exact payment, and network proof as separate steps.' },
 ]);
 
 export const ATLAS_NIMIQ_BRIDGE: readonly AtlasNimiqBridge[] = Object.freeze([
-  { label: 'NIM', meaning: 'value carried by the network' },
-  { label: 'LUNAS', meaning: 'the exact integer units in a request' },
-  { label: 'NIMIQ PAY', meaning: 'the player approves a readable payment' },
-  { label: 'CONFIRM', meaning: 'Atlas waits for canonical confirmation before unlock' },
+  { label: 'NIM', meaning: 'the money used for the payment in this mission' },
+  { label: 'LUNAS', meaning: 'Lunas are the smallest units of NIM. 1 NIM = 100,000 Lunas, so 0.1 NIM = 10,000 Lunas.' },
+  { label: 'NIMIQ PAY', meaning: 'shows who will receive the NIM and how much, then asks for your permission' },
+  { label: 'CONFIRM', meaning: 'a current network record must match the person and amount before the game unlocks' },
 ]);
 
 export const ATLAS_PAYMENT_VERBS = Object.freeze(['Ask', 'Check', 'Approve', 'Confirm', 'Unlock']);

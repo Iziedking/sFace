@@ -3,6 +3,12 @@ import { ATLAS_WORLD_PALETTE } from '../palette';
 import type { AtlasLivingWorldSnapshot } from '../../../shared/atlas/living-world';
 import type { PayHarborSceneProjection } from '../scenes/pay-harbor';
 import type { AtlasSceneRenderer, AtlasRendererOptions } from './contracts';
+import { parseAtlasCityScene, type AtlasCitySceneV1 } from '../../../shared/atlas/city/types';
+import type { AtlasCityPlayerState } from '../../../shared/atlas/city/player';
+import type { AtlasCitizenPresentation } from '../../../shared/atlas/city/crowd';
+import type { AtlasCityInteractionPresentation } from './contracts';
+import { paintCityMap } from './city-map';
+import { routeAtlasCitizenPath } from '../../../shared/atlas/city/citizen-motion';
 
 export interface PixiRendererBackend extends AtlasSceneRenderer {}
 
@@ -17,8 +23,8 @@ export class PixiAtlasRenderer implements AtlasSceneRenderer {
     return this.backend.loadDistrict(districtId);
   }
 
-  render(snapshot: AtlasLivingWorldSnapshot): void {
-    this.backend.render(snapshot);
+  render(snapshot: AtlasLivingWorldSnapshot, crowd?: readonly AtlasCitizenPresentation[], player?: AtlasCityPlayerState, interaction?: AtlasCityInteractionPresentation): void {
+    this.backend.render(snapshot, crowd, player, interaction);
   }
 
   renderPayHarbor(scene: PayHarborSceneProjection): void {
@@ -44,8 +50,12 @@ class PixiRendererBackendImpl implements PixiRendererBackend {
   private width = 1;
   private height = 1;
   private loadedDistrict: string | null = null;
+  private assets: AtlasRendererOptions['assetManager'];
+  private cityScene: AtlasCitySceneV1 | null = null;
+  private cityGraphics: Graphics | null = null;
 
   async initialize(host: HTMLElement, options: AtlasRendererOptions): Promise<void> {
+    this.assets = options.assetManager;
     if (this.application) throw new Error('Pixi Atlas renderer is already initialized.');
     const application = new Application();
     await application.init({
@@ -68,10 +78,23 @@ class PixiRendererBackendImpl implements PixiRendererBackend {
     if (!this.application || !this.scene) throw new Error('Pixi Atlas renderer is not initialized.');
     if (this.loadedDistrict === districtId) return;
     this.loadedDistrict = districtId;
+    if (this.assets) this.cityScene = parseAtlasCityScene(JSON.parse(new TextDecoder().decode(await this.assets.loadBytes(`/atlas/3d/v1/${districtId}/scene.json`))) as unknown);
+    if (this.cityScene) this.cityScene = { ...this.cityScene, paths: this.cityScene.paths.map(path => routeAtlasCitizenPath(path, this.cityScene!.colliders)) };
   }
 
-  render(snapshot: AtlasLivingWorldSnapshot): void {
+  render(snapshot: AtlasLivingWorldSnapshot, crowd?: readonly AtlasCitizenPresentation[], cityPlayer?: AtlasCityPlayerState, interaction?: AtlasCityInteractionPresentation): void {
     if (!this.application || !this.scene) throw new Error('Pixi Atlas renderer is not initialized.');
+    if (cityPlayer && this.cityScene) {
+      if (!this.cityGraphics) { this.clearScene(); this.cityGraphics = new Graphics(); this.scene.addChild(this.cityGraphics); }
+      const g = this.cityGraphics.clear();
+      paintCityMap({
+        rect: (x, y, w, h, color) => { g.rect(x, y, w, h).fill(color); },
+        circle: (x, y, r, color) => { g.circle(x, y, r).fill(color); },
+        line: (points, width, color) => { points.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.stroke({ width, color }); },
+      }, this.cityScene, this.width, this.height, cityPlayer, snapshot.restoration === 'restored', interaction, crowd, snapshot.simulation.tick / 30);
+      this.application.render();
+      return;
+    }
     this.clearScene();
     const background = new Graphics().rect(0, 0, this.width, this.height).fill({ color: ATLAS_WORLD_PALETTE.sky });
     this.scene.addChild(background);
@@ -86,6 +109,7 @@ class PixiRendererBackendImpl implements PixiRendererBackend {
       .fill({ color: ATLAS_WORLD_PALETTE.orange })
       .stroke({ width: 3, color: ATLAS_WORLD_PALETTE.ink });
     this.scene.addChild(player);
+    this.application.render();
   }
 
   resize(width: number, height: number, resolution: number): void {
@@ -112,6 +136,7 @@ class PixiRendererBackendImpl implements PixiRendererBackend {
   }
 
   private clearScene(): void {
+    this.cityGraphics = null;
     if (!this.scene) return;
     for (const child of this.scene.removeChildren()) child.destroy({ children: true });
   }
@@ -144,7 +169,7 @@ function createEntityNode(id: string, kind: string, x: number, y: number, width:
 }
 
 function normalizeOptions(options: AtlasRendererOptions): AtlasRendererOptions {
-  return { reducedMotion: options.reducedMotion, resolution: clampResolution(options.resolution) };
+  return { ...options, reducedMotion: options.reducedMotion, resolution: clampResolution(options.resolution) };
 }
 
 function clampDimension(value: number): number {

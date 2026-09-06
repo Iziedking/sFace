@@ -33,9 +33,9 @@ describe('mobile quality policy', () => {
 
   it('steps down after five slow seconds and up after thirty stable seconds', () => {
     const governor = createQualityGovernor('high');
-    for (let second = 0; second < 5; second += 1) governor.sample(38);
+    for (let frame = 0; frame < Math.ceil(5000 / 38); frame += 1) governor.sample(38);
     expect(governor.current()).toBe('balanced');
-    for (let second = 0; second < 30; second += 1) governor.sample(25);
+    for (let frame = 0; frame < 1201; frame += 1) governor.sample(25);
     expect(governor.current()).toBe('high');
   });
 
@@ -44,5 +44,13 @@ describe('mobile quality policy', () => {
     governor.setManualTier('low');
     for (let second = 0; second < 60; second += 1) governor.sample(16);
     expect(governor.current()).toBe('low');
+  });
+
+  it('does not interpret thirty frames as thirty seconds', () => {
+    const governor = createQualityGovernor('balanced');
+    for (let frame = 0; frame < 30; frame++) governor.sample(16);
+    expect(governor.current()).toBe('balanced');
+    for (let frame = 0; frame < 5; frame++) governor.sample(38);
+    expect(governor.current()).toBe('balanced');
   });
 });

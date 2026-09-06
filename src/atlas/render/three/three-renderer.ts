@@ -1,4 +1,4 @@
-import { BoxGeometry, Color, CylinderGeometry, DoubleSide, PCFSoftShadowMap, Fog, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PerspectiveCamera, PointLight, Scene, SphereGeometry, TorusGeometry, WebGLRenderer } from 'three';
+import { BoxGeometry, Color, CylinderGeometry, DoubleSide, PCFShadowMap, Fog, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PerspectiveCamera, PointLight, Scene, SphereGeometry, TorusGeometry, WebGLRenderer } from 'three';
 import type { AtlasLivingWorldSnapshot } from '../../../../shared/atlas/living-world';
 import type { AtlasQualityTier } from '../../../../shared/atlas/city/types';
 import { QUALITY_PROFILES } from '../../../../shared/atlas/city/quality';
@@ -92,8 +92,14 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
   } | null = null;
   private npcSlots: AtlasNpcSlot[] = [];
   private lastAnimationTick: number | null = null;
+  private reducedMotion = false;
+  private onPlayerFootstep: (() => void) | undefined;
+  private lastPlayerSpeed = 0;
+  private lastPlayerHeading: number | null = null;
 
   async initialize(host: HTMLElement, options: AtlasRendererOptions): Promise<void> {
+    this.reducedMotion = options.reducedMotion;
+    this.onPlayerFootstep = options.onPlayerFootstep;
     if (this.renderer) throw new Error('Three Atlas renderer is already initialized.');
     const canvas = document.createElement('canvas');
     const capability = detectThreeCapability(canvas);
@@ -107,7 +113,7 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
     this.maxPixelRatio = clampResolution(options.maxPixelRatio ?? options.resolution ?? 2);
     renderer.setSize(clampDimension(host.clientWidth), clampDimension(host.clientHeight), false);
     renderer.setClearColor(new Color(ATLAS_WORLD_PALETTE.sky), 1);
-    renderer.shadowMap.type = PCFSoftShadowMap;
+    renderer.shadowMap.type = PCFShadowMap;
 
     const scene = new Scene();
     const sky = createAtlasSkyTexture((width, height) => {
@@ -255,19 +261,21 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
       cameraHeadingRadians: player?.cameraHeadingRadians,
       playerMoving: player?.moving,
       playerRunning: player?.pace === 'run',
+      mode: interaction?.cameraMode,
+      reducedMotion: this.reducedMotion,
       colliders: this.districtScene?.colliders,
     });
     renderer.render(this.scene, this.camera);
   }
 
-  resize(width: number, height: number, resolution: number): void {
+  resize(width: number, height: number, _resolution: number): void {
     const renderer = this.renderer;
     const camera = this.camera;
     if (!renderer || !camera) return;
     const safeWidth = clampDimension(width);
     const safeHeight = clampDimension(height);
     this.cameraRig?.resize(safeWidth, safeHeight);
-    renderer.setPixelRatio(clampResolution(resolution));
+    renderer.setPixelRatio(this.pixelRatioForTier());
     renderer.setSize(safeWidth, safeHeight, false);
   }
 
@@ -415,6 +423,10 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
     this.applyPlayerRole(role);
   }
 
+  setReducedMotion(reduced: boolean): void {
+    this.reducedMotion = reduced;
+  }
+
   private applyPlayerRole(role: 'explorer' | 'builder' | undefined): void {
     if (!this.playerRing || !role) return;
     const material = this.playerRing.material as MeshBasicMaterial;
@@ -496,8 +508,12 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
       const presentationBlend = 1 - Math.exp(-Math.max(8, motion.moving ? 12 : 7) * deltaSeconds);
       const previousX = slot.displayPosition.x;
       const previousZ = slot.displayPosition.z;
-      slot.displayPosition.x += (position[0] - slot.displayPosition.x) * presentationBlend;
-      slot.displayPosition.z += (position[2] - slot.displayPosition.z) * presentationBlend;
+      const dx = (position[0] - slot.displayPosition.x) * presentationBlend;
+      const dz = (position[2] - slot.displayPosition.z) * presentationBlend;
+      const maximumStep = Math.max(1.2, motion.speedUnitsPerSecond) * deltaSeconds;
+      const stepScale = Math.min(1, maximumStep / Math.max(0.00001, Math.hypot(dx, dz)));
+      slot.displayPosition.x += dx * stepScale;
+      slot.displayPosition.z += dz * stepScale;
       const distanceFromPlayer = this.playerRoot ? Math.hypot(position[0] - this.playerRoot.position.x, position[2] - this.playerRoot.position.z) : Number.POSITIVE_INFINITY;
       const detailLevel = atlasCitizenDetailLevel(this.qualityTier, citizen.active, distanceFromPlayer, slot.detailLevel);
       if (detailLevel !== slot.detailLevel) {
@@ -518,7 +534,7 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
       const root = detailLevel === 'near' ? slot.lod1Root : slot.lod2Root;
       root.visible = true;
       for (const characterRoot of [slot.lod1Root, slot.lod2Root]) {
-        characterRoot.position.set(slot.displayPosition.x, position[1] + (citizen.activity === 'celebrating' ? Math.sin(tick / 6) * 0.045 : 0), slot.displayPosition.z);
+        characterRoot.position.set(slot.displayPosition.x, position[1] + (!this.reducedMotion && citizen.activity === 'celebrating' ? Math.sin(tick / 6) * 0.045 : 0), slot.displayPosition.z);
         characterRoot.rotation.y = dampRadians(characterRoot.rotation.y, motion.headingRadians, 1 - Math.exp(-9 * deltaSeconds));
       }
       const animator = root === slot.lod1Root ? slot.lod1Animator : slot.lod2Animator;
@@ -534,7 +550,7 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
 
   private presentRestorationLights(restoration: AtlasLivingWorldSnapshot['restoration'], tick: number): void {
     const lights = this.loadedDistrict ? this.districtSignalLights.get(this.loadedDistrict) ?? [] : [];
-    const pulse = 0.58 + Math.sin(tick / 7) * 0.18;
+    const pulse = this.reducedMotion ? 0.58 : 0.58 + Math.sin(tick / 7) * 0.18;
     for (const { light, baseIntensity } of lights) {
       if (restoration === 'restored') light.intensity = baseIntensity * 2.4;
       else if (restoration === 'confirming') light.intensity = baseIntensity * pulse;
@@ -548,7 +564,14 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
     root.position.set(player.x, 0, player.z);
     root.rotation.y = player.headingRadians;
     const facialCue = player.pace === 'run' ? 'focused' : 'neutral';
-    this.playerAnimator?.update(player.pace, deltaSeconds, playerAnimationSpeed(player), facialCue, { speedUnitsPerSecond: player.speedUnitsPerSecond, worldScale: PLAYER_WORLD_SCALE });
+    const gaitBefore = this.playerAnimator?.gaitState();
+    const turn = this.lastPlayerHeading === null ? 0 : Math.atan2(Math.sin(player.headingRadians - this.lastPlayerHeading), Math.cos(player.headingRadians - this.lastPlayerHeading));
+    const dt = Math.max(deltaSeconds, 0.001);
+    this.playerAnimator?.update(player.pace, deltaSeconds, playerAnimationSpeed(player), facialCue, { speedUnitsPerSecond: player.speedUnitsPerSecond, worldScale: PLAYER_WORLD_SCALE, acceleration: this.reducedMotion ? 0 : (player.speedUnitsPerSecond - this.lastPlayerSpeed) / dt, turnRate: this.reducedMotion ? 0 : turn / dt });
+    const gaitAfter = this.playerAnimator?.gaitState();
+    if (gaitBefore && gaitAfter && player.moving && Math.floor(gaitBefore.phase * 2) !== Math.floor(gaitAfter.phase * 2)) this.onPlayerFootstep?.();
+    this.lastPlayerSpeed = player.speedUnitsPerSecond;
+    this.lastPlayerHeading = player.headingRadians;
   }
 
   private animationDeltaSeconds(tick: number): number {
@@ -576,7 +599,7 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
 
   private createPayHarborInteractionVisuals(districtId: string, scene: AtlasCitySceneV1): void {
     this.clearInteractionVisuals();
-    if (districtId !== 'pay-harbor' || !this.scene || !this.playerRoot) return;
+    if (!this.scene || !this.playerRoot) return;
 
     const relay = new Group();
     relay.name = 'atlas-builder-relay-handheld';
@@ -592,7 +615,7 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
     relay.visible = false;
     this.relayRoot = relay;
 
-    const stations = scene.anchors.filter((anchor) => /^station-[1-6]-install$/.test(anchor.id));
+    const stations = scene.anchors.filter((anchor) => districtId === 'beacon-commons' ? anchor.id === 'travel-pay-harbor' : /^station-[1-6]-install$/.test(anchor.id));
     this.stationVisuals = stations.map((anchor) => {
       const root = new Group();
       root.name = `atlas-builder-station-${anchor.id}`;
@@ -614,20 +637,22 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
       return { root, light, ring, mast, beam };
     });
 
-    this.harborActivityVisuals = createHarborActivityVisuals(this.scene, scene);
+    if (districtId === 'pay-harbor') this.harborActivityVisuals = createHarborActivityVisuals(this.scene, scene);
     const market = scene.anchors.find((anchor) => anchor.id === 'conversation-market');
     if (market) this.harborSupplies = createHarborSupplies(this.scene, this.playerRoot, market.position);
   }
 
   private presentInteractionVisuals(restoration: AtlasLivingWorldSnapshot['restoration'], interaction: AtlasCityInteractionPresentation | undefined, tick: number): void {
+    if (this.reducedMotion) tick = 0;
     if (!this.relayRoot) return;
     const isPayHarbor = interaction?.districtId === 'pay-harbor' && this.loadedDistrict === 'pay-harbor';
     this.harborSupplies?.update(isPayHarbor && interaction?.harborCargo === true, isPayHarbor ? interaction?.harborStocked ?? [] : []);
-    const relayVisible = isPayHarbor && interaction?.relayCarried === true;
+    const isCity = interaction?.districtId === this.loadedDistrict;
+    const relayVisible = isCity && interaction?.relayCarried === true;
     this.relayRoot.visible = relayVisible;
-    if (relayVisible) this.relayRoot.rotation.y = Math.sin(tick / 10) * 0.08;
+    if (relayVisible) this.relayRoot.rotation.y = this.reducedMotion ? 0 : Math.sin(tick / 10) * 0.08;
 
-    if (isPayHarbor && interaction?.targetAnchorId) {
+    if (isCity && interaction?.targetAnchorId) {
       this.presentMissionMarker(interaction.targetAnchorId, tick);
     } else if (this.missionMarker) {
       this.missionMarker.visible = false;
@@ -650,7 +675,7 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
       station.light.scale.setScalar(active ? 1 + Math.sin(tick / 8) * 0.08 : complete ? 1.08 : 0.86);
       station.beam.visible = complete || active;
       station.beam.scale.setScalar(active ? 1 + Math.sin(tick / 8) * 0.12 : complete ? 1 : 0.82);
-      station.root.visible = isPayHarbor;
+      station.root.visible = isCity;
     }
     this.presentHarborActivity(restoration, isPayHarbor, tick, completedStations);
   }

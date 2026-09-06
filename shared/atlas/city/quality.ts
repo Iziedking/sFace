@@ -78,9 +78,10 @@ export function createQualityGovernor(initialTier: AtlasQualityTier = 'balanced'
     current: () => tier,
     sample(frameTimeMs: number): void {
       if (manualTier !== null || !Number.isFinite(frameTimeMs) || frameTimeMs <= 0) return;
-      cooldownSeconds = Math.max(0, cooldownSeconds - 1);
+      const elapsedSeconds = Math.min(frameTimeMs, 250) / 1000;
+      cooldownSeconds = Math.max(0, cooldownSeconds - elapsedSeconds);
       if (frameTimeMs > SLOW_FRAME_MS) {
-        slowSeconds += 1;
+        slowSeconds += elapsedSeconds;
         stableSeconds = 0;
         if (slowSeconds >= SLOW_SECONDS_TO_STEP_DOWN && cooldownSeconds === 0) {
           tier = stepTier(tier, -1);
@@ -90,7 +91,7 @@ export function createQualityGovernor(initialTier: AtlasQualityTier = 'balanced'
         return;
       }
       if (frameTimeMs <= STABLE_FRAME_MS) {
-        stableSeconds += 1;
+        stableSeconds += elapsedSeconds;
         slowSeconds = 0;
         if (stableSeconds >= STABLE_SECONDS_TO_STEP_UP && cooldownSeconds === 0) {
           tier = stepTier(tier, 1);

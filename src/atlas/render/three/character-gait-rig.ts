@@ -5,6 +5,8 @@ import { advanceAtlasGait, atlasGaitArm, atlasGaitBody, atlasGaitFoot, solveAtla
 export interface AtlasLocomotionSample {
   readonly speedUnitsPerSecond: number;
   readonly worldScale: number;
+  readonly acceleration?: number;
+  readonly turnRate?: number;
 }
 
 export function createAtlasGaitRig(root: Object3D) {
@@ -31,6 +33,8 @@ export function createAtlasGaitRig(root: Object3D) {
   const lengths = legs.map((leg) => ({ upper: leg.lower!.position.length(), lower: leg.foot!.position.length(), down: -leg.lower!.position.y - leg.foot!.position.y, forward: leg.foot!.position.z, ankleAngle: Math.atan2(leg.foot!.position.z, -leg.foot!.position.y) }));
   const legLength = lengths[0]!.upper + lengths[0]!.lower;
   let state: AtlasGaitState = { phase: 0, amount: 0, runBlend: 0 };
+  let accelerationLean = 0;
+  let turnLean = 0;
   return {
     snapshot: (): AtlasGaitState => ({ ...state }),
     restore(next: AtlasGaitState): void { state = { ...next }; },
@@ -39,11 +43,14 @@ export function createAtlasGaitRig(root: Object3D) {
       const amount = state.amount;
       if (amount < 0.0001) return;
       const body = atlasGaitBody(state.phase, legLength, state.runBlend, 1);
+      const blend = 1 - Math.exp(-6 * Math.max(0, seconds));
+      accelerationLean += (Math.max(-0.08, Math.min(0.08, (motion.acceleration ?? 0) * 0.012)) - accelerationLean) * blend;
+      turnLean += (Math.max(-0.1, Math.min(0.1, (motion.turnRate ?? 0) * motion.speedUnitsPerSecond * 0.018)) - turnLean) * blend;
       hips.position.x = mix(hips.position.x, hipRest.x + body.sway, amount);
       hips.position.y = mix(hips.position.y, hipRest.y - body.drop + body.rise, amount);
       blendRotation(hips, hipRotation.x + body.lean, hipRotation.y + body.pelvisYaw, hipRotation.z + body.pelvisRoll, amount);
       if (spine && spineRotation) blendRotation(spine, spineRotation.x - body.lean * 0.22, spineRotation.y + body.chestYaw * 0.48, spineRotation.z - body.pelvisRoll * 0.32, amount);
-      if (chest && chestRotation) blendRotation(chest, chestRotation.x - body.lean * 0.34, chestRotation.y + body.chestYaw, chestRotation.z - body.pelvisRoll * 0.52, amount);
+      if (chest && chestRotation) blendRotation(chest, chestRotation.x - body.lean * 0.34 + accelerationLean, chestRotation.y + body.chestYaw, chestRotation.z - body.pelvisRoll * 0.52 - turnLean, amount);
       if (neck && neckRotation) blendRotation(neck, neckRotation.x - body.lean * 0.12, neckRotation.y - body.chestYaw * 0.32, neckRotation.z + body.pelvisRoll * 0.2, amount);
       if (head && headRotation) blendRotation(head, headRotation.x - body.lean * 0.08, headRotation.y - body.chestYaw * 0.46, headRotation.z + body.pelvisRoll * 0.34, amount);
       legs.forEach((leg, index) => {

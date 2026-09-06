@@ -98,6 +98,7 @@ export class AtlasInputController {
     this.system = system;
     if (system !== 'active') {
       this.held.clear();
+      this.clearJoystick();
       this.cancelDestination();
     }
   }
@@ -152,6 +153,7 @@ export class AtlasInputController {
   }
 
   private heldMovement(): { moveX: number; moveY: number } {
+    if (this.system !== 'active') return { moveX: 0, moveY: 0 };
     return {
       moveX: (this.held.has('right') ? 127 : 0) - (this.held.has('left') ? 127 : 0),
       moveY: (this.held.has('down') ? 127 : 0) - (this.held.has('up') ? 127 : 0),
@@ -173,6 +175,8 @@ export function installAtlasKeyboard(target: Window, input: AtlasInputController
     ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right',
   };
   const down = (event: KeyboardEvent): void => {
+    const interactive = (event.target as Element | null)?.closest?.('button, input, select, textarea, summary, [contenteditable="true"]');
+    if (interactive && (event.key === 'Enter' || event.key === ' ' || interactive.matches('input, select, textarea, [contenteditable="true"]'))) return;
     const direction = directions[event.key];
     if (direction) { event.preventDefault(); input.setDirection(direction, true); return; }
     if (event.repeat) return;

@@ -129,7 +129,7 @@ describe('Atlas mobile camera rig', () => {
     const pivot = player.clone();
     pivot.y += 1.42;
     expect(camera.position.distanceTo(pivot)).toBeGreaterThan(4.5);
-    expect(camera.position.x).toBeCloseTo(0.52, 1);
+    expect(camera.position.x).toBeCloseTo(0, 1);
   });
 
   it('preserves portrait projection across safe resize bounds', () => {

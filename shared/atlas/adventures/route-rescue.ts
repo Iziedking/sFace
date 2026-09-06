@@ -1,0 +1,104 @@
+import { ATLAS_DISTRICT_WORLDS } from '../districts/registry';
+import type { AtlasRestorationState } from '../living-world';
+import type { AtlasMissionProgress } from '../mission-director';
+
+export type RouteStage = 'arrive' | 'request' | 'signal' | 'refused' | 'evidence' | 'verified' | 'restored' | 'complete';
+export type RouteAction = 'talk' | 'check-recipient' | 'check-amount' | 'approve-practice' | 'try-signal' | 'investigate' | 'weak-evidence' | 'reorg-evidence' | 'match-evidence' | 'install' | 'wrong-answer' | 'teach-back' | 'next';
+export interface RouteRun {
+  readonly version: 1;
+  readonly role: 'explorer' | 'builder';
+  readonly chapter: number;
+  readonly stage: RouteStage;
+  readonly recipientChecked: boolean;
+  readonly amountChecked: boolean;
+  readonly notice: string;
+  readonly actions: readonly RouteAction[];
+}
+
+// This ledger is deliberately local practice. It cannot produce a payment
+// receipt, competitive score, reward entitlement or wallet request.
+export function createRouteRun(role: RouteRun['role']): RouteRun {
+  return { version: 1, role, chapter: 0, stage: 'arrive', recipientChecked: false, amountChecked: false, notice: '', actions: [] };
+}
+
+export const ROUTE_LESSONS = [
+  { name: 'Genesis Garden', citizen: 'Mara', need: 'Mara wants to pay 0.1 NIM for a harbor lantern, but the delivery route is stuck.', weak: 'Mara approved the payment', evidence: 'The current network record matches the shop, order and 0.1 NIM amount', question: 'Why did the shop wait after Mara approved?', answer: 'Approval gives permission. A matching current network record proves the payment.', wrong: 'Approval alone means the shop received the payment.', result: 'The shop releases the lantern. The first route is open.' },
+  { name: 'Pay Harbor', citizen: 'Ivo the ferryman', need: 'Ivo has a transaction hash, but cannot safely release the ferry cargo.', weak: 'The lookup returned a hash', evidence: 'Canonical transaction: correct recipient, Lunas and network', question: 'What lets Ivo release the cargo?', answer: 'Verified transaction details, not the hash alone.', wrong: 'Any transaction hash proves the cargo was paid for.', result: 'Ivo releases the cargo. Harbor deliveries resume.' },
+  { name: 'Albatross Causeway', citizen: 'Sana the courier', need: 'Sana saw a fast block, but the route monitor still warns of a possible reorganization.', weak: 'A micro block includes the transaction', evidence: 'Canonical inclusion with the required finality evidence', question: 'Does a fast micro block finish the check?', answer: 'No. Check canonical inclusion and the required finality.', wrong: 'Fast inclusion always means finality.', result: 'Sana crosses with confirmed supplies. The causeway signal holds.' },
+  { name: 'Validator Peaks', citizen: 'Tavi the route maintainer', need: 'One validator says the route is ready. Tavi needs agreement before reopening it.', weak: 'One validator reports success', evidence: 'Protocol-validated consensus evidence', question: 'Whose statement can Tavi trust on its own?', answer: 'No single statement replaces verified consensus evidence.', wrong: 'One familiar validator is enough.', result: 'Tavi restores the shared route after checking consensus.' },
+  { name: 'Light Forest', citizen: 'Lina the network observer', need: 'Lina has a small phone and needs to check the route without storing the whole chain.', weak: 'A small download must be untrustworthy', evidence: 'A valid light-client proof checked against trusted consensus', question: 'Must Lina download the entire chain?', answer: 'No. A light client can verify the appropriate proofs.', wrong: 'Only a full chain download can verify anything.', result: 'Lina verifies the proof on a light device. The forest relay wakes.' },
+  { name: 'Builder City', citizen: 'Noor the shop builder', need: 'Noor sees a green browser badge, but the shop server has not accepted payment evidence.', weak: 'The browser display says paid', evidence: 'Server verification of canonical evidence for this order', question: 'Who decides whether the shop unlocks?', answer: 'The server verifies evidence; the browser presents the result.', wrong: 'A local paid flag authorizes fulfillment.', result: 'Noor repairs the authority boundary. The shop opens safely.' },
+  { name: 'Beacon Core', citizen: 'The beacon keeper', need: 'Six routes work separately. The keeper must connect them without turning a guess into authority.', weak: 'All six parts look green', evidence: 'Separate intent, verification and consequence linked by the exact request', question: 'What keeps the whole network trustworthy?', answer: 'Keep consent, verification and fulfillment separate and linked.', wrong: 'Combine all green signals into one success flag.', result: 'The beacon joins six independently checked routes. The city is connected.' },
+] as const;
+
+export function routeLesson(run: RouteRun) { return ROUTE_LESSONS[run.chapter]!; }
+export function routeWorld(run: RouteRun) { return ATLAS_DISTRICT_WORLDS[run.chapter]!; }
+
+export function routeTarget(run: RouteRun): string {
+  if (run.stage === 'evidence') return 'community-plaza';
+  if (run.stage === 'verified') return 'travel-pay-harbor';
+  return 'mission-guide';
+}
+
+export function routeRestoration(run: RouteRun): AtlasRestorationState {
+  return run.stage === 'restored' || run.stage === 'complete' ? 'restored' : run.stage === 'verified' ? 'confirming' : 'waiting';
+}
+
+export function routeProgress(run: RouteRun): AtlasMissionProgress {
+  const stages: readonly RouteStage[] = ['arrive', 'request', 'signal', 'refused', 'evidence', 'verified', 'restored', 'complete'];
+  const index = stages.indexOf(run.stage);
+  return { reachedNeed: index > 0, attempted: index >= 3, evidenceGathered: index >= 5, installed: index >= 6, taughtBack: index === 7 };
+}
+
+export function stepRouteRun(run: RouteRun, action: RouteAction): RouteRun {
+  let change: Partial<RouteRun> | null = null;
+  const at = (stage: RouteStage) => run.stage === stage;
+  switch (action) {
+    case 'talk': if (at('arrive')) change = { stage: 'request' }; break;
+    case 'check-recipient': if (at('request')) change = { recipientChecked: true }; break;
+    case 'check-amount': if (at('request')) change = { amountChecked: true }; break;
+    case 'approve-practice':
+      if (at('request')) change = run.recipientChecked && run.amountChecked
+        ? { stage: 'signal' }
+        : { notice: 'Check both the recipient and the exact amount before giving permission.' };
+      break;
+    case 'try-signal': if (at('signal')) change = { stage: 'refused', notice: routeWorld(run).chapter.refutation }; break;
+    case 'investigate': if (at('refused')) change = { stage: 'evidence' }; break;
+    case 'weak-evidence': if (at('evidence')) change = { notice: 'Route stays closed: this message makes a claim, but it does not prove the payment.' }; break;
+    case 'reorg-evidence': if (at('evidence')) change = { notice: 'Old record rejected: the practice network changed, so this record is no longer current. Compare the records again.' }; break;
+    case 'match-evidence': if (at('evidence')) change = { stage: 'verified', notice: 'Payment proof accepted. Carry the checked result to the route gate.' }; break;
+    case 'install': if (at('verified')) change = { stage: 'restored', notice: routeLesson(run).result }; break;
+    case 'wrong-answer': if (at('restored')) change = { notice: 'Think about what the first signal could not prove. Try again; the restored route stays safe.' }; break;
+    case 'teach-back': if (at('restored')) change = { stage: 'complete', notice: 'Lesson remembered locally. No NIM sent or reward claimed.' }; break;
+    case 'next': if (at('complete') && run.chapter < ROUTE_LESSONS.length - 1) change = { chapter: run.chapter + 1, stage: 'arrive', recipientChecked: false, amountChecked: false }; break;
+  }
+  if (!change) return run;
+  // Keep progression plus the current retry notice, not an unbounded mistake
+  // counter. Learners can retry forever without exhausting their saved journal.
+  const last = run.actions[run.actions.length - 1];
+  const retry = last === 'weak-evidence' || last === 'reorg-evidence' || last === 'wrong-answer'
+    || (last === 'approve-practice' && run.stage === 'request');
+  const history = retry ? run.actions.slice(0, -1) : run.actions;
+  const repeatedCheck = (action === 'check-recipient' && run.recipientChecked)
+    || (action === 'check-amount' && run.amountChecked);
+  return { ...run, notice: '', ...change, actions: repeatedCheck ? history : [...history, action] };
+}
+
+export function replayRouteRun(role: RouteRun['role'], actions: readonly RouteAction[]): RouteRun {
+  return actions.slice(0, 256).reduce(stepRouteRun, createRouteRun(role));
+}
+
+export function recoverRouteRun(value: unknown): RouteRun | null {
+  if (!value || typeof value !== 'object') return null;
+  const saved = value as Record<string, unknown>;
+  if (saved.version !== 1 || (saved.role !== 'explorer' && saved.role !== 'builder') || !Array.isArray(saved.actions) || saved.actions.length > 256) return null;
+  if (!saved.actions.every((action) => typeof action === 'string')) return null;
+  // Unknown or out-of-order events are rejected, rather than trusting saved flags.
+  let run = createRouteRun(saved.role);
+  for (const action of saved.actions) {
+    const next = stepRouteRun(run, action as RouteAction);
+    if (next === run) return null;
+    run = next;
+  }
+  return run;
+}

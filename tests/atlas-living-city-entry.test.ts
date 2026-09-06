@@ -13,6 +13,15 @@ describe('approved living-city game entry', () => {
     expect(app).not.toContain('cityViewport.append(this.livingCityHost)');
   });
 
+  it('leaves the welcome orbit behind on entry without recentering every mission interaction', () => {
+    const entry = app.slice(app.indexOf('private openBeaconCommons'), app.indexOf('private renderBeaconCommons'));
+    expect(entry).toContain('this.livingCity?.recenterCamera()');
+    expect(entry.indexOf('this.livingCity?.recenterCamera()')).toBeGreaterThan(entry.indexOf('this.ensureLivingCity().then'));
+    const redraw = app.slice(app.indexOf('private renderBeaconCommons'), app.indexOf('private presentRouteWorld'));
+    // The Center button deliberately calls it; drawing the shell must not.
+    expect(redraw).not.toMatch(/^\s*this\.livingCity\?\.recenterCamera\(\);/m);
+  });
+
   it('renders the city as the game shell rather than a menu card', () => {
     expect(app).toContain('atlas-living-city-play-shell');
     expect(app).toContain('this.createCityJoystick()');

@@ -9,6 +9,8 @@ export interface AtlasRendererOptions {
   resolution: number;
   qualityTier?: AtlasQualityTier;
   maxPixelRatio?: number;
+  preferredRenderer?: AtlasRendererKind;
+  onPlayerFootstep?: () => void;
   assetManager?: Pick<AtlasAssetManager, 'loadBytes'>;
 }
 
@@ -27,6 +29,7 @@ export interface AtlasCityInteractionPresentation {
   readonly relayCarried: boolean;
   readonly builderStationIndex: number;
   readonly targetAnchorId?: string;
+  readonly cameraMode?: 'follow' | 'overview';
   readonly harborCargo?: boolean;
   readonly harborStocked?: readonly ('market' | 'ferry' | 'workshop')[];
 }
@@ -37,6 +40,7 @@ export interface AtlasSceneRenderer {
   render(snapshot: AtlasLivingWorldSnapshot, crowd?: readonly AtlasCitizenPresentation[], player?: AtlasCityPlayerState, interaction?: AtlasCityInteractionPresentation): void;
   resize(width: number, height: number, resolution: number): void;
   setQuality?(tier: AtlasQualityTier): void;
+  setReducedMotion?(reduced: boolean): void;
   /*
    * Which path the player chose.
    *

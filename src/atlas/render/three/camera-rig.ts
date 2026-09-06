@@ -12,6 +12,8 @@ export interface AtlasCameraRigOptions {
 }
 
 export interface AtlasCameraFrame {
+  readonly mode?: 'follow' | 'overview';
+  readonly reducedMotion?: boolean;
   readonly width: number;
   readonly height: number;
   readonly deltaSeconds: number;
@@ -86,10 +88,20 @@ export class AtlasCameraRig {
     this.currentHeadingRadians = dampAngle(this.currentHeadingRadians, targetHeading, headingBlend);
     this.updateBasis();
     this.placeDesiredCamera(playerPosition);
+    if (frame.mode === 'overview') {
+      this.desiredPosition.copy(playerPosition).addScaledVector(this.forward, -7);
+      this.desiredPosition.y += 12;
+      this.desiredTarget.copy(playerPosition);
+    } else if (frame.width < frame.height) {
+      // Bring the player toward the centre of a narrow WebView, leaving the
+      // bottom third free for thumbs instead of cropping the action sideways.
+      this.desiredPosition.addScaledVector(this.right, -this.shoulderOffsetMeters);
+      this.desiredPosition.y += 0.8;
+    }
     const escapedCloseWall = this.avoidCloseObstruction(playerPosition, frame.colliders ?? []);
 
     this.camera.aspect = safeWidth / safeHeight;
-    const desiredFov = this.fieldOfViewDegrees + (frame.playerRunning ? 3.5 : frame.playerMoving ? 1.5 : 0);
+    const desiredFov = this.fieldOfViewDegrees + (frame.reducedMotion ? 0 : frame.playerRunning ? 3.5 : frame.playerMoving ? 1.5 : 0);
     const fovBlend = dampingFactor(frame.deltaSeconds, frame.playerRunning ? 4.8 : 3.6);
     this.currentFovDegrees += (desiredFov - this.currentFovDegrees) * fovBlend;
     this.camera.fov = this.currentFovDegrees;

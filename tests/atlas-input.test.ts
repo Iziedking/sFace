@@ -4,6 +4,27 @@ import { AtlasCameraLookController, AtlasInputController, installAtlasKeyboard, 
 import type { AtlasAction } from '../shared/atlas/state';
 
 describe('Atlas semantic controls', () => {
+  it('lets native buttons receive Enter without stealing their activation', () => {
+    const input = new AtlasInputController();
+    let down: ((event: KeyboardEvent) => void) | undefined;
+    const target = { addEventListener: (name: string, listener: (event: KeyboardEvent) => void) => { if (name === 'keydown') down = listener; }, removeEventListener: () => undefined } as unknown as Window;
+    installAtlasKeyboard(target, input);
+    let prevented = false;
+    down?.({ key: 'Enter', target: { closest: () => ({ matches: () => false }) }, preventDefault: () => { prevented = true; } } as unknown as KeyboardEvent);
+    expect(prevented).toBe(false);
+    expect(input.sample().interact).toBe(false);
+  });
+
+  it('clears held and joystick motion across pause and resume', () => {
+    const input = new AtlasInputController();
+    input.setJoystick({ x: 1, y: 0 });
+    input.setSystem('paused');
+    input.setDirection('up', true);
+    expect(input.sample()).toMatchObject({ moveX: 0, moveY: 0 });
+    input.setSystem('hidden');
+    input.setSystem('active');
+    expect(input.sample()).toMatchObject({ moveX: 0, moveY: 0 });
+  });
   it('turns the camera from a bounded right-thumb drag', () => {
     const look = new AtlasCameraLookController();
     look.begin(7, 120);

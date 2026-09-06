@@ -75,6 +75,38 @@ describe('living city controller', () => {
     await controller.destroy();
   });
 
+  it('pauses the whole city and resumes without counting hidden time or duplicating frames', async () => {
+    const fakeRenderer = renderer();
+    const loop = frameLoop();
+    const sampleMovement = vi.fn(() => ({ moveX: 127, moveY: 0 }));
+    const controller = new AtlasLivingCityController({ renderer: fakeRenderer, frameLoop: loop, sampleMovement });
+    const flush = (time: number) => {
+      const [id, callback] = [...loop.callbacks.entries()].at(-1)!;
+      loop.callbacks.delete(id);
+      callback(time);
+    };
+    controller.start();
+    flush(0);
+    flush(16);
+    const before = controller.playerSnapshot();
+    controller.pause();
+    controller.pause();
+    controller.start();
+    expect(loop.callbacks.size).toBe(0);
+    expect(sampleMovement).toHaveBeenCalledTimes(2);
+    controller.resume();
+    controller.resume();
+    expect(loop.callbacks.size).toBe(1);
+    flush(60000);
+    expect(controller.playerSnapshot().x).toBe(before.x);
+    flush(60016);
+    expect(controller.playerSnapshot().x).toBeGreaterThan(before.x);
+    expect(controller.qualityTier()).toBe('balanced');
+    await controller.destroy();
+    controller.resume();
+    expect(loop.callbacks.size).toBe(0);
+  });
+
   it('holds the camera where the player left it, and recentres only when asked', async () => {
     const fakeRenderer = renderer();
     const loop = frameLoop();
@@ -118,7 +150,7 @@ describe('living city controller', () => {
       simulation: { tick: 0 } as never, entities: [],
     } as unknown as AtlasLivingWorldSnapshot);
     expect(controller.crowdSnapshot().filter((citizen) => citizen.visible)).toHaveLength(12);
-    for (let second = 0; second < 5; second += 1) controller.recordFrameTime(38);
+    for (let frame = 0; frame < Math.ceil(5000 / 38); frame += 1) controller.recordFrameTime(38);
     expect(controller.qualityTier()).toBe('low');
     expect(controller.crowdSnapshot().filter((citizen) => citizen.visible)).toHaveLength(8);
   });

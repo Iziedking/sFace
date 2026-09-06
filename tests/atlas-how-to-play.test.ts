@@ -28,12 +28,20 @@ describe('NIM Atlas clarity pass', () => {
     expect(guide).toContain('NIM');
     expect(guide).toContain('Nimiq Pay');
     expect(guide).toContain('Lunas');
-    expect(guide).toContain('canonical confirmation');
+    expect(guide).toContain('current network record');
     expect(guide).toContain('Ask');
     expect(guide).toContain('Check');
     expect(guide).toContain('Approve');
     expect(guide).toContain('Confirm');
     expect(guide).toContain('Unlock');
+  });
+
+  it('explains Lunas before using payment evidence vocabulary', () => {
+    expect(guide).toContain('Lunas are the smallest units of NIM');
+    expect(guide).toContain('1 NIM = 100,000 Lunas');
+    expect(guide).toContain('0.1 NIM = 10,000 Lunas');
+    expect(guide).toContain('permission');
+    expect(guide).toContain('current network record');
   });
 
   it('makes the visual proof gallery part of the product documentation', () => {

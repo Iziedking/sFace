@@ -11,7 +11,7 @@ import type { LanternEvidenceSource, LanternPhase } from '../../../shared/atlas/
 export const ATLAS_NARRATION_LOCALE = 'en-US';
 
 export type AtlasAudioBus = 'ambience' | 'events' | 'interface' | 'voice';
-export type AtlasAudioCue = 'atlas-theme' | 'city-ambience' | 'harbor-waiting-ambience' | 'harbor-restored-ambience' | 'payment-pending' | 'payment-confirmed' | 'beacon-confirmation' | 'city-footstep' | 'city-interaction';
+export type AtlasAudioCue = 'atlas-theme' | 'city-ambience' | 'harbor-waiting-ambience' | 'harbor-restored-ambience' | 'payment-pending' | 'payment-confirmed' | 'beacon-confirmation' | 'city-footstep' | 'city-interaction' | 'route-refused' | 'route-evidence' | 'route-repaired' | 'route-complete';
 
 export interface AtlasAudioBackend {
   unlock(): void;
@@ -88,7 +88,7 @@ export class AtlasAudio {
     this.stopCue('city-ambience');
   }
 
-  playWorldCue(cue: 'city-footstep' | 'city-interaction'): void {
+  playWorldCue(cue: 'city-footstep' | 'city-interaction' | 'route-refused' | 'route-evidence' | 'route-repaired' | 'route-complete'): void {
     if (!this.unlocked) return;
     this.playCue(cue, cue === 'city-footstep' ? 'interface' : 'events', false);
   }
@@ -168,6 +168,10 @@ const SAMPLES: Partial<Record<AtlasAudioCue, string>> = {
 interface ToneRecipe { from: number; to: number; duration: number; }
 
 const TONES: Record<AtlasAudioCue, ToneRecipe> = {
+  'route-refused': { from: 240, to: 140, duration: 0.16 },
+  'route-evidence': { from: 350, to: 700, duration: 0.16 },
+  'route-repaired': { from: 260, to: 780, duration: 0.42 },
+  'route-complete': { from: 520, to: 1040, duration: 0.5 },
   'atlas-theme': { from: 196, to: 262, duration: 1.1 },
   'city-ambience': { from: 146, to: 174, duration: 0.9 },
   'harbor-waiting-ambience': { from: 164, to: 196, duration: 0.7 },
@@ -193,6 +197,7 @@ function createWebAudioBackend(): AtlasAudioBackend {
   const decoded = new Map<AtlasAudioCue, AudioBuffer>();
   const playing = new Map<AtlasAudioCue, AudioBufferSourceNode>();
   const loading = new Set<AtlasAudioCue>();
+  const wanted = new Set<AtlasAudioCue>();
 
   function startSample(cue: AtlasAudioCue, buffer: AudioBuffer, bus: AtlasAudioBus, loop: boolean): void {
     if (!context) return;
@@ -218,6 +223,7 @@ function createWebAudioBackend(): AtlasAudioBackend {
   }
 
   function playSampled(cue: AtlasAudioCue, url: string, bus: AtlasAudioBus, loop: boolean): void {
+    wanted.add(cue);
     const buffer = decoded.get(cue);
     if (buffer) {
       startSample(cue, buffer, bus, loop);
@@ -232,7 +238,7 @@ function createWebAudioBackend(): AtlasAudioBackend {
         loading.delete(cue);
         if (!buffered) return;
         decoded.set(cue, buffered);
-        startSample(cue, buffered, bus, loop);
+        if (wanted.has(cue)) startSample(cue, buffered, bus, loop);
       })
       .catch(() => {
         // A missing or undecodable file must never take the game down; the cue
@@ -278,23 +284,27 @@ function createWebAudioBackend(): AtlasAudioBackend {
       oscillator.stop(now + recipe.duration + 0.02);
     },
     stop: (cue) => {
+      wanted.delete(cue);
       const source = playing.get(cue);
       if (!source) return;
       playing.delete(cue);
       source.stop();
     },
     setVolume: (bus, value) => {
+      if (bus === 'voice' && value === 0) globalThis.speechSynthesis?.cancel();
       volumes[bus] = value;
       const gain = buses.get(bus);
       if (gain) gain.gain.value = value;
     },
     narrate: (text, locale) => {
+      if (volumes.voice === 0) return;
       const synth = globalThis.speechSynthesis;
       const Utterance = globalThis.SpeechSynthesisUtterance;
       if (!synth || !Utterance) return;
       synth.cancel();
       const utterance = new Utterance(text);
       utterance.lang = locale;
+      utterance.volume = volumes.voice;
       utterance.rate = 0.92;
       utterance.pitch = 1.02;
       const voice = synth.getVoices().find((candidate) => candidate.lang.toLowerCase().startsWith(locale.toLowerCase().split('-')[0]!));
@@ -303,6 +313,7 @@ function createWebAudioBackend(): AtlasAudioBackend {
     },
     visualCue: () => undefined,
     destroy: () => {
+      wanted.clear();
       for (const source of playing.values()) source.stop();
       playing.clear();
       decoded.clear();

@@ -21,7 +21,9 @@ export interface RotateGateOptions {
 }
 
 /* The screens that need the extra width. Everything else reads fine upright. */
-const GATED_SCREENS = new Set(['beacon-commons', 'pay-harbor']);
+// Gameplay now fits the visible WebView in either orientation. Keep the
+// optional gate helper for future explicitly landscape-only experiences.
+const GATED_SCREENS = new Set<string>();
 
 export function screenNeedsLandscape(screen: string): boolean {
   return GATED_SCREENS.has(screen);

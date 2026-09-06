@@ -7,29 +7,33 @@ playing.
 
 1. **Choose.** Pick Explorer to use the network, or Builder to repair the route.
 2. **Walk.** Move through Pay Harbor until you find Mara's problem.
-3. **Learn.** Read the clue, review the request, and take the safe action.
-4. **Change.** Complete the evidence and watch the district respond.
+3. **Check.** Confirm who gets the NIM and the exact amount before you approve.
+4. **Change.** Find the matching network record and watch the district respond.
 
 The first adventure is **The Last Lantern**. Mara needs one safe NIM payment
 route before the harbor market opens. Explorers visit the shop and review the
-lantern purchase. Builders repair the provider, exact Luna amount, and
-confirmation path. Both paths meet at the same visible restoration.
+lantern purchase. Builders repair the payment request and network check. Both
+paths meet at the same visible restoration.
+
+**Lunas are the smallest units of NIM.** 1 NIM = 100,000 Lunas, so Mara's
+0.1 NIM lantern costs 10,000 Lunas. Approving gives the payment permission;
+the current network record proves whether the shop received it.
 
 ## Where Nimiq matters
 
 | Play moment | Nimiq lesson |
 | --- | --- |
 | Ask | The Mini App requests wallet access only when the player chooses the payment action. |
-| Check | The request shows the network, recipient, and exact integer Luna amount. |
-| Approve | The player makes the decision in Nimiq Pay. |
-| Confirm | Atlas waits for matching canonical chain evidence. |
+| Check | The request shows who gets the NIM and the exact amount in NIM and Lunas. |
+| Approve | The player gives permission in Nimiq Pay. Approval alone is not proof of payment. |
+| Confirm | Atlas waits for a current network record matching the shop and amount. |
 | Unlock | The lantern is fulfilled once, and the harbor changes. |
 
 Practice mode is free and wallet-free. It teaches the route with a local fixture;
 it does not send NIM or create payment proof. In a separately enabled testnet
 journey, the browser still treats a wallet callback or transaction hash as a
-lookup only. The server must reconcile canonical evidence before a payment can
-unlock the world.
+lookup only. The server must verify a current network record before a payment
+can unlock the world.
 
 ## Three moments to recognize
 

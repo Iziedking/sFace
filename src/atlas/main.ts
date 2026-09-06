@@ -1,5 +1,6 @@
 import { AtlasApp } from './app/atlas-app';
 import { trackViewport } from '../core/viewport';
+import './ui/route-rescue.css';
 
 const ui = document.querySelector<HTMLElement>('#ui');
 const canvas = document.querySelector<HTMLCanvasElement>('#stage');

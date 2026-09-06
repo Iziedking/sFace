@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parseAtlasAssetManifest } from '../src/atlas/assets/manifest';
 import { isAtlasCitizenPositionBlocked } from '../shared/atlas/city/citizen-motion';
+import { createAtlasCityPlayer, stepAtlasCityPlayer } from '../shared/atlas/city/player';
 import { parseAtlasCityScene } from '../shared/atlas/city/types';
 
 function readGlbJson(path: string): Record<string, any> {
@@ -104,6 +105,31 @@ describe('Atlas 3D asset registry', () => {
     expect(kinds).toEqual(new Set(['arrival', 'travel', 'mission', 'conversation', 'work', 'queue']));
     const environment = readGlbJson('public/atlas/3d/v1/beacon-commons/environment.glb');
     expect(triangleCount(environment)).toBeLessThanOrEqual(120000);
+  });
+
+  it('keeps the evidence marker on walkable ground in front of a solid community board', () => {
+    const scene = parseAtlasCityScene(JSON.parse(readFileSync('public/atlas/3d/v1/beacon-commons/scene.json', 'utf8')));
+    const evidence = scene.anchors.find((anchor) => anchor.id === 'community-plaza');
+    const board = scene.colliders.find((collider) => collider.id === 'obstruction-community-board');
+    expect(evidence).toBeDefined();
+    expect(board).toMatchObject({ shape: 'box', position: [-2.9, 0.825, -5.6], size: [2.3, 1.65, 0.18] });
+    expect(isAtlasCitizenPositionBlocked({ x: evidence!.position[0], z: evidence!.position[2] }, scene.colliders)).toBe(false);
+    expect(evidence!.position[2]).toBeGreaterThan(board!.position[2] + board!.size[2] / 2);
+  });
+
+  it('stops the player at the visible community board while keeping the evidence reachable', () => {
+    const scene = parseAtlasCityScene(JSON.parse(readFileSync('public/atlas/3d/v1/beacon-commons/scene.json', 'utf8')));
+    expect(scene.navigation).toBeDefined();
+    const navigation = scene.navigation!;
+    let player = createAtlasCityPlayer({ x: -2.9, z: -4.6, facing: 'up' });
+    for (let frame = 0; frame < 30; frame += 1) {
+      player = stepAtlasCityPlayer(player, { moveX: 0, moveY: -127 }, 0.1, navigation.bounds, scene.colliders, {
+        x: navigation.safeSpawn[0],
+        z: navigation.safeSpawn[2],
+      });
+    }
+    expect(player.z).toBeLessThan(-4.6);
+    expect(player.z).toBeGreaterThan(-5.18);
   });
 
   it('authors every Beacon citizen spawn outside building footprints', () => {

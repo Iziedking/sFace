@@ -1,4 +1,7 @@
 import { createAtlasState } from '../../../shared/atlas/state';
+import { createRouteRun, recoverRouteRun, routeLesson, routeProgress, routeRestoration, routeTarget, routeWorld, stepRouteRun, type RouteAction, type RouteRun } from '../../../shared/atlas/adventures/route-rescue';
+import { createEvidenceChoices, createRouteCard } from '../ui/route-rescue';
+import { AtlasRuntimeStats } from '../city/runtime-stats';
 import { projectLivingWorld } from '../../../shared/atlas/living-world';
 import { AtlasCameraLookController, AtlasInputController, installAtlasKeyboard, shouldHandleDirectionalClick, type AtlasDirection } from '../input';
 import { createAtlasProgressStore } from '../progress';
@@ -127,7 +130,6 @@ export class AtlasApp {
   private cityWaypointDistance: HTMLElement | null = null;
   private cityPaceLabel: HTMLElement | null = null;
   private cityLoadState: 'loading' | 'ready' | 'unavailable' = 'loading';
-  private lastCityFootstepAt = 0;
   private beaconTravelNotice = '';
   private tutorial: AtlasTutorialDirector = createAtlasTutorial({ completed: readTutorialDone() });
   private tutorialOrigin: { x: number; z: number } | null = null;
@@ -142,6 +144,15 @@ export class AtlasApp {
   private stopWatchingOrientation: (() => void) | null = null;
   private readonly directionalTapTimers = new Map<AtlasDirection, number>();
   private cityQuestStep: 'meet-guide' | 'guide-met' = 'meet-guide';
+  private routeRun: RouteRun | null = null;
+  private routeCard: HTMLElement | null = null;
+  private evidenceOpen = false;
+  private accessibleMovement = false;
+  private cityMuted = false;
+  private cityReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+  private cameraOverview = false;
+  private readonly routeFeed: string[] = [];
+  private readonly runtimeStats = new URLSearchParams(location.search).has('stats') ? new AtlasRuntimeStats() : null;
   private payHarborBuilderStation = 0;
 
   constructor(private readonly ui: HTMLElement, private readonly canvas: HTMLCanvasElement) {
@@ -489,13 +500,23 @@ export class AtlasApp {
   private openBeaconCommons = (): void => {
     this.canvas.hidden = true;
     this.audio.unlock();
-    this.audio.narrate('Pay Harbor has gone dark. Follow the pink marker to the Commons Guide and learn how Nimiq can restore the city.');
+    this.audio.narrate('Pay Harbor has gone dark. Mara needs to pay zero point one NIM for a lantern. Follow the pink marker to learn the safe payment steps.');
     this.screen = 'beacon-commons';
     this.beaconTravelNotice = '';
     this.cityQuestStep = 'meet-guide';
+    try {
+      this.routeRun = recoverRouteRun(JSON.parse(localStorage.getItem(`atlas-route-practice-v1-${this.selectedRole}`) ?? 'null'));
+      if (this.routeRun?.role !== this.selectedRole) this.routeRun = null;
+    } catch { this.routeRun = null; }
+    this.routeRun ??= createRouteRun(this.selectedRole);
+    this.cityQuestStep = this.routeRun.stage === 'arrive' ? 'meet-guide' : 'guide-met';
     this.renderBeaconCommons();
     void this.ensureLivingCity().then(() => {
-      if (this.screen === 'beacon-commons') this.renderBeaconCommons();
+      if (this.screen !== 'beacon-commons') return;
+      // Welcome can stop at any orbit angle. Start facing the guide, then
+      // leave subsequent camera changes entirely under the player's control.
+      this.livingCity?.recenterCamera();
+      this.renderBeaconCommons();
     }).catch((error: unknown) => {
       if (this.screen !== 'beacon-commons') return;
       this.beaconTravelNotice = error instanceof Error ? error.message : 'Beacon Commons is unavailable.';
@@ -519,6 +540,31 @@ export class AtlasApp {
     const pause = actionButton(this.suspended ? 'Resume' : 'Pause', this.togglePause, this.suspended ? 'Resume Beacon Commons' : 'Pause Beacon Commons');
     pause.className = 'atlas-pause';
     topbar.append(brand, population, pause);
+    const access = actionButton(this.accessibleMovement ? 'Stick' : 'D-pad', () => {
+      this.accessibleMovement = !this.accessibleMovement;
+      shell.classList.toggle('has-accessible-movement', this.accessibleMovement);
+      access.textContent = this.accessibleMovement ? 'Stick' : 'D-pad';
+    }, 'Switch between joystick and accessible directional buttons');
+    const mute = actionButton(this.cityMuted ? 'Sound off' : 'Sound on', () => {
+      this.cityMuted = !this.cityMuted;
+      for (const bus of ['ambience', 'events', 'interface', 'voice'] as const) this.audio.setVolume(bus, this.cityMuted ? 0 : bus === 'ambience' ? 0.25 : 0.7);
+      mute.textContent = this.cityMuted ? 'Sound off' : 'Sound on';
+      mute.setAttribute('aria-pressed', String(this.cityMuted));
+    }, 'Mute or unmute game audio');
+    access.className = 'atlas-pause';
+    mute.className = 'atlas-pause';
+    const motion = actionButton(this.cityReducedMotion ? 'Motion reduced' : 'Reduce motion', () => {
+      this.cityReducedMotion = !this.cityReducedMotion;
+      this.livingCity?.setReducedMotion(this.cityReducedMotion);
+      shell.classList.toggle('has-reduced-motion', this.cityReducedMotion);
+      motion.textContent = this.cityReducedMotion ? 'Motion reduced' : 'Reduce motion';
+      motion.setAttribute('aria-pressed', String(this.cityReducedMotion));
+    }, 'Toggle reduced motion');
+    motion.className = 'atlas-pause';
+    motion.setAttribute('aria-pressed', String(this.cityReducedMotion));
+    shell.classList.toggle('has-reduced-motion', this.cityReducedMotion);
+    topbar.append(access, mute, motion);
+    shell.classList.toggle('has-accessible-movement', this.accessibleMovement);
 
     const objective = this.cityQuestStep === 'meet-guide'
       ? {
@@ -548,10 +594,11 @@ export class AtlasApp {
     );
     movement.append(accessibleDirections);
     const actions = element('div', 'atlas-actions');
+    const routeAction = this.routeRun?.stage === 'arrive' ? 'Talk' : this.routeRun?.stage === 'evidence' ? 'Inspect' : this.routeRun?.stage === 'verified' ? 'Install' : this.routeRun?.stage === 'complete' ? 'Travel' : 'Mission';
     const interact = actionButton(
-      this.cityQuestStep === 'meet-guide' ? 'Talk' : 'Travel',
-      this.cityQuestStep === 'meet-guide' ? this.interactWithCommonsGuide : this.travelToPayHarbor,
-      this.cityQuestStep === 'meet-guide' ? 'Interact with the Commons guide' : 'Travel through the Pay Harbor gate',
+      this.routeRun ? routeAction : this.cityQuestStep === 'meet-guide' ? 'Talk' : 'Travel',
+      this.routeRun ? this.interactRoute : this.cityQuestStep === 'meet-guide' ? this.interactWithCommonsGuide : this.travelToPayHarbor,
+      this.routeRun ? `${routeAction} at the marked destination` : this.cityQuestStep === 'meet-guide' ? 'Interact with the Commons guide' : 'Travel through the Pay Harbor gate',
     );
     interact.className = 'atlas-tool atlas-context-action';
     actions.append(interact);
@@ -559,14 +606,88 @@ export class AtlasApp {
     const hint = element('p', 'atlas-key-hint', this.livingCity ? `${this.livingCity.qualityTier().toUpperCase()} PROFILE / DRAG TO WALK / FULL TILT TO RUN` : 'LOADING VERIFIED PROCEDURAL 3D ASSETS');
     const cameraCenter = actionButton('Center', () => this.livingCity?.recenterCamera(), 'Center the camera behind the player');
     cameraCenter.className = 'atlas-camera-center';
+    const cameraMode = actionButton(this.cameraOverview ? 'Follow' : 'Overview', () => {
+      this.cameraOverview = !this.cameraOverview;
+      cameraMode.textContent = this.cameraOverview ? 'Follow' : 'Overview';
+      this.presentRouteWorld();
+    }, 'Switch between follow camera and city overview');
+    cameraMode.className = 'atlas-camera-mode';
     shell.append(topbar, this.toolkit.element, this.createBeaconMap(), this.createCityWaypoint(), this.createCameraLookZone(), cameraCenter, controls, hint);
-    this.applyTutorialStep(shell, movement, interact);
+    shell.append(cameraMode);
+    if (this.routeRun) {
+      this.toolkit.element.hidden = true;
+      this.routeCard = createRouteCard(this.routeRun, this.actRoute);
+      shell.append(this.routeCard);
+      const feed = element('ol', 'atlas-route-feed');
+      feed.setAttribute('aria-label', 'Recent city events');
+      for (const line of this.routeFeed.slice(-2)) feed.append(element('li', '', line));
+      shell.append(feed);
+      this.presentRouteWorld();
+    } else this.applyTutorialStep(shell, movement, interact);
     this.ui.append(shell);
     this.audio.unlock();
     this.audio.stopTheme();
     this.audio.playCityAmbience();
     this.resizeLivingCity();
   }
+
+  private presentRouteWorld(): void {
+    const run = this.routeRun;
+    if (!run || this.screen !== 'beacon-commons') return;
+    const world = routeWorld(run);
+    this.livingCity?.present(projectLivingWorld(world, createAtlasState(world.mission), routeRestoration(run)));
+    this.livingCity?.advance(routeProgress(run));
+    this.livingCity?.setInteractionPresentation({ districtId: 'beacon-commons', relayCarried: run.stage === 'verified', builderStationIndex: routeRestoration(run) === 'restored' ? 1 : 0, targetAnchorId: this.currentCityTargetAnchorId(), cameraMode: this.cameraOverview ? 'overview' : 'follow' });
+  }
+
+  private actRoute = (action: RouteAction): void => {
+    if (this.suspended) return;
+    const run = this.routeRun;
+    const player = this.livingCity?.playerSnapshot();
+    if (!run || !player) return;
+    // World position gates interactions; deterministic mission rules live in shared.
+    const needsStation = ['weak-evidence', 'reorg-evidence', 'match-evidence'].includes(action);
+    if (needsStation && !this.isNearBeaconAnchor(player, 'community-plaza', 2.4)) return;
+    const next = stepRouteRun(run, action);
+    if (next === run) return;
+    this.routeRun = next;
+    this.cityQuestStep = next.stage === 'arrive' ? 'meet-guide' : 'guide-met';
+    try { localStorage.setItem(`atlas-route-practice-v1-${next.role}`, JSON.stringify({ version: 1, role: next.role, actions: next.actions })); }
+    catch { this.routeFeed.push('Local saving unavailable. Keep this tab open to continue.'); }
+    if (next.notice) this.routeFeed.push(next.notice);
+    if (this.routeFeed.length > 3) this.routeFeed.splice(0, this.routeFeed.length - 3);
+    const refusal = action === 'try-signal' || action === 'weak-evidence' || action === 'reorg-evidence' || action === 'wrong-answer';
+    this.audio.playWorldCue(refusal ? 'route-refused' : action === 'match-evidence' ? 'route-evidence' : action === 'install' ? 'route-repaired' : action === 'teach-back' ? 'route-complete' : 'city-interaction');
+    if (action === 'install') this.audio.narrate(`Practice route restored. ${routeLesson(next).result}`);
+    this.evidenceOpen = false;
+    this.input.clearJoystick();
+    this.renderBeaconCommons();
+    // A replaced button must not strand keyboard focus on the document body.
+    this.routeCard?.querySelector<HTMLElement>('button, summary')?.focus({ preventScroll: true });
+  };
+
+  private interactRoute = (): void => {
+    if (this.suspended) return;
+    const run = this.routeRun;
+    const player = this.livingCity?.playerSnapshot();
+    if (!run || !player) return;
+    if (run.stage === 'complete') { this.travelToPayHarbor(); return; }
+    if (!this.isNearBeaconAnchor(player, routeTarget(run), 2.4)) {
+      if (this.routeCard) {
+        let hint = this.routeCard.querySelector<HTMLElement>('[data-reach-hint]');
+        if (!hint) { hint = element('p', 'atlas-route-notice'); hint.dataset.reachHint = 'true'; hint.setAttribute('role', 'status'); this.routeCard.append(hint); }
+        hint.textContent = 'Follow the marker. Move within 2.4 metres to interact.';
+      }
+      return;
+    }
+    if (run.stage === 'arrive') this.actRoute('talk');
+    else if (run.stage === 'verified') this.actRoute('install');
+    else if (run.stage === 'evidence' && !this.evidenceOpen) {
+      this.evidenceOpen = true;
+      this.routeCard?.append(createEvidenceChoices(run, this.actRoute));
+      this.routeCard?.querySelector<HTMLElement>('button')?.focus({ preventScroll: true });
+    } else this.routeCard?.querySelector<HTMLElement>('button, summary')?.focus({ preventScroll: true });
+  };
 
   private interactWithCommonsGuide = (): void => {
     const player = this.livingCity?.playerSnapshot();
@@ -643,12 +764,6 @@ export class AtlasApp {
          street it sits on readable. */
       const localRadius = 7;
       this.beaconMapSvg?.setAttribute('viewBox', `${player.x - localRadius} ${player.z - localRadius} ${localRadius * 2} ${localRadius * 2}`);
-      const now = typeof performance === 'undefined' ? Date.now() : performance.now();
-      const footstepInterval = player.pace === 'run' ? 175 : 320;
-      if (player.moving && now - this.lastCityFootstepAt >= footstepInterval) {
-        this.lastCityFootstepAt = now;
-        this.audio.playWorldCue('city-footstep');
-      }
       if (this.cityPaceLabel) {
         this.cityPaceLabel.textContent = player.pace === 'run' ? 'RUNNING' : player.pace === 'walk' ? 'WALKING' : 'READY';
         this.cityPaceLabel.dataset.pace = player.pace;
@@ -674,6 +789,7 @@ export class AtlasApp {
 
   private currentCityTargetAnchorId(): string {
     if (this.screen === 'pay-harbor') return this.currentPayHarborMission().targetAnchorId;
+    if (this.routeRun && this.screen === 'beacon-commons') return this.routeRun.stage === 'complete' ? 'travel-pay-harbor' : routeTarget(this.routeRun);
     if (this.cityQuestStep === 'meet-guide') return 'mission-guide';
     return 'travel-pay-harbor';
   }
@@ -1037,6 +1153,7 @@ export class AtlasApp {
     host.id = 'atlas-city-stage';
     host.setAttribute('aria-hidden', 'true');
     (this.ui.parentElement ?? document.body).append(host);
+    this.runtimeStats?.attach(this.ui.parentElement ?? document.body);
     const renderer = createAtlasRenderer();
     const controller = new AtlasLivingCityController({
       renderer,
@@ -1048,6 +1165,7 @@ export class AtlasApp {
         return { moveX: action.moveX, moveY: action.moveY };
       },
       onFrame: ({ player }) => {
+        this.runtimeStats?.sample(performance.now(), controller.stats(), controller.qualityTier());
         this.updateBeaconMap(player);
         this.observeTutorial(player);
       },
@@ -1068,7 +1186,9 @@ export class AtlasApp {
     });
     try {
       await renderer.initialize(host, {
-        reducedMotion: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
+        onPlayerFootstep: () => { if (this.isLivingCityScreen() && !this.suspended) this.audio.playWorldCue('city-footstep'); },
+        preferredRenderer: new URLSearchParams(location.search).get('renderer') === 'canvas' ? 'canvas' : new URLSearchParams(location.search).get('renderer') === 'pixi' ? 'pixi' : undefined,
+        reducedMotion: this.cityReducedMotion,
         resolution: 1,
         // Cap the backing store at 2x. Below the device ratio the city is
         // upscaled and reads as blurry; above it costs pixels nobody sees.
@@ -1080,6 +1200,7 @@ export class AtlasApp {
       controller.present(projectLivingWorld(BEACON_CORE_WORLD, createAtlasState(BEACON_CORE_WORLD.mission), 'waiting'));
       controller.resize(Math.max(1, host.clientWidth), Math.max(1, host.clientHeight), 1);
       controller.start();
+      if (this.suspended) controller.pause();
       if (this.screen !== 'welcome' && this.screen !== 'beacon-commons') {
         await controller.destroy();
         host.remove();
@@ -1736,11 +1857,15 @@ export class AtlasApp {
     if (!this.isLivingCityScreen() || this.suspended) return;
     this.input.setSystem(system);
     this.suspended = true;
+    this.livingCity?.pause();
+    const pause = this.ui.querySelector<HTMLButtonElement>('.atlas-pause');
+    if (pause) { pause.textContent = 'Resume'; pause.setAttribute('aria-label', 'Resume city adventure'); }
     this.toolkit?.setDetail(system === 'hidden' ? 'Paused while NIM Atlas is hidden.' : 'Paused. Press Pause again to continue.');
   }
 
   private resume = (): void => {
     this.suspended = false;
+    this.livingCity?.resume();
     this.input.setSystem('active');
     if (this.screen === 'beacon-commons') this.renderBeaconCommons();
     if (this.screen === 'pay-harbor') this.renderPayHarbor();
@@ -1776,7 +1901,8 @@ export class AtlasApp {
     button.className = `atlas-move atlas-move-${direction}`;
     button.textContent = glyph;
     button.setAttribute('aria-label', `Move ${label.toLowerCase()}`);
-    const press = (event: PointerEvent): void => { event.preventDefault(); button.setPointerCapture?.(event.pointerId); this.input.setDirection(direction, true); };
+    let pressedAt = 0;
+    const press = (event: PointerEvent): void => { pressedAt = performance.now(); event.preventDefault(); button.setPointerCapture?.(event.pointerId); this.input.setDirection(direction, true); };
     const release = (): void => this.input.setDirection(direction, false);
     button.addEventListener('pointerdown', press);
     button.addEventListener('pointerup', release);
@@ -1796,7 +1922,7 @@ export class AtlasApp {
      * releases, which previously let an early timer stop a later press.
      */
     button.addEventListener('click', (event) => {
-      if (!shouldHandleDirectionalClick(event.detail)) return;
+      if (!shouldHandleDirectionalClick(event.detail) && performance.now() - pressedAt > 180) return;
       this.input.setDirection(direction, true);
       window.clearTimeout(this.directionalTapTimers.get(direction));
       this.directionalTapTimers.set(direction, window.setTimeout(() => {
@@ -1836,6 +1962,7 @@ export class AtlasApp {
     };
     const handlePointer = (event: PointerEvent): void => {
       if (event.type === 'pointerdown') {
+        if (activePointer !== null || (event.pointerType === 'mouse' && event.button !== 0)) return;
         event.preventDefault();
         activePointer = event.pointerId;
         pad.setPointerCapture?.(event.pointerId);
@@ -1899,7 +2026,7 @@ export class AtlasApp {
 
   private updateCityWaypoint(player: AtlasCityPlayerState, target: readonly [number, number, number]): void {
     if (!this.cityWaypointLabel || !this.cityWaypointDistance) return;
-    const guidance = getAtlasWaypointGuidance(player, { x: target[0], z: target[2] });
+    const guidance = getAtlasWaypointGuidance({ ...player, headingRadians: player.cameraHeadingRadians }, { x: target[0], z: target[2] });
     this.cityWaypointLabel.textContent = `${guidance.arrow} ${guidance.direction === 'ready' ? 'ACT NOW' : guidance.direction.toUpperCase()}`;
     this.cityWaypointDistance.textContent = guidance.direction === 'ready' ? 'WITHIN REACH' : `${guidance.distanceMeters.toFixed(1)}M AWAY`;
     this.cityWaypointLabel.dataset.direction = guidance.direction;
@@ -1913,6 +2040,7 @@ export class AtlasApp {
    * exists to prove the player found the joystick.
    */
   private observeTutorial(player: AtlasCityPlayerState | undefined): void {
+    if (this.routeRun && this.screen === 'beacon-commons') return;
     if (!player || this.tutorial.isComplete()) return;
     if (!this.tutorialOrigin) this.tutorialOrigin = { x: player.x, z: player.z };
     const guide = this.beaconScene?.anchors.find((anchor) => anchor.id === 'mission-guide');

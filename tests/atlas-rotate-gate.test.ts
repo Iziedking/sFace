@@ -7,9 +7,9 @@ const gate = readFileSync(new URL('../src/atlas/ui/shell/rotate-gate.ts', import
 const sheet = readFileSync(new URL('../src/atlas/ui/shell/kit.css', import.meta.url), 'utf8');
 
 describe('Landscape gate', () => {
-  it('gates the city, where the thumbs crowd the play area', () => {
-    expect(screenNeedsLandscape('beacon-commons')).toBe(true);
-    expect(screenNeedsLandscape('pay-harbor')).toBe(true);
+  it('allows both city districts to play portrait-first', () => {
+    expect(screenNeedsLandscape('beacon-commons')).toBe(false);
+    expect(screenNeedsLandscape('pay-harbor')).toBe(false);
   });
 
   it('leaves every reading surface alone', () => {
@@ -24,7 +24,7 @@ describe('Landscape gate', () => {
   });
 
   it('only gates while the phone is upright', () => {
-    expect(shouldGateForLandscape('beacon-commons', true)).toBe(true);
+    expect(shouldGateForLandscape('beacon-commons', true)).toBe(false);
     expect(shouldGateForLandscape('beacon-commons', false)).toBe(false);
     expect(shouldGateForLandscape('welcome', true)).toBe(false);
   });

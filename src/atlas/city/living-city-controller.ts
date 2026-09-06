@@ -21,6 +21,7 @@ export interface AtlasLivingCityRenderer {
   render(snapshot: AtlasLivingWorldSnapshot, crowd?: readonly AtlasCitizenPresentation[], player?: AtlasCityPlayerState, interaction?: AtlasCityInteractionPresentation): void;
   resize(width: number, height: number, resolution: number): void;
   setQuality?(tier: 'low' | 'balanced' | 'high'): void;
+  setReducedMotion?(reduced: boolean): void;
   setPlayerRole?(role: 'explorer' | 'builder'): void;
   stats?(): { readonly drawCalls: number; readonly triangles: number };
   destroy(): Promise<void>;
@@ -68,6 +69,7 @@ export class AtlasLivingCityController {
   private frameHandle: number | null = null;
   private currentDistrict: string | null = null;
   private destroyed = false;
+  private paused = false;
   private playerRole: 'explorer' | 'builder' = 'explorer';
   private snapshot: AtlasLivingWorldSnapshot | null = null;
   private lastFrameTimestamp: number | null = null;
@@ -92,9 +94,23 @@ export class AtlasLivingCityController {
   }
 
   start(): void {
-    if (this.destroyed || this.frameHandle !== null) return;
+    if (this.destroyed || this.paused || this.frameHandle !== null) return;
     this.lastFrameTimestamp = null;
     this.frameHandle = this.frameLoop.request(this.frame);
+  }
+
+  pause(): void {
+    if (this.destroyed || this.paused) return;
+    this.paused = true;
+    if (this.frameHandle !== null) this.frameLoop.cancel(this.frameHandle);
+    this.frameHandle = null;
+    this.lastFrameTimestamp = null;
+  }
+
+  resume(): void {
+    if (this.destroyed || !this.paused) return;
+    this.paused = false;
+    this.start();
   }
 
   async activateDistrict(districtId: string): Promise<void> {
@@ -108,6 +124,7 @@ export class AtlasLivingCityController {
 
   present(snapshot: AtlasLivingWorldSnapshot, daySeed: string = this.options.daySeed ?? 'day-0'): void {
     if (this.destroyed) return;
+    if (this.snapshot?.districtId !== snapshot.districtId) this.missionProgress = { reachedNeed: false, attempted: false, evidenceGathered: false, installed: false, taughtBack: false };
     this.snapshot = snapshot;
     this.daySeed = daySeed;
     this.refreshCrowd(snapshot.simulation.tick);
@@ -145,6 +162,10 @@ export class AtlasLivingCityController {
   setInteractionPresentation(presentation: AtlasCityInteractionPresentation | undefined): void {
     if (this.destroyed) return;
     this.interactionPresentation = presentation;
+  }
+
+  setReducedMotion(reduced: boolean): void {
+    this.options.renderer.setReducedMotion?.(reduced);
   }
 
   /*
@@ -231,7 +252,7 @@ export class AtlasLivingCityController {
 
   private frame = (timestamp: number): void => {
     this.frameHandle = null;
-    if (this.destroyed) return;
+    if (this.destroyed || this.paused) return;
     const elapsedMilliseconds = this.lastFrameTimestamp === null ? 0 : Math.max(0, timestamp - this.lastFrameTimestamp);
     // Returning from a suspended WebView is not a slow rendering sample.
     if (this.lastFrameTimestamp !== null && elapsedMilliseconds <= 250) this.recordFrameTime(elapsedMilliseconds);
