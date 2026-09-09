@@ -157,3 +157,13 @@ PLAN-CYCLE-*.md
 # .gitignore. That is luck, not a rule, so the exception below makes it a rule.
 .env*
 !.env.example
+
+# Local-only research, runtime exports, and character preview variants.
+HACKATHON_RESEARCH.md
+data/
+art/atlas/characters/atlas-walker-v1/preview-front.png
+art/atlas/characters/atlas-walker-v1/preview-turntable.png
+
+# Internal agent/workspace state. Keep product source and public documentation tracked.
+.codex/
+.agents/
