@@ -3,7 +3,7 @@ import type { AtlasRestorationState } from '../living-world';
 import type { AtlasMissionProgress } from '../mission-director';
 
 export type RouteStage = 'arrive' | 'request' | 'signal' | 'refused' | 'evidence' | 'verified' | 'restored' | 'complete';
-export type RouteAction = 'talk' | 'check-recipient' | 'check-amount' | 'check-block' | 'approve-practice' | 'try-signal' | 'follow-trail' | 'follow-stale-trail' | 'investigate' | 'weak-evidence' | 'reorg-evidence' | 'match-evidence' | 'install' | 'wrong-answer' | 'teach-back' | 'next';
+export type RouteAction = 'talk' | 'check-recipient' | 'check-amount' | 'check-block' | 'approve-practice' | 'try-signal' | 'follow-trail' | 'follow-stale-trail' | 'compare-requests' | 'investigate' | 'weak-evidence' | 'reorg-evidence' | 'match-evidence' | 'install' | 'wrong-answer' | 'teach-back' | 'next';
 export interface RouteRun {
   readonly version: 1;
   readonly role: 'explorer' | 'builder';
@@ -13,6 +13,8 @@ export interface RouteRun {
   readonly amountChecked: boolean;
   readonly blockChecked: boolean;
   readonly trailNode: 0 | 1 | 2 | 3;
+  readonly duplicateReviewed: boolean;
+  readonly duplicateRejected: boolean;
   readonly notice: string;
   readonly actions: readonly RouteAction[];
 }
@@ -20,7 +22,7 @@ export interface RouteRun {
 // This ledger is deliberately local practice. It cannot produce a payment
 // receipt, competitive score, reward entitlement or wallet request.
 export function createRouteRun(role: RouteRun['role']): RouteRun {
-  return { version: 1, role, chapter: 0, stage: 'arrive', recipientChecked: false, amountChecked: false, blockChecked: false, trailNode: 0, notice: '', actions: [] };
+  return { version: 1, role, chapter: 0, stage: 'arrive', recipientChecked: false, amountChecked: false, blockChecked: false, trailNode: 0, duplicateReviewed: false, duplicateRejected: false, notice: '', actions: [] };
 }
 
 export const ROUTE_LESSONS = [
@@ -82,20 +84,31 @@ export function stepRouteRun(run: RouteRun, action: RouteAction): RouteRun {
       }
       break;
     case 'follow-stale-trail': if (at('signal') && run.chapter === 1) change = { notice: 'That branch is cached. Return to the bright signal and follow the fresh view in order.' }; break;
+    case 'compare-requests': if (at('signal') && run.chapter === 2) change = { stage: 'evidence', duplicateReviewed: true, notice: 'Two lantern requests share a story. Compare the exact recipient, amount and network before releasing one.' }; break;
     case 'investigate': if (at('refused')) change = { stage: 'evidence' }; break;
     case 'weak-evidence': if (at('evidence')) change = { notice: 'Route stays closed: this message makes a claim, but it does not prove the payment.' }; break;
-    case 'reorg-evidence': if (at('evidence')) change = { notice: 'Old record rejected: the practice network changed, so this record is no longer current. Compare the records again.' }; break;
-    case 'match-evidence': if (at('evidence')) change = { stage: 'verified', notice: 'Payment proof accepted. Carry the checked result to the route gate.' }; break;
+    case 'reorg-evidence':
+      if (at('evidence')) change = run.chapter === 2
+        ? { duplicateRejected: true, notice: 'Duplicate request blocked. One lantern, one exact request. Now accept the original only.' }
+        : { notice: 'Old record rejected: the practice network changed, so this record is no longer current. Compare the records again.' };
+      break;
+    case 'match-evidence':
+      if (at('evidence')) change = run.chapter === 2 && !run.duplicateReviewed
+        ? { notice: 'Compare both lantern requests before accepting either one.' }
+        : run.chapter === 2 && !run.duplicateRejected
+          ? { notice: 'Reject the duplicate request first. The exact request is safe only after the replay is blocked.' }
+          : { stage: 'verified', notice: 'Payment proof accepted. Carry the checked result to the route gate.' };
+      break;
     case 'install': if (at('verified')) change = { stage: 'restored', notice: routeLesson(run).result }; break;
     case 'wrong-answer': if (at('restored')) change = { notice: 'Think about what the first signal could not prove. Try again; the restored route stays safe.' }; break;
     case 'teach-back': if (at('restored')) change = { stage: 'complete', notice: 'Lesson remembered locally. No NIM sent or reward claimed.' }; break;
-    case 'next': if (at('complete') && run.chapter < ROUTE_LESSONS.length - 1) change = { chapter: run.chapter + 1, stage: 'arrive', recipientChecked: false, amountChecked: false, blockChecked: false, trailNode: 0 }; break;
+    case 'next': if (at('complete') && run.chapter < ROUTE_LESSONS.length - 1) change = { chapter: run.chapter + 1, stage: 'arrive', recipientChecked: false, amountChecked: false, blockChecked: false, trailNode: 0, duplicateReviewed: false, duplicateRejected: false }; break;
   }
   if (!change) return run;
   // Keep progression plus the current retry notice, not an unbounded mistake
   // counter. Learners can retry forever without exhausting their saved journal.
   const last = run.actions[run.actions.length - 1];
-  const retry = last === 'weak-evidence' || last === 'reorg-evidence' || last === 'wrong-answer' || last === 'follow-stale-trail'
+  const retry = last === 'weak-evidence' || (last === 'reorg-evidence' && run.chapter !== 2) || last === 'wrong-answer' || last === 'follow-stale-trail'
     || (last === 'approve-practice' && run.stage === 'request');
   const history = retry ? run.actions.slice(0, -1) : run.actions;
   const repeatedCheck = (action === 'check-recipient' && run.recipientChecked)

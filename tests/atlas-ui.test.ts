@@ -83,6 +83,15 @@ describe('NIM Atlas public first district UI', () => {
     expect(routeUi).toContain('CHASE THE STALE TRAIL');
   });
 
+  it('turns Pay Harbor into a duplicate-request investigation', () => {
+    const app = readFileSync(new URL('../src/atlas/app/atlas-app.ts', import.meta.url), 'utf8');
+    const routeUi = readFileSync(new URL('../src/atlas/ui/route-rescue.ts', import.meta.url), 'utf8');
+    expect(app).toContain('DUPLICATE REQUEST / PAY HARBOR');
+    expect(routeUi).toContain('COMPARE THE TWO LANTERN REQUESTS');
+    expect(routeUi).toContain('REJECT THE DUPLICATE');
+    expect(routeUi).toContain('ACCEPT THE EXACT REQUEST');
+  });
+
   it('uses the living 3D city as the landing backdrop and keeps onboarding to one clear run', () => {
     const app = readFileSync(new URL('../src/atlas/app/atlas-app.ts', import.meta.url), 'utf8');
     const landingStart = app.indexOf('private renderWelcome');

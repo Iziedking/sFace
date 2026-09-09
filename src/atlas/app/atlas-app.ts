@@ -606,7 +606,7 @@ export class AtlasApp {
     movement.append(accessibleDirections);
     const actions = element('div', 'atlas-actions');
     actions.append(this.createCitySprint());
-    const routeAction = this.routeRun?.stage === 'arrive' ? 'Talk' : this.routeRun?.stage === 'evidence' ? 'Inspect' : this.routeRun?.stage === 'verified' ? 'Install' : this.routeRun?.stage === 'complete' ? 'Travel' : this.routeRun?.chapter === 1 && this.routeRun?.stage === 'signal' ? 'Follow trail' : 'Mission';
+    const routeAction = this.routeRun?.stage === 'arrive' ? 'Talk' : this.routeRun?.stage === 'evidence' ? 'Inspect' : this.routeRun?.stage === 'verified' ? 'Install' : this.routeRun?.stage === 'complete' ? 'Travel' : this.routeRun?.chapter === 1 && this.routeRun?.stage === 'signal' ? 'Follow trail' : this.routeRun?.chapter === 2 && this.routeRun?.stage === 'signal' ? 'Compare requests' : 'Mission';
     const interact = actionButton(
       this.routeRun ? routeAction : this.cityQuestStep === 'meet-guide' ? 'Talk' : 'Travel',
       this.routeRun ? this.interactRoute : this.cityQuestStep === 'meet-guide' ? this.interactWithCommonsGuide : this.travelToPayHarbor,
@@ -671,7 +671,7 @@ export class AtlasApp {
     const refusal = action === 'try-signal' || action === 'follow-stale-trail' || action === 'weak-evidence' || action === 'reorg-evidence' || action === 'wrong-answer';
     this.audio.playWorldCue(refusal ? 'route-refused' : action === 'match-evidence' ? 'route-evidence' : action === 'install' ? 'route-repaired' : action === 'teach-back' ? 'route-complete' : 'city-interaction');
     if (action === 'install') {
-      const chapter = next.chapter === 0 ? getAtlasStoryChapter('genesis-garden') : next.chapter === 1 ? getAtlasStoryChapter('light-forest') : undefined;
+      const chapter = next.chapter === 0 ? getAtlasStoryChapter('genesis-garden') : next.chapter === 1 ? getAtlasStoryChapter('light-forest') : next.chapter === 2 ? getAtlasStoryChapter('pay-harbor') : undefined;
       if (chapter) this.audio.narrateLine(chapter.voice.completion);
       else this.audio.narrate(`Practice route restored. ${routeLesson(next).result}`);
     }
@@ -2334,8 +2334,21 @@ function routeObjective(run: RouteRun): { depth: 'glance'; objective: string; de
       complete: { objective: 'FOREST RELAY RESTORED', detail: 'The clinic path is lit. Continue toward Pay Harbor.' },
     };
      return { depth: 'glance', ...stages[run.stage], status: 'FRESH VIEW / LIGHT FOREST / CHAPTER 2 / PRACTICE MODE' };
-  }
-  return {
+   }
+   if (run.chapter === 2) {
+     const stages: Record<RouteRun['stage'], { objective: string; detail: string }> = {
+       arrive: { objective: 'FIND IVO / PAY HARBOR', detail: 'Two lantern requests are waiting. Move to Ivo and open the harbor ledger.' },
+       request: { objective: 'READ BOTH REQUESTS', detail: 'Open the original and the replay before releasing a lantern.' },
+       signal: { objective: 'COMPARE THE TWO REQUESTS', detail: 'One request is exact. One is a duplicate with a changed route.' },
+       refused: { objective: 'FIND THE CURRENT RECORD', detail: 'The harbor needs evidence before it releases cargo.' },
+       evidence: { objective: run.duplicateRejected ? 'ACCEPT THE EXACT REQUEST' : 'REJECT THE DUPLICATE', detail: run.duplicateRejected ? 'Release one lantern from the original request only.' : 'Block the replay first, then review the original again.' },
+       verified: { objective: 'DELIVER ONE VERIFIED LANTERN', detail: 'Carry the checked request to the harbor tower.' },
+       restored: { objective: 'REOPEN THE NIGHT HARBOR', detail: 'Release one lantern and keep the duplicate closed.' },
+       complete: { objective: 'PAY HARBOR RESTORED', detail: 'One exact request reopened the harbor. Continue toward Albatross Causeway.' },
+     };
+     return { depth: 'glance', ...stages[run.stage], status: 'DUPLICATE REQUEST / PAY HARBOR / CHAPTER 3 / PRACTICE MODE' };
+   }
+   return {
     depth: 'glance',
     objective: `${routeLesson(run).name.toUpperCase()} / ${run.stage.toUpperCase()}`,
     detail: routeLesson(run).need,

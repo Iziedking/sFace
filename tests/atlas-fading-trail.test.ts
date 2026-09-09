@@ -33,4 +33,16 @@ describe('Light Forest fading trail', () => {
     expect(run.notice).toContain('provider, consensus and latest block');
     expect(stepRouteRun(createRouteRun('explorer'), 'follow-trail')).toEqual(createRouteRun('explorer'));
   });
+
+  it('makes Pay Harbor reject a duplicate before accepting the exact lantern request', () => {
+    const genesis = ['talk', 'check-recipient', 'check-amount', 'approve-practice', 'try-signal', 'investigate', 'match-evidence', 'install', 'teach-back', 'next'] as const;
+    const forest = ['talk', 'check-recipient', 'check-amount', 'check-block', 'approve-practice', 'follow-trail', 'follow-trail', 'follow-trail', 'match-evidence', 'install', 'teach-back', 'next'] as const;
+    let run = replayRouteRun('explorer', [...genesis, ...forest, 'talk', 'check-recipient', 'check-amount', 'approve-practice', 'compare-requests']);
+    expect(run).toMatchObject({ chapter: 2, stage: 'evidence', duplicateReviewed: true, duplicateRejected: false });
+    expect(stepRouteRun(run, 'match-evidence')).toMatchObject({ stage: 'evidence', duplicateRejected: false });
+    run = stepRouteRun(run, 'reorg-evidence');
+    expect(run).toMatchObject({ stage: 'evidence', duplicateRejected: true });
+    run = stepRouteRun(run, 'match-evidence');
+    expect(run.stage).toBe('verified');
+  });
 });
