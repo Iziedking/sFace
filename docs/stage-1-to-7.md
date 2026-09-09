@@ -1,5 +1,9 @@
 # The stages explained
 
+Status: historical Cycle I market game. These stages are not the current NIM
+Atlas curriculum. Use [How to play NIM Atlas](nim-atlas-how-to-play.md) for the
+current player loop.
+
 Seven stages. Early testers said they felt like one run with a different
 backdrop, which was fair at the time. Each one now asks for something the others
 do not, and this page covers what each one is and how to pass it.

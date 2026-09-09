@@ -51,11 +51,11 @@ describe('NIM Atlas clarity pass', () => {
     expect(css).toContain('.atlas-how-to-play');
     expect(css).toContain('.atlas-snapshot-grid');
     expect(css).toContain('min-height: 44px');
-    expect(readme).toContain('How to play NIM Atlas');
+    expect(readme).toContain('## The player loop');
     expect(readme).toContain('atlas-390-pay-harbor.png');
-    expect(guideDoc).toContain('# NIM Atlas: how to play');
-    expect(guideDoc).toContain('Choose → Walk → Learn → Change');
-    expect(guideDoc).toContain('atlas-430-payment-review.png');
+    expect(guideDoc).toContain('# How to play NIM Atlas');
+    expect(guideDoc).toContain('Ask');
+    expect(guideDoc).toContain('atlas-390-payment-review.png');
   });
 
   it('keeps captured product snapshots available to the built app', () => {

@@ -1,87 +1,77 @@
 [
   {
-    "name": "opening",
-    "caption": "Every visit opens here. Tapping starts the story, and unlocks the voice.",
-    "view": "wide"
+    "name": "atlas-390-welcome",
+    "caption": "The first decision: choose Explorer or Builder, then start the 60-second route to Mara.",
+    "view": "390x844"
   },
   {
-    "name": "home-wallet",
-    "caption": "Inside Nimiq Pay, landscape, with the wallet’s own header above.",
-    "view": "wallet"
+    "name": "atlas-390-pay-harbor",
+    "caption": "Mara explains the problem before the player sees a payment control.",
+    "view": "390x844"
   },
   {
-    "name": "home",
-    "caption": "The front door: today’s coin, its move, and the ways in.",
-    "view": "wide"
+    "name": "atlas-390-payment-review",
+    "caption": "The exact practice request: network, recipient, and integer Lunas before approval.",
+    "view": "390x844"
   },
   {
-    "name": "home-phone",
-    "caption": "The same screen on a phone, which is where the mini app lives.",
-    "view": "phone"
+    "name": "atlas-390-beacon-commons",
+    "caption": "Beacon Commons: the player, route marker, residents, city map, and next-target distance.",
+    "view": "390x844"
   },
   {
-    "name": "chart-run",
-    "caption": "Stage one. The ground is today’s real 24 hour chart.",
-    "view": "wide"
+    "name": "atlas-390-daily",
+    "caption": "Daily Atlas turns one Nimiq lesson into a date-based field puzzle.",
+    "view": "390x844"
   },
   {
-    "name": "city",
-    "caption": "Stage five leaves the chart for streets built from the day’s bars.",
-    "view": "wide"
+    "name": "atlas-390-district-atlas",
+    "caption": "District Atlas lays out the curriculum route and its current chapter.",
+    "view": "390x844"
   },
   {
-    "name": "rings",
-    "caption": "Stage seven: concentric walls around a core, worked inward.",
-    "view": "wide"
+    "name": "atlas-390-core-run",
+    "caption": "The Core Run records a fixed action sequence and labels local completion separately from server verification.",
+    "view": "390x844"
   },
   {
-    "name": "rings-wallet",
-    "caption": "On a phone in Nimiq Pay. Stage seven: concentric walls around a core, worked inward.",
-    "view": "wallet"
+    "name": "atlas-320-welcome",
+    "caption": "The welcome screen at the narrow mobile viewport.",
+    "view": "320x700"
   },
   {
-    "name": "guide-panel",
-    "caption": "Stage six. Four posts that genuinely went out, one explains the day.",
-    "view": "wallet"
+    "name": "atlas-320-how-to-play",
+    "caption": "The How to play page remains inside the narrow viewport.",
+    "view": "320x700"
   },
   {
-    "name": "guide-pads",
-    "caption": "The fixed pads: stick, fire, and your four buys on the arc.",
-    "view": "wallet"
+    "name": "atlas-320-pay-harbor",
+    "caption": "Mara's payment story at the narrow mobile viewport.",
+    "view": "320x700"
   },
   {
-    "name": "ending",
-    "caption": "Clearing the campaign: the day you flew, against everything before it.",
-    "view": "wide"
+    "name": "atlas-320-payment-review",
+    "caption": "The payment review card at the narrow mobile viewport.",
+    "view": "320x700"
   },
   {
-    "name": "docs",
-    "caption": "In-app documentation, reachable from the footer on every screen.",
-    "view": "wide"
+    "name": "atlas-430-welcome",
+    "caption": "The welcome screen at the wide mobile viewport.",
+    "view": "430x932"
   },
   {
-    "name": "how-to-play",
-    "caption": "The guide, written for a thumb first.",
-    "view": "phone"
+    "name": "atlas-430-how-to-play",
+    "caption": "The How to play page at the wide mobile viewport.",
+    "view": "430x932"
   },
   {
-    "name": "controls",
-    "caption": "Three control schemes, all live at once. This only picks the listener.",
-    "view": "phone"
+    "name": "atlas-430-pay-harbor",
+    "caption": "Mara's payment story at the wide mobile viewport.",
+    "view": "430x932"
   },
   {
-    "name": "testnet",
-    "caption": "On testnet, the faucet claim lives in the app rather than behind a link.",
-    "view": "phone"
-  },
-  {
-    "name": "room",
-    "caption": "The room: everybody playing today, in one place. Your messages sit on the right and everybody else's on the left, a reply quotes what it answers, and a burst from one person reads as one turn.",
-    "view": "phone"
-  },
-  {
-    "name": "room-tip",
-    "caption": "A run posted into the room, with a reply to the reader marked in accent below it. The score is read off the board rather than carried by the message, and the tip goes to a wallet the service proved from a signature.",
-    "view": "phone"
+    "name": "atlas-430-payment-review",
+    "caption": "The payment review card at the wide mobile viewport.",
+    "view": "430x932"
   }
 ]

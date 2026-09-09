@@ -1,5 +1,22 @@
 # Product feedback: Nimiq Pay Mini App SDK
 
+Status: historical implementation notes. Current product state is in [NIM Atlas current state](nim-atlas-current-state.md).
+
+## Current Atlas notes
+
+- Practice mode is the default and does not call the wallet.
+- The live payment seam remains explicit: review, approve, observe, reconcile,
+  and fulfil once.
+- A provider callback or transaction hash is still a lookup result, not chain
+  proof.
+- The current client uses a full-screen Beacon Commons scene with route
+  guidance, camera input, colliders, NPC motion, and a mobile fallback path.
+- The current generated visual evidence is produced by
+  `scripts/shoot-atlas.mjs` and lives in `docs/shots`.
+
+The sections below preserve the older SDK investigation. They explain why the
+current payment and custody boundaries are narrow.
+
 Written while building sFace against `@nimiq/mini-app-sdk@0.1.0`. Each item below
 is something we ran into, with the exact SDK surface involved and what we did
 instead. They are ordered by how much they cost us.

@@ -7,7 +7,10 @@ import { join } from 'node:path';
 const origin = process.env.SHOOT_ORIGIN ?? 'http://127.0.0.1:4173';
 const out = join(process.cwd(), 'docs', 'shots');
 const publicOut = join(process.cwd(), 'public', 'atlas', 'screenshots');
-const profile = process.env.ATLAS_SHOOT_PROFILE ?? join(process.cwd(), '.atlas-shoot-profile');
+// A stale profile lock makes evidence generation fail before the browser opens.
+// Use a process-scoped profile by default; operators can still provide a fixed
+// path when they need to inspect a browser session after a run.
+const profile = process.env.ATLAS_SHOOT_PROFILE ?? join(process.cwd(), `.atlas-shoot-profile-${process.pid}`);
 const port = 9334;
 const viewports = [
   { name: '320', width: 320, height: 700 },
@@ -53,11 +56,26 @@ try {
      * the capture asks for the screen instead of trying to play the game.
      */
     await openLantern(cdp);
+    await waitForText(cdp, 'Mara');
     await capture(cdp, `${viewport.name}-pay-harbor`);
-    await clickText(cdp, 'Enter Pay Harbor shop');
-    await clickText(cdp, 'Inspect the harbor lantern');
-    await clickText(cdp, 'Review payment request');
+    await openCapture(cdp, 'openPaymentReviewForCapture');
+    await waitForText(cdp, 'NETWORK');
     await capture(cdp, `${viewport.name}-payment-review`);
+    if (viewport.name === '390') {
+      await openCapture(cdp, 'openBeaconCommonsForCapture');
+      await waitForText(cdp, 'ACTIVE');
+      await waitForCanvas(cdp);
+      await capture(cdp, '390-beacon-commons');
+      await openCapture(cdp, 'openDailyForCapture');
+      await waitForText(cdp, 'DAILY ATLAS PUZZLE');
+      await capture(cdp, '390-daily');
+      await openCapture(cdp, 'openDistrictAtlasForCapture');
+      await waitForText(cdp, 'DISTRICT ATLAS / EVERGREEN ADVENTURES');
+      await capture(cdp, '390-district-atlas');
+      await openCapture(cdp, 'openCoreRunForCapture');
+      await waitForText(cdp, 'VERIFIED CORE RUN / GENESIS GARDEN');
+      await capture(cdp, '390-core-run');
+    }
     console.log(`captured Atlas ${viewport.width}x${viewport.height}`);
   }
 
@@ -68,9 +86,38 @@ try {
 }
 
 async function openLantern(cdp) {
+  // The capture profile is reused between runs. Clear local mission progress
+  // so this evidence always starts at the same reviewable first scene.
+  await cdp.eval('localStorage.clear()');
   const opened = await cdp.eval('(() => { const app = window.atlasCapture; if (!app) return false; app.openLanternForCapture(); return true; })()');
   if (!opened) throw new Error('Atlas capture hook missing: load the page with ?capture=1.');
   await wait(200);
+}
+
+async function openCapture(cdp, method) {
+  const opened = await cdp.eval(`(() => { const app = window.atlasCapture; if (!app || typeof app.${method} !== 'function') return false; app.${method}(); return true; })()`);
+  if (!opened) throw new Error(`Atlas capture hook missing: ${method}`);
+  await wait(200);
+}
+
+async function waitForText(cdp, text, timeoutMs = 15_000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const visible = await cdp.eval(`(() => [...document.querySelectorAll('body *')].some((item) => item.textContent?.includes(${JSON.stringify(text)})))()`);
+    if (visible) return;
+    if (Date.now() > deadline) throw new Error(`Atlas capture could not find text after ${timeoutMs} ms: ${text}`);
+    await wait(150);
+  }
+}
+
+async function waitForCanvas(cdp, timeoutMs = 15_000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const ready = await cdp.eval('(() => [...document.querySelectorAll("canvas")].some((canvas) => canvas.width > 0 && canvas.height > 0 && canvas.getBoundingClientRect().width > 0))()');
+    if (ready) return;
+    if (Date.now() > deadline) throw new Error(`Atlas capture canvas did not become visible after ${timeoutMs} ms`);
+    await wait(150);
+  }
 }
 
 async function capture(cdp, name) {
@@ -94,7 +141,10 @@ async function clickText(cdp, text, timeoutMs = 15_000) {
   for (;;) {
     const clicked = await cdp.eval(`(() => { const button = [...document.querySelectorAll('button')].find((item) => item.textContent.trim() === ${JSON.stringify(text)}); if (!button) return false; button.click(); return true; })()`);
     if (clicked) break;
-    if (Date.now() > deadline) throw new Error(`Atlas capture could not find button after ${timeoutMs} ms: ${text}`);
+    if (Date.now() > deadline) {
+      const buttons = await cdp.eval('(() => [...document.querySelectorAll(\'button\')].map((item) => item.textContent?.trim()).filter(Boolean))()');
+      throw new Error(`Atlas capture could not find button after ${timeoutMs} ms: ${text}. Buttons: ${buttons.join(' | ')}`);
+    }
     await wait(150);
   }
   await wait(120);

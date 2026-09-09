@@ -64,8 +64,8 @@ describe('NIM Atlas release-quality UI contract', () => {
   });
 
   it('introduces the shipped NIM Atlas product before archived Cycle I history', () => {
-    const firstSection = readme.slice(0, readme.indexOf('## Historical'));
-    expect(firstSection).toContain('Sface is a Nimiq Pay Mini App game');
-    expect(firstSection).not.toContain("Crypto's down. Somebody has to save face.");
+    const firstSection = readme.slice(0, readme.indexOf('## The player loop'));
+    expect(firstSection).toContain('Sface is a Nimiq Pay Mini App game.');
+    expect(firstSection).toContain('NIM Atlas is the game inside it.');
   });
 });

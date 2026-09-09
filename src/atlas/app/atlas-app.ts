@@ -1284,6 +1284,36 @@ export class AtlasApp {
     this.startLantern();
   }
 
+  openPaymentReviewForCapture(): void {
+    this.startLantern();
+    this.maraConversation = null;
+    this.lanternState = createLastLanternState(this.selectedRole, 'practice');
+    const request = this.currentLanternRequest();
+    replayLastLantern([
+      { type: 'enter-shop' },
+      { type: 'select-lantern' },
+      { type: 'review-request', request },
+    ], this.lanternState);
+    this.audio.setState({ phase: this.lanternState.phase });
+    this.renderLantern();
+  }
+
+  openBeaconCommonsForCapture(): void {
+    this.openBeaconCommons();
+  }
+
+  openDailyForCapture(): void {
+    this.openDailyPuzzle();
+  }
+
+  openDistrictAtlasForCapture(): void {
+    this.openEvergreen();
+  }
+
+  openCoreRunForCapture(): void {
+    this.openCoreRun();
+  }
+
   private startLantern = (): void => {
     void this.stopLivingCity();
     this.canvas.hidden = false;

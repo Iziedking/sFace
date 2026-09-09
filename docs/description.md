@@ -1,30 +1,20 @@
-# Submission description
+NIM Atlas is a Nimiq Pay Mini App game about repairing a payment route.
 
-Paste into the portal. Under the 250 word limit.
+You enter Beacon Commons, meet residents with broken network problems, and
+learn Nimiq by solving those problems in the city. Explorer follows a payment
+from request to confirmation. Builder repairs the provider path and predicts
+what the network should return. The same route teaches the difference between
+asking, approving, and proving.
 
----
+The first mission is The Last Lantern. Mara's harbor shop is closed because
+one payment route cannot be trusted. Review the network, recipient, and exact
+amount. Then find the matching evidence and carry the lantern to the tower.
+Practice mode uses a local fixture, so the game is playable without a wallet
+and does not send NIM.
 
-sFace is a crypto rescue game where the market and crypto Twitter create the
-gameplay. Every day the worst-performing coin in the top 100 becomes the level.
-Its real 24-hour price chart is the ground you fly over, the Fear and Greed index
-sets the difficulty, and the people trapped in the wreck are the accounts crypto X
-spent that day arguing about. The level is generated from live data at midnight
-UTC, so stage 1 to 7 is never the same mission twice.
+The game also includes a daily field puzzle, a Living Knowledge Book, a
+replayable District Atlas curriculum, and a deterministic Verified Core Run.
+Optional competitive and reward paths stay behind server and owner gates.
 
-Seven stages, each asking for something different. Fly the chart. Stay unseen.
-Drive through a city built from the same price data drawn as bars. Read four posts
-that went out today and pick the one that explains the day. Then work inward
-through a ring city where no weapon opens a gate and the answer is the only key.
-
-Players who follow the market have an advantage. If you know how the majors moved
-today, you can answer a gate on sight.
-
-Nimiq Pay handles identity and money. Your wallet signs each score over the date,
-seed, stage and number. The service verifies the Ed25519 signature and derives the
-address from the public key, so a leaderboard row belongs to a wallet rather than a
-device id anyone can regenerate. Every row publishes its signature so anyone can
-check it. Challenges are staked in NIM and settle wallet to wallet. sFace never
-holds funds.
-
-Scores are checked by rebuilding the level from its seed. Nothing that helps you is
-for sale.
+NIM Atlas makes Lunas concrete: 1 NIM is 100,000 Lunas, and the practice
+lantern costs 10,000 Lunas, or 0.1 NIM.

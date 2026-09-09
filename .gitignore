@@ -65,6 +65,23 @@ docs/shots/
 # written by hand.
 !docs/nim-atlas-how-to-play.md
 
+# Current NIM Atlas release docs and generated screenshots are public evidence.
+# The older Cycle I plans remain ignored or explicitly marked historical, but
+# these files are linked from the current README and must travel with it.
+!docs/README.md
+!docs/nim-atlas-current-state.md
+!docs/nim-atlas-architecture.md
+!docs/deploy.md
+!docs/submission.md
+!docs/privacy.md
+!docs/marketing.md
+!docs/submit/
+docs/submit/*
+!docs/submit/*.md
+!docs/shots/
+!docs/shots/*.png
+!docs/shots/captions.json
+
 # Editor and OS noise.
 .DS_Store
 Thumbs.db
@@ -114,6 +131,7 @@ id_rsa*
 # full of cache nobody wants in a diff.
 .shoot-profile/
 .atlas-shoot-profile/
+.atlas-shoot-profile-*/
 .atlas-measure-profile/
 .atlas-contrast-profile/
 
