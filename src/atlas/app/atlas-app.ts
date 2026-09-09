@@ -606,7 +606,7 @@ export class AtlasApp {
     movement.append(accessibleDirections);
     const actions = element('div', 'atlas-actions');
     actions.append(this.createCitySprint());
-    const routeAction = this.routeRun?.stage === 'arrive' ? 'Talk' : this.routeRun?.stage === 'evidence' ? 'Inspect' : this.routeRun?.stage === 'verified' ? 'Install' : this.routeRun?.stage === 'complete' ? 'Travel' : this.routeRun?.chapter === 1 && this.routeRun?.stage === 'signal' ? 'Follow trail' : this.routeRun?.chapter === 2 && this.routeRun?.stage === 'signal' ? 'Compare requests' : this.routeRun?.chapter === 3 && this.routeRun?.stage === 'signal' ? 'Advance receipt' : this.routeRun?.chapter === 4 && this.routeRun?.stage === 'signal' ? 'Check validator' : 'Mission';
+    const routeAction = this.routeRun?.stage === 'arrive' ? 'Talk' : this.routeRun?.stage === 'evidence' ? 'Inspect' : this.routeRun?.stage === 'verified' ? 'Install' : this.routeRun?.stage === 'complete' ? 'Travel' : this.routeRun?.chapter === 1 && this.routeRun?.stage === 'signal' ? 'Follow trail' : this.routeRun?.chapter === 2 && this.routeRun?.stage === 'signal' ? 'Compare requests' : this.routeRun?.chapter === 3 && this.routeRun?.stage === 'signal' ? 'Advance receipt' : this.routeRun?.chapter === 4 && this.routeRun?.stage === 'signal' ? 'Check validator' : this.routeRun?.chapter === 5 && this.routeRun?.stage === 'signal' ? 'Verify server' : 'Mission';
     const interact = actionButton(
       this.routeRun ? routeAction : this.cityQuestStep === 'meet-guide' ? 'Talk' : 'Travel',
       this.routeRun ? this.interactRoute : this.cityQuestStep === 'meet-guide' ? this.interactWithCommonsGuide : this.travelToPayHarbor,
@@ -668,10 +668,10 @@ export class AtlasApp {
     catch { this.routeFeed.push('Local saving unavailable. Keep this tab open to continue.'); }
     if (next.notice) this.routeFeed.push(next.notice);
     if (this.routeFeed.length > 3) this.routeFeed.splice(0, this.routeFeed.length - 3);
-    const refusal = action === 'try-signal' || action === 'follow-stale-trail' || action === 'trust-early-receipt' || action === 'trust-single-validator' || action === 'weak-evidence' || action === 'reorg-evidence' || action === 'wrong-answer';
+    const refusal = action === 'try-signal' || action === 'follow-stale-trail' || action === 'trust-early-receipt' || action === 'trust-single-validator' || action === 'trust-browser' || action === 'weak-evidence' || action === 'reorg-evidence' || action === 'wrong-answer';
     this.audio.playWorldCue(refusal ? 'route-refused' : action === 'match-evidence' ? 'route-evidence' : action === 'install' ? 'route-repaired' : action === 'teach-back' ? 'route-complete' : 'city-interaction');
     if (action === 'install') {
-      const chapter = next.chapter === 0 ? getAtlasStoryChapter('genesis-garden') : next.chapter === 1 ? getAtlasStoryChapter('light-forest') : next.chapter === 2 ? getAtlasStoryChapter('pay-harbor') : next.chapter === 3 ? getAtlasStoryChapter('albatross-causeway') : next.chapter === 4 ? getAtlasStoryChapter('validator-peaks') : undefined;
+      const chapter = next.chapter === 0 ? getAtlasStoryChapter('genesis-garden') : next.chapter === 1 ? getAtlasStoryChapter('light-forest') : next.chapter === 2 ? getAtlasStoryChapter('pay-harbor') : next.chapter === 3 ? getAtlasStoryChapter('albatross-causeway') : next.chapter === 4 ? getAtlasStoryChapter('validator-peaks') : next.chapter === 5 ? getAtlasStoryChapter('builder-city') : undefined;
       if (chapter) this.audio.narrateLine(chapter.voice.completion);
       else this.audio.narrate(`Practice route restored. ${routeLesson(next).result}`);
     }
@@ -2375,6 +2375,19 @@ function routeObjective(run: RouteRun): { depth: 'glance'; objective: string; de
        complete: { objective: 'CONSENSUS RESTORED', detail: 'Independent agreement reopened the route. Continue toward Builder City.' },
      };
      return { depth: 'glance', ...stages[run.stage], status: 'CONSENSUS SIGNAL / VALIDATOR PEAKS / CHAPTER 5 / PRACTICE MODE' };
+   }
+   if (run.chapter === 5) {
+     const stages: Record<RouteRun['stage'], { objective: string; detail: string }> = {
+       arrive: { objective: 'FIND NOOR / BUILDER CITY', detail: 'The kiosk is showing a green badge. Move to Noor and inspect the unlock request.' },
+       request: { objective: 'READ THE KIOSK REQUEST', detail: 'Check the exact order before the client presents any payment result.' },
+       signal: { objective: 'PROTECT THE UNLOCK', detail: run.browserClaimSeen ? 'Browser claim inspected. Send the exact order for server verification.' : 'The browser says paid. Inspect the claim before trusting the client.' },
+       refused: { objective: 'KEEP THE KIOSK CLOSED', detail: 'A browser display is not fulfillment authority. Find the server record.' },
+       evidence: { objective: 'CHOOSE SERVER PROOF', detail: 'Select the record where the server verified canonical evidence for the exact order.' },
+       verified: { objective: 'UNLOCK THE KIOSK', detail: 'Carry the server authority record to Noor\'s terminal.' },
+       restored: { objective: 'TEACH THE AUTHORITY RULE', detail: 'The kiosk is open. Explain why the browser presents and the server verifies.' },
+       complete: { objective: 'BUILDER CITY RESTORED', detail: 'The authority boundary is clear. Continue to Beacon Core.' },
+     };
+     return { depth: 'glance', ...stages[run.stage], status: 'SERVER VERIFICATION / BUILDER CITY / CHAPTER 6 / PRACTICE MODE' };
    }
    return {
     depth: 'glance',

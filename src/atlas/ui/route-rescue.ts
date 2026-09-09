@@ -20,6 +20,8 @@ export function createRouteCard(run: RouteRun, act: (action: RouteAction) => voi
         ? 'CHAPTER 4 / ALBATROSS CAUSEWAY / MOVE THE RECEIPT CLOCK'
       : run.chapter === 4
         ? 'CHAPTER 5 / VALIDATOR PEAKS / BUILD CONSENSUS'
+      : run.chapter === 5
+        ? 'CHAPTER 6 / BUILDER CITY / PROTECT THE UNLOCK'
       : `Practice · no NIM sent · ${run.chapter + 1}/7 · ${run.role}`;
   const detail = document.createElement('p');
   const actions = document.createElement('div');
@@ -50,6 +52,8 @@ export function createRouteCard(run: RouteRun, act: (action: RouteAction) => voi
         ? 'Sana is waiting with medicine. Read the sender, recipient and amount before the receipt clock starts.'
         : run.chapter === 4
         ? 'Tavi has one validator report. Climb the peak and gather independent agreement before reopening the route.'
+        : run.chapter === 5
+        ? 'Noor built a kiosk that shows a green browser badge. Inspect the claim, then let the server decide whether the shop may unlock.'
         : `Investigate: ${lesson.need} Check the scope and authority before testing the apparent signal.`;
       if (run.chapter === 1) {
         button(`${run.recipientChecked ? '✓ ' : ''}READ PROVIDER STATUS / ready`, 'check-recipient', run.recipientChecked);
@@ -62,7 +66,7 @@ export function createRouteCard(run: RouteRun, act: (action: RouteAction) => voi
         button(`${run.recipientChecked ? '✓ ' : ''}${run.chapter === 0 ? 'SCAN DESTINATION / Beacon Lantern Shop' : ROUTE_CHECKS[run.chapter]![0]}`, 'check-recipient', run.recipientChecked);
         button(`${run.amountChecked ? '✓ ' : ''}${run.chapter === 0 ? 'SCAN AMOUNT / 0.1 NIM = 10,000 Lunas' : ROUTE_CHECKS[run.chapter]![1]}`, 'check-amount', run.amountChecked);
       }
-      button(run.chapter === 0 ? 'ASSEMBLE AND SEND PARCEL' : run.chapter === 1 ? 'OPEN THE FRESH TRAIL' : run.chapter === 2 ? 'COMPARE THE TWO LANTERN REQUESTS' : run.chapter === 3 ? 'START THE RECEIPT CLOCK' : run.chapter === 4 ? 'OPEN THE CONSENSUS CLIMB' : run.chapter < 2 ? 'Approve practice request' : 'Authorize this practice check', 'approve-practice', false, run.chapter === 1 ? !(run.recipientChecked && run.amountChecked && run.blockChecked) : !(run.recipientChecked && run.amountChecked));
+      button(run.chapter === 0 ? 'ASSEMBLE AND SEND PARCEL' : run.chapter === 1 ? 'OPEN THE FRESH TRAIL' : run.chapter === 2 ? 'COMPARE THE TWO LANTERN REQUESTS' : run.chapter === 3 ? 'START THE RECEIPT CLOCK' : run.chapter === 4 ? 'OPEN THE CONSENSUS CLIMB' : run.chapter === 5 ? 'OPEN THE KIOSK CHECK' : run.chapter < 2 ? 'Approve practice request' : 'Authorize this practice check', 'approve-practice', false, run.chapter === 1 ? !(run.recipientChecked && run.amountChecked && run.blockChecked) : !(run.recipientChecked && run.amountChecked));
       break;
     case 'signal':
       detail.textContent = run.chapter === 0
@@ -75,6 +79,8 @@ export function createRouteCard(run: RouteRun, act: (action: RouteAction) => voi
         ? `Receipt clock: ${RECEIPT_STATES[Math.min(3, run.receiptStep)]}. A hash is not safe delivery. Move through each state.`
         : run.chapter === 4
         ? `Consensus climb: ${run.validatorVotes} of 3 validators agree. One voice can be wrong; gather the route together.`
+        : run.chapter === 5
+        ? run.browserClaimSeen ? 'The browser says paid. Now ask the server to verify the exact order before the kiosk opens.' : 'A green browser badge says “paid”. Inspect how the client can be wrong before you trust it.'
         : `The display looks successful: “${lesson.weak}”. Is the route ready?`;
       if (run.chapter === 1) {
         button(`FOLLOW THE FRESH TRAIL / ${FADING_TRAIL_NODES[Math.min(2, run.trailNode)] ?? 'route board'}`, 'follow-trail');
@@ -87,6 +93,11 @@ export function createRouteCard(run: RouteRun, act: (action: RouteAction) => voi
       else if (run.chapter === 4) {
         button(`CHECK THE NEXT VALIDATOR / ${Math.min(3, run.validatorVotes + 1)} OF 3`, 'collect-validator');
         button('TRUST ONE VALIDATOR', 'trust-single-validator');
+      }
+      else if (run.chapter === 5) {
+        button(`${run.browserClaimSeen ? '✓ ' : ''}INSPECT THE BROWSER CLAIM / local display`, 'inspect-browser', run.browserClaimSeen);
+        button('VERIFY ON THE SERVER / canonical order', 'verify-server', false, !run.browserClaimSeen);
+        button('TRUST THE GREEN BADGE', 'trust-browser');
       }
       else button(run.chapter === 0 ? 'FOLLOW THE PARCEL SIGNAL' : 'Try opening the route', 'try-signal');
       break;
@@ -107,6 +118,8 @@ export function createRouteCard(run: RouteRun, act: (action: RouteAction) => voi
         ? 'The receipt has reached finality. Choose the record that proves it, not the lookup or fast inclusion.'
         : run.chapter === 4
         ? 'Three independent validators agree. Choose the consensus record, not the loudest single report.'
+        : run.chapter === 5
+        ? 'The server has checked the exact order against canonical evidence. Choose the server record, not the browser badge.'
         : 'At the plaza station, compare the practice records. Which one supports this route?';
       break;
     case 'verified':
@@ -118,11 +131,14 @@ export function createRouteCard(run: RouteRun, act: (action: RouteAction) => voi
         ? 'The medicine route is final. Carry the verified receipt to the ferry gate.'
         : run.chapter === 4
         ? 'The route has shared agreement. Carry the consensus record to the peak relay.'
+        : run.chapter === 5
+        ? 'The server verified the order. Carry the authority record to the kiosk terminal.'
         : `${lesson.evidence}. Practice record accepted. Take the checked relay to the Pay Harbor gate and install it.`;
       if (run.chapter === 0) button('DELIVER THE CHECKED PARCEL', 'install');
       else if (run.chapter === 2) button('DELIVER ONE VERIFIED LANTERN', 'install');
       else if (run.chapter === 3) button('RELEASE THE MEDICINE', 'install');
       else if (run.chapter === 4) button('REOPEN THE SHARED ROUTE', 'install');
+      else if (run.chapter === 5) button('UNLOCK THE KIOSK', 'install');
       break;
     case 'restored':
       detail.textContent = run.chapter === 0
@@ -135,12 +151,15 @@ export function createRouteCard(run: RouteRun, act: (action: RouteAction) => voi
         ? 'The medicine is safe to release. Open the ferry route and continue the lesson.'
         : run.chapter === 4
         ? 'The shared route is open again. Teach the city why several independent validators beat one confident voice.'
+        : run.chapter === 5
+        ? 'The kiosk is open. Teach the city why the browser presents a result, but the server verifies the payment before fulfillment.'
         : `${lesson.result} ${lesson.question}`;
       if (run.chapter === 0) button('PLACE THE FIRST BEACON THREAD', 'teach-back');
       else if (run.chapter === 1) button('LIGHT THE CLINIC CANOPY', 'teach-back');
       else if (run.chapter === 2) button('RELEASE ONE VERIFIED LANTERN', 'teach-back');
       else if (run.chapter === 3) button('OPEN THE MEDICINE FERRY', 'teach-back');
       else if (run.chapter === 4) button('TEACH CONSENSUS AT THE PEAK', 'teach-back');
+      else if (run.chapter === 5) button('TEACH THE KIOSK RULE', 'teach-back');
       else {
         // Alternate placement so memorizing the first button cannot finish the cascade.
         if (run.chapter % 2 === 0) button(lesson.wrong, 'wrong-answer');
@@ -159,6 +178,8 @@ export function createRouteCard(run: RouteRun, act: (action: RouteAction) => voi
         ? 'The causeway is safe. The next route climbs to Validator Peaks.'
         : run.chapter === 4
         ? 'Validator agreement restored the shared route. The next investigation enters Builder City.'
+        : run.chapter === 5
+        ? 'Builder City is open. The final route leads to Beacon Core.'
         : run.chapter < 6 ? 'Route restored. The next investigation is available at the Commons training relay.' : 'Seven lessons practiced. Your local journal remembers the investigation; verified rewards still require the separate server-checked challenge.';
       if (run.chapter < 6) button('Investigate the next relay', 'next');
       break;
@@ -196,14 +217,16 @@ export function createEvidenceChoices(run: RouteRun, act: (action: RouteAction) 
       ? 'Receipt clock: lookup, inclusion, confirmation, finality. Choose the record that proves finality.'
       : run.chapter === 4
       ? 'Three validator reports are visible. Choose the record that represents independent agreement, not a single claim.'
+      : run.chapter === 5
+      ? 'The browser badge is only a presentation. Choose the server record that proves this exact order before unlocking the kiosk.'
       : run.chapter < 2
       ? 'Practice payment: Ivo has a cargo order for 0.1 NIM, written as 10,000 Lunas. Match the order, recipient, amount and current network record.'
       : `Practice evidence B: ${routeWorld(run).chapter.evidence} Record A only supports the apparent claim. Record C has been withdrawn and must be checked again.`;
   panel.append(record);
   for (const [label, action] of [
-    [run.chapter === 0 ? 'A / Mara approved the request. Permission only.' : run.chapter === 1 ? 'A / Cached canopy view from block 4809.' : run.chapter === 2 ? 'ACCEPT THE EXACT REQUEST / A / Beacon Lantern Shop / 0.1 NIM / current network.' : run.chapter === 3 ? 'A / Lookup received. A hash is a starting point, not delivery proof.' : run.chapter === 4 ? 'A / One validator reports success. One report is not consensus.' : `Record A · ${lesson.weak}`, run.chapter === 2 ? 'match-evidence' : 'weak-evidence'],
-    [run.chapter === 0 ? 'B / Current record matches destination, amount, and network.' : run.chapter === 1 ? 'B / Fresh provider, consensus and block 4812 agree.' : run.chapter === 2 ? `${run.duplicateRejected ? '✓ DUPLICATE BLOCKED' : 'REJECT THE DUPLICATE'} / B / same order, changed recipient or network.` : run.chapter === 3 ? 'B / Finality reached for the exact medicine route.' : run.chapter === 4 ? 'B / Three independent validators agree on the same route.' : `Record B · ${lesson.evidence}`, run.chapter === 2 ? 'reorg-evidence' : 'match-evidence'],
-    [run.chapter === 0 ? 'C / Old record withdrawn after the route changed.' : run.chapter === 1 ? 'C / Bright signal with no current consensus.' : run.chapter === 2 ? 'C / Old request: already fulfilled and cannot be reused.' : run.chapter === 3 ? 'C / Fast inclusion with no finality.' : run.chapter === 4 ? 'C / Two reports are stale and cannot establish the current route.' : 'Record C · withdrawn after a simulated reorganization', run.chapter === 2 ? 'weak-evidence' : 'reorg-evidence'],
+    [run.chapter === 0 ? 'A / Mara approved the request. Permission only.' : run.chapter === 1 ? 'A / Cached canopy view from block 4809.' : run.chapter === 2 ? 'ACCEPT THE EXACT REQUEST / A / Beacon Lantern Shop / 0.1 NIM / current network.' : run.chapter === 3 ? 'A / Lookup received. A hash is a starting point, not delivery proof.' : run.chapter === 4 ? 'A / One validator reports success. One report is not consensus.' : run.chapter === 5 ? 'A / Browser badge says paid. The client can display a claim without proof.' : `Record A · ${lesson.weak}`, run.chapter === 2 ? 'match-evidence' : 'weak-evidence'],
+    [run.chapter === 0 ? 'B / Current record matches destination, amount, and network.' : run.chapter === 1 ? 'B / Fresh provider, consensus and block 4812 agree.' : run.chapter === 2 ? `${run.duplicateRejected ? '✓ DUPLICATE BLOCKED' : 'REJECT THE DUPLICATE'} / B / same order, changed recipient or network.` : run.chapter === 3 ? 'B / Finality reached for the exact medicine route.' : run.chapter === 4 ? 'B / Three independent validators agree on the same route.' : run.chapter === 5 ? 'B / Server verified canonical evidence for the exact order.' : `Record B · ${lesson.evidence}`, run.chapter === 2 ? 'reorg-evidence' : 'match-evidence'],
+    [run.chapter === 0 ? 'C / Old record withdrawn after the route changed.' : run.chapter === 1 ? 'C / Bright signal with no current consensus.' : run.chapter === 2 ? 'C / Old request: already fulfilled and cannot be reused.' : run.chapter === 3 ? 'C / Fast inclusion with no finality.' : run.chapter === 4 ? 'C / Two reports are stale and cannot establish the current route.' : run.chapter === 5 ? 'C / Local paid flag asks to unlock without server proof.' : 'Record C · withdrawn after a simulated reorganization', run.chapter === 2 ? 'weak-evidence' : 'reorg-evidence'],
   ] as const) {
     const button = document.createElement('button');
     button.type = 'button';

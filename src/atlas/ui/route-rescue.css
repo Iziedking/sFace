@@ -56,6 +56,9 @@
 .atlas-route-card[data-chapter='4'] { border-left-color: #e2a7f2; }
 .atlas-route-card[data-chapter='4'] .atlas-route-provenance { color: #8c428f; font-weight: 800; letter-spacing: .04em; }
 .atlas-route-card[data-chapter='4'] .atlas-route-choices button:first-child { border-color: #e2a7f2; }
+.atlas-route-card[data-chapter='5'] { border-left-color: #e58a62; }
+.atlas-route-card[data-chapter='5'] .atlas-route-provenance { color: #9c482c; font-weight: 800; letter-spacing: .04em; }
+.atlas-route-card[data-chapter='5'] .atlas-route-choices button:first-child { border-color: #e58a62; }
 .atlas-route-choices { display: grid; gap: 5px; }
 .atlas-route-choices button { min-height: 44px; padding: 8px; width: 100%; text-align: left; font: 650 13px/1.3 system-ui, sans-serif; border: 1px solid var(--atlas-mission-line); background: var(--atlas-raised); color: var(--atlas-ink); overflow-wrap: anywhere; }
 .atlas-route-choices button:disabled { background: var(--atlas-inert); color: var(--atlas-muted); border-style: dashed; cursor: not-allowed; }

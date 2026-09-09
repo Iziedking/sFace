@@ -110,6 +110,15 @@ describe('NIM Atlas public first district UI', () => {
     expect(routeUi).toContain('REOPEN THE SHARED ROUTE');
   });
 
+  it('turns Builder City into a server-verification mission', () => {
+    const app = readFileSync(new URL('../src/atlas/app/atlas-app.ts', import.meta.url), 'utf8');
+    const routeUi = readFileSync(new URL('../src/atlas/ui/route-rescue.ts', import.meta.url), 'utf8');
+    expect(app).toContain('SERVER VERIFICATION / BUILDER CITY');
+    expect(routeUi).toContain('INSPECT THE BROWSER CLAIM');
+    expect(routeUi).toContain('TRUST THE GREEN BADGE');
+    expect(routeUi).toContain('UNLOCK THE KIOSK');
+  });
+
   it('uses the living 3D city as the landing backdrop and keeps onboarding to one clear run', () => {
     const app = readFileSync(new URL('../src/atlas/app/atlas-app.ts', import.meta.url), 'utf8');
     const landingStart = app.indexOf('private renderWelcome');
