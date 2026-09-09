@@ -1,7 +1,7 @@
 {
   "name": "Sface: NIM Atlas",
   "short_name": "NIM Atlas",
-  "description": "Sface is a Nimiq Pay Mini App game where you explore NIM Atlas, learn the payment network, and build what survives.",
+  "description": "Sface is a Nimiq Pay Mini App game. Explore NIM Atlas, repair broken payment routes, and learn Nimiq by playing.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#101430",

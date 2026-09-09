@@ -135,19 +135,23 @@ player has earned a payout.
 The current generated set is kept in [docs/shots](docs/shots) and mirrored to
 `public/atlas/screenshots` for review pages.
 
-![NIM Atlas welcome screen](docs/shots/atlas-390-welcome.png)
-
-![Pay Harbor](docs/shots/atlas-390-pay-harbor.png)
-
-![Payment review](docs/shots/atlas-390-payment-review.png)
-
-![Beacon Commons](docs/shots/atlas-390-beacon-commons.png)
-
-![Daily Atlas](docs/shots/atlas-390-daily.png)
-
-![District Atlas](docs/shots/atlas-390-district-atlas.png)
-
-![Verified Core Run](docs/shots/atlas-390-core-run.png)
+<table>
+  <tr>
+    <td align="center" valign="top"><img src="docs/shots/atlas-390-welcome.png" width="180" alt="NIM Atlas welcome screen"><br><sub>Welcome</sub></td>
+    <td align="center" valign="top"><img src="docs/shots/atlas-390-beacon-commons.png" width="180" alt="Beacon Commons city"><br><sub>Beacon Commons</sub></td>
+    <td align="center" valign="top"><img src="docs/shots/atlas-390-pay-harbor.png" width="180" alt="Pay Harbor mission"><br><sub>Pay Harbor</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top"><img src="docs/shots/atlas-390-payment-review.png" width="180" alt="Payment review screen"><br><sub>Payment review</sub></td>
+    <td align="center" valign="top"><img src="docs/shots/atlas-390-daily.png" width="180" alt="Daily Atlas puzzle"><br><sub>Daily Atlas</sub></td>
+    <td align="center" valign="top"><img src="docs/shots/atlas-390-district-atlas.png" width="180" alt="District Atlas curriculum"><br><sub>District Atlas</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top"><img src="docs/shots/atlas-390-core-run.png" width="180" alt="Verified Core Run"><br><sub>Verified Core Run</sub></td>
+    <td></td>
+    <td></td>
+  </tr>
+</table>
 
 The capture recipe is the source of truth. Re-run `npm run shoot:atlas` after a
 visual change instead of replacing an image by hand.

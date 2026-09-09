@@ -52,17 +52,23 @@ for the server to match canonical evidence before fulfilling the mission.
 
 ## Current snapshots
 
-![NIM Atlas welcome](shots/atlas-390-welcome.png)
-
-![Pay Harbor payment review](shots/atlas-390-payment-review.png)
-
-![Beacon Commons city](shots/atlas-390-beacon-commons.png)
-
-![Daily Atlas puzzle](shots/atlas-390-daily.png)
-
-![District Atlas](shots/atlas-390-district-atlas.png)
-
-![Verified Core Run](shots/atlas-390-core-run.png)
+<table>
+  <tr>
+    <td align="center" valign="top"><img src="shots/atlas-390-welcome.png" width="180" alt="NIM Atlas welcome"><br><sub>Welcome</sub></td>
+    <td align="center" valign="top"><img src="shots/atlas-390-beacon-commons.png" width="180" alt="Beacon Commons city"><br><sub>Beacon Commons</sub></td>
+    <td align="center" valign="top"><img src="shots/atlas-390-pay-harbor.png" width="180" alt="Pay Harbor mission"><br><sub>Pay Harbor</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top"><img src="shots/atlas-390-payment-review.png" width="180" alt="Pay Harbor payment review"><br><sub>Payment review</sub></td>
+    <td align="center" valign="top"><img src="shots/atlas-390-daily.png" width="180" alt="Daily Atlas puzzle"><br><sub>Daily Atlas</sub></td>
+    <td align="center" valign="top"><img src="shots/atlas-390-district-atlas.png" width="180" alt="District Atlas"><br><sub>District Atlas</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top"><img src="shots/atlas-390-core-run.png" width="180" alt="Verified Core Run"><br><sub>Verified Core Run</sub></td>
+    <td></td>
+    <td></td>
+  </tr>
+</table>
 
 The snapshots come from `scripts/shoot-atlas.mjs`. They are regenerated against
 the local production preview so a screenshot cannot silently describe a

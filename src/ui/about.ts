@@ -25,26 +25,27 @@ interface Panel {
 }
 
 /**
- * The three things that make this different from a shooter with a crypto skin.
+ * The three things that make NIM Atlas a game rather than a lesson with a
+ * crypto label.
  *
  * Each one is a fact about how the game is built, not a claim about how good it
  * is. A stranger can check every one of them inside a single run.
  */
 const PILLARS: Panel[] = [
   {
-    kicker: 'The map',
-    title: 'Nobody drew this',
-    body: 'Today’s worst performer in the top hundred becomes the stage. Its real 24 hour chart is the ground under you. A violent morning is a wall you have to climb. A slow bleed is a long drop with nowhere to stand.',
+    kicker: 'The city',
+    title: 'Every route has a reason',
+    body: 'Beacon Commons is a living city with people, places, and payment routes that can go dark. You follow the marker, meet the resident who needs help, and change the city by solving the problem.',
   },
   {
-    kicker: 'The odds',
-    title: 'The market sets the difficulty',
-    body: 'Fear and Greed decides how many come at you and how fast they fire. Calm day, generous level. Frightened day, considerably less so. Everyone who plays that day gets the same one.',
+    kicker: 'The lesson',
+    title: 'You learn by doing',
+    body: 'NIM, Lunas, wallet approval, and confirmation are tools in the adventure. Inspect the request, compare the evidence, choose the safe action, and see the harbor respond.',
   },
   {
-    kicker: 'The people',
-    title: 'The cast is real',
-    body: 'The accounts trapped in the wreck are whoever crypto X spent the day on, read fresh every morning. Every post you see went out for real, and every one carries a link back to it.',
+    kicker: 'The return loop',
+    title: 'There is always another route',
+    body: 'Finish Mara’s Last Lantern, try the Daily Atlas, open the next district, and revisit the Living Knowledge Book. Practice is free, and the city keeps giving you a reason to come back.',
   },
 ];
 
@@ -57,24 +58,24 @@ const PILLARS: Panel[] = [
  */
 const NIMIQ: Panel[] = [
   {
-    kicker: 'Built for it',
-    title: 'Made for Nimiq Pay',
-    body: 'sFace opens inside the app you already have. Your wallet, your name and your clan are waiting before you press start. Nothing to download. No extension. No seed phrase halfway through a run.',
+    kicker: 'The chain',
+    title: 'NIM is the lesson',
+    body: 'NIM is Nimiq’s currency. Lunas are its smallest units: 1 NIM equals 100,000 Lunas. The game introduces that difference exactly where the payment request needs it.',
   },
   {
-    kicker: 'Play for something',
-    title: 'Every run banks Face',
-    body: 'Face is your rank. Rank opens stages, weapons and a steadier gun. It carries across days, so whoever shows up every morning pulls away from whoever does not.',
+    kicker: 'The wallet',
+    title: 'Approval is a real choice',
+    body: 'Practice mode needs no wallet and never sends NIM. When the TestAlbatross path is enabled, the game shows the exact request first and waits for canonical confirmation before the route opens.',
   },
   {
-    kicker: 'Bring people',
-    title: 'Clans, challenges, contests',
-    body: 'Build a clan and climb together. Put NIM on a friend and the same seed, then let the better run take it. Win the day and the board carries your handle. All of it settles in seconds for a fee you will never notice.',
+    kicker: 'The proof',
+    title: 'The city changes on evidence',
+    body: 'A button press, callback, or transaction hash is not enough. The route unlocks only when the network, recipient, amount, success state, and confirmations match.',
   },
   {
-    kicker: 'Yours throughout',
-    title: 'Signed by you, checked by us',
-    body: 'Your wallet signs the score. We rebuild the level from the seed and check the run could have happened. We never hold your money, and we never take your word for it.',
+    kicker: 'The world',
+    title: 'A payment becomes a place',
+    body: 'When the route is repaired, Mara’s harbor responds. Lights return, paths open, and the next part of the city becomes available. The technology is part of the adventure, not a paragraph beside it.',
   },
 ];
 
@@ -102,19 +103,19 @@ export function renderAbout(root: HTMLElement, options: AboutOptions): void {
       'div',
       { class: 'screen doc' },
 
-      el('p', { class: 'eyebrow', text: 'What this is' }),
-      el('h1', { text: 'The market builds the level.' }),
+      el('p', { class: 'eyebrow', text: 'NIM ATLAS / BEACON COMMONS' }),
+      el('h1', { text: 'Repair the route. Bring the city back.' }),
 
       /*
        * The whole idea, once, at the top.
        *
        * Somebody who reads only this line and then presses play has understood
-       * enough to enjoy the game. Everything below is for the ones who want to
-       * know why before they start.
+       * enough to enjoy the game. Everything below adds context without making
+       * the player study before moving.
        */
       el('p', {
         class: 'doc__lede',
-        text: 'Crypto has had a rough year. Every week another chart falls apart and another set of people get written off. sFace turns that day into something you can play. Get the people out of the wreck, carry back what you can, and come back tomorrow when it is a different coin and a different crowd.',
+        text: 'Sface is a Nimiq Pay Mini App game. NIM Atlas is the adventure inside it: a living city where broken payment routes strand real people. Choose Explorer or Builder, follow Mara’s route, and learn how Nimiq works by making the right decision at the right place.',
       }),
 
       el(
@@ -124,13 +125,13 @@ export function renderAbout(root: HTMLElement, options: AboutOptions): void {
         button('How to play', options.onGuide, 'ghost'),
       ),
 
-      el('h2', { class: 'doc__section', text: 'What you are actually flying' }),
+      el('h2', { class: 'doc__section', text: 'What you do in the city' }),
       panels(PILLARS, 'doc__grid doc__grid--three'),
 
-      el('h2', { class: 'doc__section', text: 'It lives on Nimiq' }),
+      el('h2', { class: 'doc__section', text: 'Why Nimiq matters' }),
       el('p', {
         class: 'doc__body doc__body--wide',
-        text: 'Your wallet is your name here. It holds your rank, backs your stake and signs every score you post.',
+        text: 'Nimiq is not decoration around the game. Its payment concepts are the actions that move the story forward.',
       }),
       panels(NIMIQ, 'doc__grid doc__grid--two'),
 
@@ -139,38 +140,38 @@ export function renderAbout(root: HTMLElement, options: AboutOptions): void {
         'ol',
         { class: 'doc__steps' },
         el('li', {
-          text: 'Open sFace in Nimiq Pay. Today’s coin, its chart and its cast are already loaded.',
+          text: 'Open sFace in Nimiq Pay. Practice mode starts immediately, with no wallet required.',
         }),
         el('li', {
-          text: 'Fly the wreck and free the people caught in it. Reach the pad, or you lose everything you were carrying.',
+          text: 'Enter Beacon Commons and follow the route marker to Mara at Pay Harbor.',
         }),
         el('li', {
-          text: 'Bank your Face. Rank opens the next stage, the next weapon and a steadier gun.',
+          text: 'Inspect the request. Check the network, recipient, and amount in Lunas.',
         }),
         el('li', {
-          text: 'Join a clan, stake a friend on your exact seed, and put your handle on the daily board.',
+          text: 'Choose the safe action, learn why it is correct, and watch the harbor respond.',
         }),
         el('li', {
-          text: 'Come back tomorrow for a new coin, a new chart and a new cast. Your rank carries over.',
+          text: 'Return for the Daily Atlas, the next district, and the Living Knowledge Book.',
         }),
       ),
 
       el('h2', { class: 'doc__section', text: 'MAIN and TEST' }),
       el('p', {
         class: 'doc__body doc__body--wide',
-        text: 'The chip in the top right shows which network you are on. It changes what the NIM on screen is worth, so it is always visible and you can tap it to switch.',
+        text: 'The game separates practice from live payment play. The network label tells you which path is active before any approval can be requested.',
       }),
       panels(
         [
           {
-            kicker: 'MAIN',
-            title: 'Mainnet, the real thing',
-            body: 'Real NIM. Your scores go to the daily board, challenges settle for real money, and CT Signals reads live X. This is the default.',
+            kicker: 'PRACTICE',
+            title: 'Start without a wallet',
+            body: 'Local, free, and safe for first-time players. The practice lantern uses a committed fixture and never sends NIM.',
           },
           {
-            kicker: 'TEST',
-            title: 'Testnet, a rehearsal',
-            body: 'The same game played for nothing, on data already cached. You are still you here, with the same name, clan and friends. NIM has no value, testnet keeps its own board and its own Face, and anything that needs a live API call is off. Use it to try a staked challenge without spending anything. Settings links the Nimiq faucet.',
+            kicker: 'TESTALBATROSS',
+            title: 'A real payment lesson',
+            body: 'When enabled by the owner, the game shows an exact 0.1 NIM request, opens Nimiq Pay for approval, and waits for server-confirmed evidence before restoring the route.',
           },
         ],
         'doc__grid doc__grid--two',
@@ -181,7 +182,7 @@ export function renderAbout(root: HTMLElement, options: AboutOptions): void {
         { class: 'doc__note' },
         el('p', {
           class: 'doc__body',
-          text: 'Seven stages, and the last one is what the rest builds toward. Getting the season back means going through everything that broke it.',
+          text: 'Start with Mara’s Last Lantern. The story gets bigger as each repaired route restores another piece of the city.',
         }),
       ),
 
