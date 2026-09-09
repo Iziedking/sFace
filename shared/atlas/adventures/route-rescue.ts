@@ -3,7 +3,7 @@ import type { AtlasRestorationState } from '../living-world';
 import type { AtlasMissionProgress } from '../mission-director';
 
 export type RouteStage = 'arrive' | 'request' | 'signal' | 'refused' | 'evidence' | 'verified' | 'restored' | 'complete';
-export type RouteAction = 'talk' | 'check-recipient' | 'check-amount' | 'check-block' | 'approve-practice' | 'try-signal' | 'follow-trail' | 'follow-stale-trail' | 'compare-requests' | 'advance-receipt' | 'trust-early-receipt' | 'collect-validator' | 'trust-single-validator' | 'inspect-browser' | 'trust-browser' | 'verify-server' | 'investigate' | 'weak-evidence' | 'reorg-evidence' | 'match-evidence' | 'install' | 'wrong-answer' | 'teach-back' | 'next';
+export type RouteAction = 'talk' | 'check-recipient' | 'check-amount' | 'check-block' | 'approve-practice' | 'try-signal' | 'follow-trail' | 'follow-stale-trail' | 'compare-requests' | 'advance-receipt' | 'trust-early-receipt' | 'collect-validator' | 'trust-single-validator' | 'inspect-browser' | 'trust-browser' | 'verify-server' | 'connect-beacon-seal' | 'rush-beacon' | 'investigate' | 'weak-evidence' | 'reorg-evidence' | 'match-evidence' | 'install' | 'wrong-answer' | 'teach-back' | 'next';
 export interface RouteRun {
   readonly version: 1;
   readonly role: 'explorer' | 'builder';
@@ -19,6 +19,7 @@ export interface RouteRun {
   readonly validatorVotes: 0 | 1 | 2 | 3;
   readonly browserClaimSeen: boolean;
   readonly serverVerified: boolean;
+  readonly beaconSeals: 0 | 1 | 2 | 3 | 4 | 5 | 6;
   readonly notice: string;
   readonly actions: readonly RouteAction[];
 }
@@ -26,8 +27,10 @@ export interface RouteRun {
 // This ledger is deliberately local practice. It cannot produce a payment
 // receipt, competitive score, reward entitlement or wallet request.
 export function createRouteRun(role: RouteRun['role']): RouteRun {
-  return { version: 1, role, chapter: 0, stage: 'arrive', recipientChecked: false, amountChecked: false, blockChecked: false, trailNode: 0, duplicateReviewed: false, duplicateRejected: false, receiptStep: 0, validatorVotes: 0, browserClaimSeen: false, serverVerified: false, notice: '', actions: [] };
+  return { version: 1, role, chapter: 0, stage: 'arrive', recipientChecked: false, amountChecked: false, blockChecked: false, trailNode: 0, duplicateReviewed: false, duplicateRejected: false, receiptStep: 0, validatorVotes: 0, browserClaimSeen: false, serverVerified: false, beaconSeals: 0, notice: '', actions: [] };
 }
+
+export const BEACON_SEALS = ['ASK', 'CHECK', 'APPROVE', 'CONFIRM', 'VERIFY', 'UNLOCK'] as const;
 
 export const ROUTE_LESSONS = [
   { name: 'Genesis Garden', citizen: 'Mara', need: 'Mara wants to pay 0.1 NIM for a harbor lantern, but the delivery route is stuck.', weak: 'Mara approved the payment', evidence: 'The current network record matches the shop, order and 0.1 NIM amount', question: 'Why did the shop wait after Mara approved?', answer: 'Approval gives permission. A matching current network record proves the payment.', wrong: 'Approval alone means the shop received the payment.', result: 'The shop releases the lantern. The first route is open.' },
@@ -114,6 +117,17 @@ export function stepRouteRun(run: RouteRun, action: RouteAction): RouteRun {
         ? { stage: 'evidence', serverVerified: true, notice: 'The server checked the exact order against canonical evidence. Compare the unlock record.' }
         : { notice: 'Inspect the browser claim first, then send that exact order for server verification.' };
       break;
+    case 'connect-beacon-seal':
+      if (at('signal') && run.chapter === 6) {
+        const beaconSeals = Math.min(6, run.beaconSeals + 1) as RouteRun['beaconSeals'];
+        change = beaconSeals === 6
+          ? { stage: 'evidence', beaconSeals, notice: 'All six Beacon seals are assembled. Check the complete chain before restoring the core.' }
+          : { beaconSeals, notice: `Beacon seal ${beaconSeals} connected. Keep consent, proof and fulfillment separate as you assemble the next one.` };
+      }
+      break;
+    case 'rush-beacon':
+      if (at('signal') && run.chapter === 6) change = { notice: 'The Beacon cannot turn one green signal into authority. Assemble all six seals in order, then check the complete chain.' };
+      break;
     case 'investigate': if (at('refused')) change = { stage: 'evidence' }; break;
     case 'weak-evidence': if (at('evidence')) change = { notice: 'Route stays closed: this message makes a claim, but it does not prove the payment.' }; break;
     case 'reorg-evidence':
@@ -132,20 +146,23 @@ export function stepRouteRun(run: RouteRun, action: RouteAction): RouteRun {
             ? { notice: 'Consensus is incomplete. Gather agreement from three independent validators before reopening the route.' }
           : run.chapter === 5 && !run.serverVerified
             ? { notice: 'The server has not verified this order yet. A browser display cannot unlock the kiosk.' }
+          : run.chapter === 6 && run.beaconSeals < 6
+            ? { notice: 'The Beacon chain is incomplete. Assemble all six seals before restoring the core.' }
           : { stage: 'verified', notice: 'Payment proof accepted. Carry the checked result to the route gate.' };
       break;
     case 'install': if (at('verified')) change = { stage: 'restored', notice: routeLesson(run).result }; break;
     case 'wrong-answer': if (at('restored')) change = { notice: 'Think about what the first signal could not prove. Try again; the restored route stays safe.' }; break;
     case 'teach-back': if (at('restored')) change = { stage: 'complete', notice: 'Lesson remembered locally. No NIM sent or reward claimed.' }; break;
-    case 'next': if (at('complete') && run.chapter < ROUTE_LESSONS.length - 1) change = { chapter: run.chapter + 1, stage: 'arrive', recipientChecked: false, amountChecked: false, blockChecked: false, trailNode: 0, duplicateReviewed: false, duplicateRejected: false, receiptStep: 0, validatorVotes: 0, browserClaimSeen: false, serverVerified: false }; break;
+    case 'next': if (at('complete') && run.chapter < ROUTE_LESSONS.length - 1) change = { chapter: run.chapter + 1, stage: 'arrive', recipientChecked: false, amountChecked: false, blockChecked: false, trailNode: 0, duplicateReviewed: false, duplicateRejected: false, receiptStep: 0, validatorVotes: 0, browserClaimSeen: false, serverVerified: false, beaconSeals: 0 }; break;
   }
   if (!change) return run;
   // Keep progression plus the current retry notice, not an unbounded mistake
   // counter. Learners can retry forever without exhausting their saved journal.
   const last = run.actions[run.actions.length - 1];
-  const retry = last === 'weak-evidence' || (last === 'reorg-evidence' && run.chapter !== 2) || last === 'wrong-answer' || last === 'follow-stale-trail' || last === 'trust-early-receipt' || last === 'trust-single-validator' || last === 'trust-browser'
+  const retry = last === 'weak-evidence' || (last === 'reorg-evidence' && run.chapter !== 2) || last === 'wrong-answer' || last === 'follow-stale-trail' || last === 'trust-early-receipt' || last === 'trust-single-validator' || last === 'trust-browser' || last === 'rush-beacon'
     || (last === 'match-evidence' && run.chapter === 3 && run.receiptStep < 4)
     || (last === 'match-evidence' && run.chapter === 4 && run.validatorVotes < 3)
+    || (last === 'match-evidence' && run.chapter === 6 && run.beaconSeals < 6)
     || (last === 'approve-practice' && run.stage === 'request');
   const history = retry ? run.actions.slice(0, -1) : run.actions;
   const repeatedCheck = (action === 'check-recipient' && run.recipientChecked)

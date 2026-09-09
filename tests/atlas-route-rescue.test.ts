@@ -7,7 +7,8 @@ const payHarborRepair: RouteAction[] = ['talk', 'check-recipient', 'check-amount
 const causewayRepair: RouteAction[] = ['talk', 'check-recipient', 'check-amount', 'approve-practice', 'advance-receipt', 'advance-receipt', 'advance-receipt', 'advance-receipt', 'match-evidence', 'install', 'teach-back'];
 const validatorPeaksRepair: RouteAction[] = ['talk', 'check-recipient', 'check-amount', 'approve-practice', 'collect-validator', 'collect-validator', 'collect-validator', 'match-evidence', 'install', 'teach-back'];
 const builderCityRepair: RouteAction[] = ['talk', 'check-recipient', 'check-amount', 'approve-practice', 'inspect-browser', 'verify-server', 'match-evidence', 'install', 'teach-back'];
-const repairForChapter = (chapter: number): RouteAction[] => chapter === 1 ? lightForestRepair : chapter === 2 ? payHarborRepair : chapter === 3 ? causewayRepair : chapter === 4 ? validatorPeaksRepair : chapter === 5 ? builderCityRepair : repair;
+const beaconCoreRepair: RouteAction[] = ['talk', 'check-recipient', 'check-amount', 'approve-practice', 'connect-beacon-seal', 'connect-beacon-seal', 'connect-beacon-seal', 'connect-beacon-seal', 'connect-beacon-seal', 'connect-beacon-seal', 'match-evidence', 'install', 'teach-back'];
+const repairForChapter = (chapter: number): RouteAction[] => chapter === 1 ? lightForestRepair : chapter === 2 ? payHarborRepair : chapter === 3 ? causewayRepair : chapter === 4 ? validatorPeaksRepair : chapter === 5 ? builderCityRepair : chapter === 6 ? beaconCoreRepair : repair;
 describe('local route investigation', () => {
   for (const role of ['explorer', 'builder'] as const) {
     it(`${role} completes all seven distinct chapters through replay`, () => {

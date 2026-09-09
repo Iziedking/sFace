@@ -119,6 +119,15 @@ describe('NIM Atlas public first district UI', () => {
     expect(routeUi).toContain('UNLOCK THE KIOSK');
   });
 
+  it('turns Beacon Core into a six-seal finale', () => {
+    const app = readFileSync(new URL('../src/atlas/app/atlas-app.ts', import.meta.url), 'utf8');
+    const routeUi = readFileSync(new URL('../src/atlas/ui/route-rescue.ts', import.meta.url), 'utf8');
+    expect(app).toContain('SIX SEALS / BEACON CORE');
+    expect(routeUi).toContain('CONNECT THE NEXT BEACON SEAL');
+    expect(routeUi).toContain('RUSH THE BEACON');
+    expect(routeUi).toContain('RESTORE THE BEACON CORE');
+  });
+
   it('uses the living 3D city as the landing backdrop and keeps onboarding to one clear run', () => {
     const app = readFileSync(new URL('../src/atlas/app/atlas-app.ts', import.meta.url), 'utf8');
     const landingStart = app.indexOf('private renderWelcome');

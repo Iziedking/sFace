@@ -1,5 +1,5 @@
 import { createAtlasState } from '../../../shared/atlas/state';
-import { createRouteRun, recoverRouteRun, routeLesson, routeProgress, routeRestoration, routeTarget, routeWorld, stepRouteRun, type RouteAction, type RouteRun } from '../../../shared/atlas/adventures/route-rescue';
+import { BEACON_SEALS, createRouteRun, recoverRouteRun, routeLesson, routeProgress, routeRestoration, routeTarget, routeWorld, stepRouteRun, type RouteAction, type RouteRun } from '../../../shared/atlas/adventures/route-rescue';
 import { createEvidenceChoices, createRouteCard } from '../ui/route-rescue';
 import { AtlasRuntimeStats } from '../city/runtime-stats';
 import { projectLivingWorld } from '../../../shared/atlas/living-world';
@@ -668,10 +668,10 @@ export class AtlasApp {
     catch { this.routeFeed.push('Local saving unavailable. Keep this tab open to continue.'); }
     if (next.notice) this.routeFeed.push(next.notice);
     if (this.routeFeed.length > 3) this.routeFeed.splice(0, this.routeFeed.length - 3);
-    const refusal = action === 'try-signal' || action === 'follow-stale-trail' || action === 'trust-early-receipt' || action === 'trust-single-validator' || action === 'trust-browser' || action === 'weak-evidence' || action === 'reorg-evidence' || action === 'wrong-answer';
+    const refusal = action === 'try-signal' || action === 'follow-stale-trail' || action === 'trust-early-receipt' || action === 'trust-single-validator' || action === 'trust-browser' || action === 'rush-beacon' || action === 'weak-evidence' || action === 'reorg-evidence' || action === 'wrong-answer';
     this.audio.playWorldCue(refusal ? 'route-refused' : action === 'match-evidence' ? 'route-evidence' : action === 'install' ? 'route-repaired' : action === 'teach-back' ? 'route-complete' : 'city-interaction');
     if (action === 'install') {
-      const chapter = next.chapter === 0 ? getAtlasStoryChapter('genesis-garden') : next.chapter === 1 ? getAtlasStoryChapter('light-forest') : next.chapter === 2 ? getAtlasStoryChapter('pay-harbor') : next.chapter === 3 ? getAtlasStoryChapter('albatross-causeway') : next.chapter === 4 ? getAtlasStoryChapter('validator-peaks') : next.chapter === 5 ? getAtlasStoryChapter('builder-city') : undefined;
+      const chapter = next.chapter === 0 ? getAtlasStoryChapter('genesis-garden') : next.chapter === 1 ? getAtlasStoryChapter('light-forest') : next.chapter === 2 ? getAtlasStoryChapter('pay-harbor') : next.chapter === 3 ? getAtlasStoryChapter('albatross-causeway') : next.chapter === 4 ? getAtlasStoryChapter('validator-peaks') : next.chapter === 5 ? getAtlasStoryChapter('builder-city') : next.chapter === 6 ? getAtlasStoryChapter('beacon-core') : undefined;
       if (chapter) this.audio.narrateLine(chapter.voice.completion);
       else this.audio.narrate(`Practice route restored. ${routeLesson(next).result}`);
     }
@@ -2388,6 +2388,19 @@ function routeObjective(run: RouteRun): { depth: 'glance'; objective: string; de
        complete: { objective: 'BUILDER CITY RESTORED', detail: 'The authority boundary is clear. Continue to Beacon Core.' },
      };
      return { depth: 'glance', ...stages[run.stage], status: 'SERVER VERIFICATION / BUILDER CITY / CHAPTER 6 / PRACTICE MODE' };
+   }
+   if (run.chapter === 6) {
+     const stages: Record<RouteRun['stage'], { objective: string; detail: string }> = {
+       arrive: { objective: 'FIND THE BEACON KEEPER', detail: 'Six routes are repaired. Move to the core terminal and begin the final assembly.' },
+       request: { objective: 'READ THE FINAL REQUEST', detail: 'Keep consent, verification and fulfillment separate before joining the six seals.' },
+       signal: { objective: 'ASSEMBLE THE SIX SEALS', detail: `${run.beaconSeals} of 6 connected. Next: ${BEACON_SEALS[Math.min(5, run.beaconSeals)] ?? 'complete'}.` },
+       refused: { objective: 'DO NOT COLLAPSE THE CHAIN', detail: 'One green signal is not six independent responsibilities.' },
+       evidence: { objective: 'CHECK THE COMPLETE CHAIN', detail: 'Choose the record that links the same request while keeping each authority distinct.' },
+       verified: { objective: 'RESTORE THE BEACON CORE', detail: 'Carry the assembled record to the core terminal.' },
+       restored: { objective: 'TEACH THE COMPLETE LOOP', detail: 'Explain Ask, Check, Approve, Confirm, Verify and Unlock.' },
+       complete: { objective: 'BEACON CORE RESTORED', detail: 'All six routes now reinforce one another. Atlas is alive.' },
+     };
+     return { depth: 'glance', ...stages[run.stage], status: 'SIX SEALS / BEACON CORE / CHAPTER 7 / PRACTICE MODE' };
    }
    return {
     depth: 'glance',

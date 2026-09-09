@@ -97,4 +97,23 @@ describe('Light Forest fading trail', () => {
     expect(run).toMatchObject({ stage: 'evidence', browserClaimSeen: true, serverVerified: true });
     expect(stepRouteRun(run, 'match-evidence').stage).toBe('verified');
   });
+
+  it('assembles the six Beacon seals without collapsing consent, proof and fulfillment', () => {
+    const genesis = ['talk', 'check-recipient', 'check-amount', 'approve-practice', 'try-signal', 'investigate', 'match-evidence', 'install', 'teach-back', 'next'] as const;
+    const forest = ['talk', 'check-recipient', 'check-amount', 'check-block', 'approve-practice', 'follow-trail', 'follow-trail', 'follow-trail', 'match-evidence', 'install', 'teach-back', 'next'] as const;
+    const harbor = ['talk', 'check-recipient', 'check-amount', 'approve-practice', 'compare-requests', 'reorg-evidence', 'match-evidence', 'install', 'teach-back', 'next'] as const;
+    const causeway = ['talk', 'check-recipient', 'check-amount', 'approve-practice', 'advance-receipt', 'advance-receipt', 'advance-receipt', 'advance-receipt', 'match-evidence', 'install', 'teach-back', 'next'] as const;
+    const peaks = ['talk', 'check-recipient', 'check-amount', 'approve-practice', 'collect-validator', 'collect-validator', 'collect-validator', 'match-evidence', 'install', 'teach-back', 'next'] as const;
+    const builder = ['talk', 'check-recipient', 'check-amount', 'approve-practice', 'inspect-browser', 'verify-server', 'match-evidence', 'install', 'teach-back', 'next'] as const;
+    let run = replayRouteRun('builder', [...genesis, ...forest, ...harbor, ...causeway, ...peaks, ...builder, 'talk', 'check-recipient', 'check-amount', 'approve-practice']);
+    expect(run).toMatchObject({ chapter: 6, stage: 'signal', beaconSeals: 0 });
+    expect(stepRouteRun(run, 'rush-beacon')).toMatchObject({ stage: 'signal', beaconSeals: 0 });
+    expect(stepRouteRun(run, 'match-evidence')).toMatchObject({ stage: 'signal', beaconSeals: 0 });
+    for (let seal = 1; seal <= 6; seal += 1) {
+      run = stepRouteRun(run, 'connect-beacon-seal');
+      expect(run.beaconSeals).toBe(seal);
+    }
+    expect(run.stage).toBe('evidence');
+    expect(stepRouteRun(run, 'match-evidence').stage).toBe('verified');
+  });
 });
