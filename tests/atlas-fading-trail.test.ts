@@ -63,4 +63,21 @@ describe('Light Forest fading trail', () => {
     expect(run).toMatchObject({ stage: 'evidence', receiptStep: 4 });
     expect(stepRouteRun(run, 'match-evidence').stage).toBe('verified');
   });
+
+  it('requires agreement from several validators before reopening the shared route', () => {
+    const genesis = ['talk', 'check-recipient', 'check-amount', 'approve-practice', 'try-signal', 'investigate', 'match-evidence', 'install', 'teach-back', 'next'] as const;
+    const forest = ['talk', 'check-recipient', 'check-amount', 'check-block', 'approve-practice', 'follow-trail', 'follow-trail', 'follow-trail', 'match-evidence', 'install', 'teach-back', 'next'] as const;
+    const harbor = ['talk', 'check-recipient', 'check-amount', 'approve-practice', 'compare-requests', 'reorg-evidence', 'match-evidence', 'install', 'teach-back', 'next'] as const;
+    const causeway = ['talk', 'check-recipient', 'check-amount', 'approve-practice', 'advance-receipt', 'advance-receipt', 'advance-receipt', 'advance-receipt', 'match-evidence', 'install', 'teach-back', 'next'] as const;
+    let run = replayRouteRun('explorer', [...genesis, ...forest, ...harbor, ...causeway, 'talk', 'check-recipient', 'check-amount', 'approve-practice']);
+    expect(run).toMatchObject({ chapter: 4, stage: 'signal', validatorVotes: 0 });
+    expect(stepRouteRun(run, 'trust-single-validator')).toMatchObject({ stage: 'signal', validatorVotes: 0 });
+    run = stepRouteRun(run, 'collect-validator');
+    expect(run.validatorVotes).toBe(1);
+    expect(stepRouteRun(run, 'match-evidence')).toMatchObject({ stage: 'signal', validatorVotes: 1 });
+    run = stepRouteRun(run, 'collect-validator');
+    run = stepRouteRun(run, 'collect-validator');
+    expect(run).toMatchObject({ stage: 'evidence', validatorVotes: 3 });
+    expect(stepRouteRun(run, 'match-evidence').stage).toBe('verified');
+  });
 });

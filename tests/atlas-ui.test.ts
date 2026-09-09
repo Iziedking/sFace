@@ -101,6 +101,15 @@ describe('NIM Atlas public first district UI', () => {
     expect(routeUi).toContain('RELEASE THE MEDICINE');
   });
 
+  it('turns Validator Peaks into a consensus mission', () => {
+    const app = readFileSync(new URL('../src/atlas/app/atlas-app.ts', import.meta.url), 'utf8');
+    const routeUi = readFileSync(new URL('../src/atlas/ui/route-rescue.ts', import.meta.url), 'utf8');
+    expect(app).toContain('CONSENSUS SIGNAL / VALIDATOR PEAKS');
+    expect(routeUi).toContain('CHECK THE NEXT VALIDATOR');
+    expect(routeUi).toContain('TRUST ONE VALIDATOR');
+    expect(routeUi).toContain('REOPEN THE SHARED ROUTE');
+  });
+
   it('uses the living 3D city as the landing backdrop and keeps onboarding to one clear run', () => {
     const app = readFileSync(new URL('../src/atlas/app/atlas-app.ts', import.meta.url), 'utf8');
     const landingStart = app.indexOf('private renderWelcome');

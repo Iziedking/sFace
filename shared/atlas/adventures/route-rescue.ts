@@ -3,7 +3,7 @@ import type { AtlasRestorationState } from '../living-world';
 import type { AtlasMissionProgress } from '../mission-director';
 
 export type RouteStage = 'arrive' | 'request' | 'signal' | 'refused' | 'evidence' | 'verified' | 'restored' | 'complete';
-export type RouteAction = 'talk' | 'check-recipient' | 'check-amount' | 'check-block' | 'approve-practice' | 'try-signal' | 'follow-trail' | 'follow-stale-trail' | 'compare-requests' | 'advance-receipt' | 'trust-early-receipt' | 'investigate' | 'weak-evidence' | 'reorg-evidence' | 'match-evidence' | 'install' | 'wrong-answer' | 'teach-back' | 'next';
+export type RouteAction = 'talk' | 'check-recipient' | 'check-amount' | 'check-block' | 'approve-practice' | 'try-signal' | 'follow-trail' | 'follow-stale-trail' | 'compare-requests' | 'advance-receipt' | 'trust-early-receipt' | 'collect-validator' | 'trust-single-validator' | 'investigate' | 'weak-evidence' | 'reorg-evidence' | 'match-evidence' | 'install' | 'wrong-answer' | 'teach-back' | 'next';
 export interface RouteRun {
   readonly version: 1;
   readonly role: 'explorer' | 'builder';
@@ -16,6 +16,7 @@ export interface RouteRun {
   readonly duplicateReviewed: boolean;
   readonly duplicateRejected: boolean;
   readonly receiptStep: 0 | 1 | 2 | 3 | 4;
+  readonly validatorVotes: 0 | 1 | 2 | 3;
   readonly notice: string;
   readonly actions: readonly RouteAction[];
 }
@@ -23,7 +24,7 @@ export interface RouteRun {
 // This ledger is deliberately local practice. It cannot produce a payment
 // receipt, competitive score, reward entitlement or wallet request.
 export function createRouteRun(role: RouteRun['role']): RouteRun {
-  return { version: 1, role, chapter: 0, stage: 'arrive', recipientChecked: false, amountChecked: false, blockChecked: false, trailNode: 0, duplicateReviewed: false, duplicateRejected: false, receiptStep: 0, notice: '', actions: [] };
+  return { version: 1, role, chapter: 0, stage: 'arrive', recipientChecked: false, amountChecked: false, blockChecked: false, trailNode: 0, duplicateReviewed: false, duplicateRejected: false, receiptStep: 0, validatorVotes: 0, notice: '', actions: [] };
 }
 
 export const ROUTE_LESSONS = [
@@ -95,6 +96,15 @@ export function stepRouteRun(run: RouteRun, action: RouteAction): RouteRun {
       }
       break;
     case 'trust-early-receipt': if (at('signal') && run.chapter === 3) change = { notice: 'Too early. A lookup or fast inclusion does not yet prove the medicine is safe to deliver.' }; break;
+    case 'collect-validator':
+      if (at('signal') && run.chapter === 4) {
+        const validatorVotes = Math.min(3, run.validatorVotes + 1) as RouteRun['validatorVotes'];
+        change = validatorVotes === 3
+          ? { stage: 'evidence', validatorVotes, notice: 'Three independent validators agree. Compare the consensus record before reopening the route.' }
+          : { validatorVotes, notice: `Validator ${validatorVotes} agrees. Check another independent validator before trusting the route.` };
+      }
+      break;
+    case 'trust-single-validator': if (at('signal') && run.chapter === 4) change = { notice: 'One validator can be wrong or delayed. Gather independent agreement before reopening a shared route.' }; break;
     case 'investigate': if (at('refused')) change = { stage: 'evidence' }; break;
     case 'weak-evidence': if (at('evidence')) change = { notice: 'Route stays closed: this message makes a claim, but it does not prove the payment.' }; break;
     case 'reorg-evidence':
@@ -109,19 +119,22 @@ export function stepRouteRun(run: RouteRun, action: RouteAction): RouteRun {
           ? { notice: 'Reject the duplicate request first. The exact request is safe only after the replay is blocked.' }
           : run.chapter === 3 && run.receiptStep < 4
             ? { notice: 'Wait for finality. The medicine route is not safe to release from an early receipt.' }
+          : run.chapter === 4 && run.validatorVotes < 3
+            ? { notice: 'Consensus is incomplete. Gather agreement from three independent validators before reopening the route.' }
           : { stage: 'verified', notice: 'Payment proof accepted. Carry the checked result to the route gate.' };
       break;
     case 'install': if (at('verified')) change = { stage: 'restored', notice: routeLesson(run).result }; break;
     case 'wrong-answer': if (at('restored')) change = { notice: 'Think about what the first signal could not prove. Try again; the restored route stays safe.' }; break;
     case 'teach-back': if (at('restored')) change = { stage: 'complete', notice: 'Lesson remembered locally. No NIM sent or reward claimed.' }; break;
-    case 'next': if (at('complete') && run.chapter < ROUTE_LESSONS.length - 1) change = { chapter: run.chapter + 1, stage: 'arrive', recipientChecked: false, amountChecked: false, blockChecked: false, trailNode: 0, duplicateReviewed: false, duplicateRejected: false, receiptStep: 0 }; break;
+    case 'next': if (at('complete') && run.chapter < ROUTE_LESSONS.length - 1) change = { chapter: run.chapter + 1, stage: 'arrive', recipientChecked: false, amountChecked: false, blockChecked: false, trailNode: 0, duplicateReviewed: false, duplicateRejected: false, receiptStep: 0, validatorVotes: 0 }; break;
   }
   if (!change) return run;
   // Keep progression plus the current retry notice, not an unbounded mistake
   // counter. Learners can retry forever without exhausting their saved journal.
   const last = run.actions[run.actions.length - 1];
-  const retry = last === 'weak-evidence' || (last === 'reorg-evidence' && run.chapter !== 2) || last === 'wrong-answer' || last === 'follow-stale-trail' || last === 'trust-early-receipt'
+  const retry = last === 'weak-evidence' || (last === 'reorg-evidence' && run.chapter !== 2) || last === 'wrong-answer' || last === 'follow-stale-trail' || last === 'trust-early-receipt' || last === 'trust-single-validator'
     || (last === 'match-evidence' && run.chapter === 3 && run.receiptStep < 4)
+    || (last === 'match-evidence' && run.chapter === 4 && run.validatorVotes < 3)
     || (last === 'approve-practice' && run.stage === 'request');
   const history = retry ? run.actions.slice(0, -1) : run.actions;
   const repeatedCheck = (action === 'check-recipient' && run.recipientChecked)

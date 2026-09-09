@@ -606,7 +606,7 @@ export class AtlasApp {
     movement.append(accessibleDirections);
     const actions = element('div', 'atlas-actions');
     actions.append(this.createCitySprint());
-    const routeAction = this.routeRun?.stage === 'arrive' ? 'Talk' : this.routeRun?.stage === 'evidence' ? 'Inspect' : this.routeRun?.stage === 'verified' ? 'Install' : this.routeRun?.stage === 'complete' ? 'Travel' : this.routeRun?.chapter === 1 && this.routeRun?.stage === 'signal' ? 'Follow trail' : this.routeRun?.chapter === 2 && this.routeRun?.stage === 'signal' ? 'Compare requests' : this.routeRun?.chapter === 3 && this.routeRun?.stage === 'signal' ? 'Advance receipt' : 'Mission';
+    const routeAction = this.routeRun?.stage === 'arrive' ? 'Talk' : this.routeRun?.stage === 'evidence' ? 'Inspect' : this.routeRun?.stage === 'verified' ? 'Install' : this.routeRun?.stage === 'complete' ? 'Travel' : this.routeRun?.chapter === 1 && this.routeRun?.stage === 'signal' ? 'Follow trail' : this.routeRun?.chapter === 2 && this.routeRun?.stage === 'signal' ? 'Compare requests' : this.routeRun?.chapter === 3 && this.routeRun?.stage === 'signal' ? 'Advance receipt' : this.routeRun?.chapter === 4 && this.routeRun?.stage === 'signal' ? 'Check validator' : 'Mission';
     const interact = actionButton(
       this.routeRun ? routeAction : this.cityQuestStep === 'meet-guide' ? 'Talk' : 'Travel',
       this.routeRun ? this.interactRoute : this.cityQuestStep === 'meet-guide' ? this.interactWithCommonsGuide : this.travelToPayHarbor,
@@ -668,10 +668,10 @@ export class AtlasApp {
     catch { this.routeFeed.push('Local saving unavailable. Keep this tab open to continue.'); }
     if (next.notice) this.routeFeed.push(next.notice);
     if (this.routeFeed.length > 3) this.routeFeed.splice(0, this.routeFeed.length - 3);
-    const refusal = action === 'try-signal' || action === 'follow-stale-trail' || action === 'trust-early-receipt' || action === 'weak-evidence' || action === 'reorg-evidence' || action === 'wrong-answer';
+    const refusal = action === 'try-signal' || action === 'follow-stale-trail' || action === 'trust-early-receipt' || action === 'trust-single-validator' || action === 'weak-evidence' || action === 'reorg-evidence' || action === 'wrong-answer';
     this.audio.playWorldCue(refusal ? 'route-refused' : action === 'match-evidence' ? 'route-evidence' : action === 'install' ? 'route-repaired' : action === 'teach-back' ? 'route-complete' : 'city-interaction');
     if (action === 'install') {
-      const chapter = next.chapter === 0 ? getAtlasStoryChapter('genesis-garden') : next.chapter === 1 ? getAtlasStoryChapter('light-forest') : next.chapter === 2 ? getAtlasStoryChapter('pay-harbor') : next.chapter === 3 ? getAtlasStoryChapter('albatross-causeway') : undefined;
+      const chapter = next.chapter === 0 ? getAtlasStoryChapter('genesis-garden') : next.chapter === 1 ? getAtlasStoryChapter('light-forest') : next.chapter === 2 ? getAtlasStoryChapter('pay-harbor') : next.chapter === 3 ? getAtlasStoryChapter('albatross-causeway') : next.chapter === 4 ? getAtlasStoryChapter('validator-peaks') : undefined;
       if (chapter) this.audio.narrateLine(chapter.voice.completion);
       else this.audio.narrate(`Practice route restored. ${routeLesson(next).result}`);
     }
@@ -2362,6 +2362,19 @@ function routeObjective(run: RouteRun): { depth: 'glance'; objective: string; de
        complete: { objective: 'CAUSEWAY RESTORED', detail: 'The medicine crossed safely. Continue toward Validator Peaks.' },
      };
      return { depth: 'glance', ...stages[run.stage], status: 'RECEIPT CLOCK / ALBATROSS CAUSEWAY / CHAPTER 4 / PRACTICE MODE' };
+   }
+   if (run.chapter === 4) {
+     const stages: Record<RouteRun['stage'], { objective: string; detail: string }> = {
+       arrive: { objective: 'FIND TAVI / VALIDATOR PEAKS', detail: 'The route is paused on one report. Move to Tavi and start the consensus climb.' },
+       request: { objective: 'READ THE ROUTE CLAIM', detail: 'Check the route scope and who is allowed to support the claim.' },
+       signal: { objective: 'GATHER VALIDATOR AGREEMENT', detail: `Consensus signal: ${run.validatorVotes} of 3 validators agree. One voice is not enough.` },
+       refused: { objective: 'DO NOT TRUST ONE VOICE', detail: 'A single validator can be delayed or wrong. Gather independent agreement.' },
+       evidence: { objective: 'CHOOSE CONSENSUS', detail: 'Select the record that represents independent validators agreeing on the same route.' },
+       verified: { objective: 'REOPEN THE SHARED ROUTE', detail: 'Carry the consensus record to the peak relay.' },
+       restored: { objective: 'TEACH THE MANY-HANDS RULE', detail: 'The route is open. Explain why one confident report is not consensus.' },
+       complete: { objective: 'CONSENSUS RESTORED', detail: 'Independent agreement reopened the route. Continue toward Builder City.' },
+     };
+     return { depth: 'glance', ...stages[run.stage], status: 'CONSENSUS SIGNAL / VALIDATOR PEAKS / CHAPTER 5 / PRACTICE MODE' };
    }
    return {
     depth: 'glance',
