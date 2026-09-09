@@ -9,6 +9,7 @@ import type { LanternEvidenceSource, LanternPhase } from '../../../shared/atlas/
  * locale is a property of the script, not of the sentence being spoken.
  */
 export const ATLAS_NARRATION_LOCALE = 'en-US';
+export type AtlasVoiceProfile = 'mara' | 'atlas' | 'nia' | 'oren' | 'tala' | 'ivo' | 'ada';
 
 export type AtlasAudioBus = 'ambience' | 'events' | 'interface' | 'voice';
 export type AtlasAudioCue = 'atlas-theme' | 'city-ambience' | 'harbor-waiting-ambience' | 'harbor-restored-ambience' | 'payment-pending' | 'payment-confirmed' | 'beacon-confirmation' | 'city-footstep' | 'city-interaction' | 'route-refused' | 'route-evidence' | 'route-repaired' | 'route-complete';
@@ -19,7 +20,7 @@ export interface AtlasAudioBackend {
   stop(cue: AtlasAudioCue): void;
   setVolume(bus: AtlasAudioBus, value: number): void;
   visualCue(cue: AtlasAudioCue): void;
-  narrate?(text: string, locale: string): void;
+  narrate?(text: string, locale: string, speaker?: AtlasVoiceProfile): void;
   destroy(): void;
 }
 
@@ -95,7 +96,12 @@ export class AtlasAudio {
 
   narrate(text: string, locale: string = ATLAS_NARRATION_LOCALE): void {
     if (!this.unlocked || !text.trim()) return;
-    try { this.backend.narrate?.(text, locale); } catch { /* Voice is optional and never blocks play. */ }
+    try { this.backend.narrate?.(text, locale, 'atlas'); } catch { /* Voice is optional and never blocks play. */ }
+  }
+
+  narrateLine(line: { readonly text: string; readonly locale: string; readonly speaker: AtlasVoiceProfile }): void {
+    if (!this.unlocked || !line.text.trim()) return;
+    try { this.backend.narrate?.(line.text, line.locale, line.speaker); } catch { /* Voice is optional and never blocks play. */ }
   }
 
   destroy(): void {
@@ -181,6 +187,16 @@ const TONES: Record<AtlasAudioCue, ToneRecipe> = {
   'beacon-confirmation': { from: 660, to: 990, duration: 0.35 },
   'city-footstep': { from: 105, to: 78, duration: 0.08 },
   'city-interaction': { from: 330, to: 520, duration: 0.18 },
+};
+
+const VOICE_PROFILES: Record<AtlasVoiceProfile, { readonly rate: number; readonly pitch: number }> = {
+  mara: { rate: 0.88, pitch: 0.94 },
+  atlas: { rate: 0.82, pitch: 1.02 },
+  nia: { rate: 0.96, pitch: 1.08 },
+  oren: { rate: 0.9, pitch: 0.98 },
+  tala: { rate: 0.86, pitch: 0.9 },
+  ivo: { rate: 0.94, pitch: 1.0 },
+  ada: { rate: 0.88, pitch: 1.06 },
 };
 
 function createWebAudioBackend(): AtlasAudioBackend {
@@ -296,7 +312,7 @@ function createWebAudioBackend(): AtlasAudioBackend {
       const gain = buses.get(bus);
       if (gain) gain.gain.value = value;
     },
-    narrate: (text, locale) => {
+    narrate: (text, locale, speaker = 'atlas') => {
       if (volumes.voice === 0) return;
       const synth = globalThis.speechSynthesis;
       const Utterance = globalThis.SpeechSynthesisUtterance;
@@ -305,9 +321,12 @@ function createWebAudioBackend(): AtlasAudioBackend {
       const utterance = new Utterance(text);
       utterance.lang = locale;
       utterance.volume = volumes.voice;
-      utterance.rate = 0.92;
-      utterance.pitch = 1.02;
-      const voice = synth.getVoices().find((candidate) => candidate.lang.toLowerCase().startsWith(locale.toLowerCase().split('-')[0]!));
+      const profile = VOICE_PROFILES[speaker];
+      utterance.rate = profile.rate;
+      utterance.pitch = profile.pitch;
+      const requestedLocale = locale.toLowerCase();
+      const voice = synth.getVoices().find((candidate) => candidate.lang.toLowerCase() === requestedLocale)
+        ?? synth.getVoices().find((candidate) => candidate.lang.toLowerCase().startsWith('en-'));
       if (voice) utterance.voice = voice;
       synth.speak(utterance);
     },

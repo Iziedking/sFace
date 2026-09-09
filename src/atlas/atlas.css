@@ -184,6 +184,12 @@ button { min-height: 44px; }
 .atlas-shop-card .atlas-primary { margin-top: 9px; }
 .atlas-shop-locked, .atlas-shop-locked:disabled { background: var(--atlas-inert); color: var(--atlas-muted); box-shadow: 2px 2px 0 var(--atlas-muted); cursor: not-allowed; }
 .atlas-lantern-mode { margin: 16px 0 0; color: var(--atlas-label); font: 700 13px/1.25 system-ui, sans-serif; letter-spacing: .1em; }
+.atlas-story-hook { max-width: 54ch; margin: 12px 0 0; color: var(--atlas-label); font-size: 14px; line-height: 1.45; }
+.atlas-story-kicker { margin: 14px 0 0; color: var(--atlas-signal); font: 900 12px/1.25 ui-monospace, monospace; letter-spacing: .1em; }
+.atlas-story-reveal { margin: 12px 0 0; padding: 10px 12px; border-left: 4px solid var(--atlas-signal); background: var(--atlas-raised); font-weight: 800; line-height: 1.4; }
+.atlas-story-status { margin-top: 20px; padding: 14px; border: 2px solid var(--atlas-ink); background: var(--atlas-raised); }
+.atlas-story-status strong { display: block; color: var(--atlas-label); font: 900 13px/1.25 ui-monospace, monospace; letter-spacing: .08em; }
+.atlas-story-status .atlas-quiet { margin-top: 8px; }
 .atlas-payment-path { margin: 12px 0 0; padding: 10px 12px; border-left: 4px solid var(--atlas-signal); background: var(--atlas-raised); font-size: 13px; line-height: 1.4; }
 .atlas-lantern-status { margin-top: 18px; padding: 14px; border: 2px solid var(--atlas-ink); background: var(--atlas-builder); color: var(--atlas-on-accent); }
 .atlas-lantern-status strong { display: block; font: 900 16px/1.2 ui-monospace, monospace; text-transform: uppercase; }
@@ -429,6 +435,7 @@ button:focus-visible, input:focus-visible, a:focus-visible, [tabindex]:focus-vis
 .atlas-evergreen-journey { margin-top: 18px; padding: 14px; border: 2px solid var(--atlas-ink); background: var(--atlas-map-panel); }
 .atlas-evergreen-role { margin: 12px 0 0; color: var(--atlas-label); font: 700 13px/1.25 system-ui, sans-serif; }
 .atlas-human-need { margin: 10px 0 0; font-weight: 800; line-height: 1.4; }
+.atlas-evergreen-journey .atlas-story-reveal { background: var(--atlas-paper); }
 .atlas-evergreen-choices { display: grid; gap: 7px; margin-top: 10px; }
 .atlas-evergreen-choices .atlas-primary { margin-top: 0; }
 .atlas-evergreen-journey .atlas-primary { margin-top: 12px; }

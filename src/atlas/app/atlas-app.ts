@@ -45,6 +45,7 @@ import { projectPayHarborPhysicalMission } from '../../../shared/atlas/city/pay-
 import { getAtlasWaypointGuidance } from '../../../shared/atlas/city/wayfinding';
 import { createPayHarborScene } from '../scenes/pay-harbor';
 import { activeHarborContract, advanceHarborContract, harborContractsForDay, harborContractStars, startHarborContract, type HarborContractProgress } from '../../../shared/atlas/harbor-contracts';
+import { ATLAS_STORY, ATLAS_STORY_CHAPTERS, getAtlasStoryChapter, selectAtlasHubDispatch } from '../../../shared/atlas/story';
 import { createHarborContractStore } from '../harbor-contract-store';
 import { harborContractDialogue, projectHarborContractMission } from '../ui/harbor-contracts';
 
@@ -316,6 +317,7 @@ export class AtlasApp {
     const heading = element('h1', '', 'Explore Nimiq. Build what survives.');
     const tagline = element('p', 'atlas-tagline', 'Learn how Nimiq works by walking through a living city, meeting its people, and making the right move.');
     const identity = element('p', 'atlas-identity', 'Sface is a Nimiq Pay Mini App game. NIM Atlas is the network you repair by playing.');
+    const storyHook = element('p', 'atlas-story-hook', ATLAS_STORY.logline);
     /*
      * The 01/02/03 learning loop used to live here.
      *
@@ -366,7 +368,7 @@ export class AtlasApp {
     const primary = element('div', 'atlas-home-primary');
     primary.append(mission, roles, promise, start, howToPlay);
     const introduction = element('div', 'atlas-home-intro');
-    introduction.append(eyebrow, heading, tagline, identity);
+    introduction.append(eyebrow, heading, tagline, identity, storyHook);
     const homeGrid = element('div', 'atlas-home-grid');
     homeGrid.append(introduction, primary);
     const routes = document.createElement('details');
@@ -494,14 +496,20 @@ export class AtlasApp {
     const drawer = document.createElement('details');
     drawer.className = 'atlas-status-drawer';
     const summary = element('summary', '', 'Verified world, rankings, and optional expansions');
-    drawer.append(summary, this.renderLeaderboards(), this.renderBeaconStatus(), this.renderShopCatalog());
+    const story = element('section', 'atlas-story-status');
+    story.setAttribute('aria-label', 'Atlas story loop');
+    story.append(
+      element('strong', '', `${ATLAS_STORY.hubName.toUpperCase()} / THE THREAD THAT BINDS`),
+      element('p', 'atlas-quiet', ATLAS_STORY.dailyLoop),
+    );
+    drawer.append(summary, story, this.renderLeaderboards(), this.renderBeaconStatus(), this.renderShopCatalog());
     return drawer;
   }
 
   private openBeaconCommons = (): void => {
     this.canvas.hidden = true;
     this.audio.unlock();
-    this.audio.narrate('Pay Harbor has gone dark. Mara needs to pay zero point one NIM for a lantern. Follow the pink marker to learn the safe payment steps.');
+    this.audio.narrateLine(ATLAS_STORY_CHAPTERS[0]!.voice.arrival);
     this.screen = 'beacon-commons';
     this.beaconTravelNotice = '';
     this.cityQuestStep = 'meet-guide';
@@ -1358,6 +1366,12 @@ export class AtlasApp {
     void this.stopLivingCity();
     this.screen = 'daily';
     this.dailyNotice = '';
+    const dispatch = selectAtlasHubDispatch(new Date());
+    const chapter = getAtlasStoryChapter(dispatch.chapterId);
+    if (chapter) {
+      this.audio.unlock();
+      this.audio.narrateLine({ ...chapter.voice.arrival, text: `${dispatch.hook} ${chapter.voice.arrival.text}` });
+    }
     this.renderDailyPuzzle();
   };
 
@@ -1471,19 +1485,30 @@ export class AtlasApp {
   private renderDailyPuzzle(): void {
     this.ui.replaceChildren();
     const challenge = selectDailyChallenge(new Date());
+    const dispatch = selectAtlasHubDispatch(new Date());
     const panel = this.screenPanel('atlas-daily');
     panel.setAttribute('aria-label', 'Daily Atlas puzzle');
     panel.append(
       this.screenNav('Daily puzzle'),
       element('p', 'atlas-eyebrow', 'DAILY ATLAS PUZZLE'),
       element('h1', '', challenge.title),
+      element('p', 'atlas-story-kicker', `${ATLAS_STORY.hubName.toUpperCase()} / FIELD JOB`),
+      element('p', 'atlas-story-hook', dispatch.hook),
+      element('p', 'atlas-trial-copy', dispatch.objective),
+      element('p', 'atlas-quiet', dispatch.lesson),
       element('p', 'atlas-book-sequence', `DAY ${challenge.day} OF 28 / ${challenge.theme.toUpperCase()} / LEARN / SOLVE / VERIFY`),
       element('p', 'atlas-trial-copy', challenge.prompt),
+      element('p', 'atlas-lantern-mode', dispatch.rewardCopy),
       element('p', 'atlas-lantern-mode', 'FREE CORE / LOCAL PRACTICE / SERVER VERIFICATION REQUIRED FOR REWARDS'),
     );
     const choices = element('div', 'atlas-daily-choices');
     for (const answer of dailyChallengeChoices(challenge)) choices.append(actionButton(formatDailyChoice(answer), () => {
       this.dailyNotice = answer === challenge.answer ? 'Correct locally. Reward share appears only after server verification.' : dailyRetryHint(challenge);
+      if (answer === challenge.answer) {
+        const dispatch = selectAtlasHubDispatch(new Date());
+        const chapter = getAtlasStoryChapter(dispatch.chapterId);
+        if (chapter) this.audio.narrateLine(chapter.voice.completion);
+      }
       this.renderDailyPuzzle();
     }, `Answer ${formatDailyChoice(answer)}`));
     panel.append(choices);
@@ -1498,6 +1523,11 @@ export class AtlasApp {
     this.evergreenActions = [];
     this.evergreenState = replayEvergreenAdventure(this.evergreenAdventure, []);
     this.evergreenNotice = '';
+    const chapter = getAtlasStoryChapter(this.evergreenAdventure.districtId);
+    if (chapter) {
+      this.audio.unlock();
+      this.audio.narrateLine(chapter.voice.arrival);
+    }
     this.renderEvergreen();
   };
 
@@ -1506,6 +1536,11 @@ export class AtlasApp {
     this.evergreenActions = [];
     this.evergreenState = replayEvergreenAdventure(adventure, []);
     this.evergreenNotice = '';
+    const chapter = getAtlasStoryChapter(adventure.districtId);
+    if (chapter) {
+      this.audio.unlock();
+      this.audio.narrateLine(chapter.voice.arrival);
+    }
     this.renderEvergreen();
   };
 
@@ -1515,6 +1550,10 @@ export class AtlasApp {
       this.evergreenState = replayEvergreenAdventure(this.evergreenAdventure, actions);
       this.evergreenActions = actions;
       this.evergreenNotice = '';
+      if (this.evergreenState.phase === 'completed' && this.evergreenActions.length > 0) {
+        const chapter = getAtlasStoryChapter(this.evergreenAdventure.districtId);
+        if (chapter) this.audio.narrateLine(chapter.voice.completion);
+      }
     } catch (error) {
       this.evergreenNotice = action.type === 'teach-back'
         ? 'That rule does not explain this consequence yet. Revisit what changed in the district and try again.'
@@ -1528,10 +1567,12 @@ export class AtlasApp {
     this.renderer.drawDistrict(this.evergreenAdventure.districtId, this.evergreenState.phase === 'completed');
     const panel = this.screenPanel('atlas-evergreen');
     panel.setAttribute('aria-label', 'Evergreen District Atlas');
+    const chapter = getAtlasStoryChapter(this.evergreenAdventure.districtId);
     panel.append(
       this.screenNav('District Atlas'),
       element('p', 'atlas-eyebrow', 'DISTRICT ATLAS / EVERGREEN ADVENTURES'),
       element('h1', '', 'Walk the living network'),
+      ...(chapter ? [element('p', 'atlas-story-kicker', `CHAPTER ${chapter.chapter} / ${chapter.title.toUpperCase()}`), element('p', 'atlas-story-hook', chapter.storyBeat)] : []),
       element('p', 'atlas-trial-copy', 'Meet a human need, use a Nimiq concept in the world, see the consequence, then teach the rule back without the Book.'),
       element('p', 'atlas-book-sequence', 'ENCOUNTER / ACT / CONSEQUENCE / TRANSFER / TEACH-BACK'),
     );
@@ -1546,7 +1587,7 @@ export class AtlasApp {
     panel.append(map);
     const adventure = this.evergreenAdventure;
     const journey = element('div', 'atlas-evergreen-journey');
-    journey.append(element('p', 'atlas-trial-context', `${adventure.title.toUpperCase()} / ${this.evergreenState.phase.toUpperCase()}`), element('p', 'atlas-human-need', adventure.humanNeed), element('p', 'atlas-trial-copy', adventure.problem), element('p', 'atlas-builder-boundary', `VISIBLE CONSEQUENCE: ${this.evergreenState.consequence} ${adventure.consequence.visible}`));
+    journey.append(element('p', 'atlas-trial-context', `${adventure.title.toUpperCase()} / ${this.evergreenState.phase.toUpperCase()}`), element('p', 'atlas-human-need', adventure.humanNeed), element('p', 'atlas-trial-copy', chapter?.mission ?? adventure.problem), element('p', 'atlas-quiet', chapter?.clue ?? ''), element('p', 'atlas-builder-boundary', `VISIBLE CONSEQUENCE: ${this.evergreenState.consequence} ${adventure.consequence.visible}`));
     if (this.evergreenState.phase === 'arrival') {
       journey.append(actionButton('Observe the problem', () => this.advanceEvergreen({ type: 'observe' }), 'Observe the district problem'));
     } else if (this.evergreenState.phase === 'observed') {
@@ -1561,7 +1602,7 @@ export class AtlasApp {
       }
       journey.append(choices);
     } else {
-      journey.append(element('div', 'atlas-builder-success', `DISTRICT RESTORED / ${adventure.consequence.after}`), element('p', 'atlas-quiet', 'This local seal records learning only. Server verification is required before any score, rank, or reward claim.'));
+      journey.append(element('div', 'atlas-builder-success', `DISTRICT RESTORED / ${adventure.consequence.after}`), element('p', 'atlas-story-reveal', chapter?.reveal ?? ''), element('p', 'atlas-quiet', 'This local seal records learning only. Server verification is required before any score, rank, or reward claim.'));
     }
     if (this.evergreenNotice) journey.append(element('p', 'atlas-lantern-error', this.evergreenNotice));
     panel.append(journey, actionButton('Open Living Knowledge Book', this.openKnowledgeBook, 'Open Living Knowledge Book'));

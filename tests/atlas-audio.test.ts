@@ -3,13 +3,14 @@ import { describe, expect, it } from 'vitest';
 import { createAtlasAudio, type AtlasAudioBackend, type AtlasAudioState } from '../src/atlas/audio/atlas-audio';
 
 function fakeBackend() {
-  const events: Array<{ type: string; cue?: string; bus?: string; loop?: boolean; value?: number }> = [];
+  const events: Array<{ type: string; cue?: string; bus?: string; loop?: boolean; value?: number; text?: string; locale?: string; speaker?: string }> = [];
   const backend: AtlasAudioBackend = {
     unlock: () => { events.push({ type: 'unlock' }); },
     play: (cue, bus, loop) => { events.push({ type: 'play', cue, bus, loop }); },
     stop: (cue) => { events.push({ type: 'stop', cue }); },
     setVolume: (bus, value) => { events.push({ type: 'volume', bus, value }); },
     visualCue: (cue) => { events.push({ type: 'visual', cue }); },
+    narrate: (text, locale, speaker) => { events.push({ type: 'narrate', text, locale, speaker }); },
     destroy: () => { events.push({ type: 'destroy' }); },
   };
   return { backend, events };
@@ -72,5 +73,13 @@ describe('NIM Atlas adaptive audio', () => {
       { type: 'volume', bus: 'events', value: 0.8 },
       { type: 'volume', bus: 'interface', value: 0.4 },
     ]);
+  });
+
+  it('routes story lines through explicit English speaker profiles', () => {
+    const fake = fakeBackend();
+    const audio = createAtlasAudio(fake.backend);
+    audio.unlock();
+    audio.narrateLine({ speaker: 'mara', locale: 'en-US', text: 'The harbor is listening.' });
+    expect(fake.events.find((event) => event.type === 'narrate')).toEqual({ type: 'narrate', text: 'The harbor is listening.', locale: 'en-US', speaker: 'mara' });
   });
 });
