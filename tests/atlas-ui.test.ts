@@ -43,7 +43,8 @@ describe('NIM Atlas public first district UI', () => {
     const app = readFileSync(new URL('../src/atlas/app/atlas-app.ts', import.meta.url), 'utf8');
     const manifest = readFileSync(new URL('../public/manifest.webmanifest', import.meta.url), 'utf8');
     expect(app).toContain('Sface is a Nimiq Pay Mini App game. NIM Atlas is the network you repair by playing.');
-    expect(manifest).toContain('Sface is a Nimiq Pay Mini App game where you explore NIM Atlas');
+    expect(manifest).toContain('Sface is a Nimiq Pay Mini App game.');
+    expect(manifest).toContain('Explore NIM Atlas');
     expect(app).toContain('PRACTICE MODE / PLAYABLE WITHOUT A WALLET');
     expect(app).toContain('NIMIQ PAY IS THE LIVE PAYMENT GATE');
   });
