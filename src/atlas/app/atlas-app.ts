@@ -606,7 +606,7 @@ export class AtlasApp {
     movement.append(accessibleDirections);
     const actions = element('div', 'atlas-actions');
     actions.append(this.createCitySprint());
-    const routeAction = this.routeRun?.stage === 'arrive' ? 'Talk' : this.routeRun?.stage === 'evidence' ? 'Inspect' : this.routeRun?.stage === 'verified' ? 'Install' : this.routeRun?.stage === 'complete' ? 'Travel' : this.routeRun?.chapter === 1 && this.routeRun?.stage === 'signal' ? 'Follow trail' : this.routeRun?.chapter === 2 && this.routeRun?.stage === 'signal' ? 'Compare requests' : 'Mission';
+    const routeAction = this.routeRun?.stage === 'arrive' ? 'Talk' : this.routeRun?.stage === 'evidence' ? 'Inspect' : this.routeRun?.stage === 'verified' ? 'Install' : this.routeRun?.stage === 'complete' ? 'Travel' : this.routeRun?.chapter === 1 && this.routeRun?.stage === 'signal' ? 'Follow trail' : this.routeRun?.chapter === 2 && this.routeRun?.stage === 'signal' ? 'Compare requests' : this.routeRun?.chapter === 3 && this.routeRun?.stage === 'signal' ? 'Advance receipt' : 'Mission';
     const interact = actionButton(
       this.routeRun ? routeAction : this.cityQuestStep === 'meet-guide' ? 'Talk' : 'Travel',
       this.routeRun ? this.interactRoute : this.cityQuestStep === 'meet-guide' ? this.interactWithCommonsGuide : this.travelToPayHarbor,
@@ -668,10 +668,10 @@ export class AtlasApp {
     catch { this.routeFeed.push('Local saving unavailable. Keep this tab open to continue.'); }
     if (next.notice) this.routeFeed.push(next.notice);
     if (this.routeFeed.length > 3) this.routeFeed.splice(0, this.routeFeed.length - 3);
-    const refusal = action === 'try-signal' || action === 'follow-stale-trail' || action === 'weak-evidence' || action === 'reorg-evidence' || action === 'wrong-answer';
+    const refusal = action === 'try-signal' || action === 'follow-stale-trail' || action === 'trust-early-receipt' || action === 'weak-evidence' || action === 'reorg-evidence' || action === 'wrong-answer';
     this.audio.playWorldCue(refusal ? 'route-refused' : action === 'match-evidence' ? 'route-evidence' : action === 'install' ? 'route-repaired' : action === 'teach-back' ? 'route-complete' : 'city-interaction');
     if (action === 'install') {
-      const chapter = next.chapter === 0 ? getAtlasStoryChapter('genesis-garden') : next.chapter === 1 ? getAtlasStoryChapter('light-forest') : next.chapter === 2 ? getAtlasStoryChapter('pay-harbor') : undefined;
+      const chapter = next.chapter === 0 ? getAtlasStoryChapter('genesis-garden') : next.chapter === 1 ? getAtlasStoryChapter('light-forest') : next.chapter === 2 ? getAtlasStoryChapter('pay-harbor') : next.chapter === 3 ? getAtlasStoryChapter('albatross-causeway') : undefined;
       if (chapter) this.audio.narrateLine(chapter.voice.completion);
       else this.audio.narrate(`Practice route restored. ${routeLesson(next).result}`);
     }
@@ -2308,6 +2308,8 @@ function coreRunSteps(view: AtlasCoreRunView): Array<{ label: string; complete: 
   return steps.map((step) => ({ ...step, current: completed ? false : step.current }));
 }
 
+const RECEIPT_STATE_NAMES = ['LOOKUP RECEIVED', 'INCLUSION SEEN', 'CONFIRMATIONS GROWING', 'FINALITY READY'] as const;
+
 function routeObjective(run: RouteRun): { depth: 'glance'; objective: string; detail: string; status: string } {
   if (run.chapter === 0) {
     const stages: Record<RouteRun['stage'], { objective: string; detail: string }> = {
@@ -2347,6 +2349,19 @@ function routeObjective(run: RouteRun): { depth: 'glance'; objective: string; de
        complete: { objective: 'PAY HARBOR RESTORED', detail: 'One exact request reopened the harbor. Continue toward Albatross Causeway.' },
      };
      return { depth: 'glance', ...stages[run.stage], status: 'DUPLICATE REQUEST / PAY HARBOR / CHAPTER 3 / PRACTICE MODE' };
+   }
+   if (run.chapter === 3) {
+     const stages: Record<RouteRun['stage'], { objective: string; detail: string }> = {
+       arrive: { objective: 'FIND SANA / ALBATROSS CAUSEWAY', detail: 'Medicine is waiting. Move to Sana and open the receipt clock.' },
+       request: { objective: 'READ THE MEDICINE ORDER', detail: 'Check sender, recipient and amount before starting the clock.' },
+       signal: { objective: 'MOVE THE RECEIPT CLOCK', detail: `Current state: ${RECEIPT_STATE_NAMES[Math.min(3, run.receiptStep)]}. Do not release medicine early.` },
+       refused: { objective: 'WAIT FOR THE RIGHT PROOF', detail: 'A hash or fast inclusion is not finality.' },
+       evidence: { objective: 'CHOOSE FINALITY', detail: 'Select the record that proves the medicine route is safe.' },
+       verified: { objective: 'RELEASE THE MEDICINE', detail: 'Carry the final receipt to the ferry gate.' },
+       restored: { objective: 'OPEN THE MEDICINE FERRY', detail: 'The route is safe and the family can be told the truth.' },
+       complete: { objective: 'CAUSEWAY RESTORED', detail: 'The medicine crossed safely. Continue toward Validator Peaks.' },
+     };
+     return { depth: 'glance', ...stages[run.stage], status: 'RECEIPT CLOCK / ALBATROSS CAUSEWAY / CHAPTER 4 / PRACTICE MODE' };
    }
    return {
     depth: 'glance',

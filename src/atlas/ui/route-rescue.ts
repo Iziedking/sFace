@@ -15,7 +15,9 @@ export function createRouteCard(run: RouteRun, act: (action: RouteAction) => voi
     : run.chapter === 1
       ? 'CHAPTER 2 / LIGHT FOREST / FOLLOW THE FRESH SIGNAL'
       : run.chapter === 2
-        ? 'CHAPTER 3 / PAY HARBOR / CATCH THE DUPLICATE'
+      ? 'CHAPTER 3 / PAY HARBOR / CATCH THE DUPLICATE'
+      : run.chapter === 3
+        ? 'CHAPTER 4 / ALBATROSS CAUSEWAY / MOVE THE RECEIPT CLOCK'
       : `Practice · no NIM sent · ${run.chapter + 1}/7 · ${run.role}`;
   const detail = document.createElement('p');
   const actions = document.createElement('div');
@@ -42,6 +44,8 @@ export function createRouteCard(run: RouteRun, act: (action: RouteAction) => voi
         ? 'The forest path is bright, but the view may be old. Read the provider, consensus signal and latest block before you promise a safe route.'
         : run.chapter === 2
         ? 'Two lantern requests are waiting. Read both before anything is released. One is exact. One is a duplicate replay.'
+        : run.chapter === 3
+        ? 'Sana is waiting with medicine. Read the sender, recipient and amount before the receipt clock starts.'
         : `Investigate: ${lesson.need} Check the scope and authority before testing the apparent signal.`;
       if (run.chapter === 1) {
         button(`${run.recipientChecked ? '✓ ' : ''}READ PROVIDER STATUS / ready`, 'check-recipient', run.recipientChecked);
@@ -54,7 +58,7 @@ export function createRouteCard(run: RouteRun, act: (action: RouteAction) => voi
         button(`${run.recipientChecked ? '✓ ' : ''}${run.chapter === 0 ? 'SCAN DESTINATION / Beacon Lantern Shop' : ROUTE_CHECKS[run.chapter]![0]}`, 'check-recipient', run.recipientChecked);
         button(`${run.amountChecked ? '✓ ' : ''}${run.chapter === 0 ? 'SCAN AMOUNT / 0.1 NIM = 10,000 Lunas' : ROUTE_CHECKS[run.chapter]![1]}`, 'check-amount', run.amountChecked);
       }
-      button(run.chapter === 0 ? 'ASSEMBLE AND SEND PARCEL' : run.chapter === 1 ? 'OPEN THE FRESH TRAIL' : run.chapter === 2 ? 'COMPARE THE TWO LANTERN REQUESTS' : run.chapter < 2 ? 'Approve practice request' : 'Authorize this practice check', 'approve-practice', false, run.chapter === 1 ? !(run.recipientChecked && run.amountChecked && run.blockChecked) : !(run.recipientChecked && run.amountChecked));
+      button(run.chapter === 0 ? 'ASSEMBLE AND SEND PARCEL' : run.chapter === 1 ? 'OPEN THE FRESH TRAIL' : run.chapter === 2 ? 'COMPARE THE TWO LANTERN REQUESTS' : run.chapter === 3 ? 'START THE RECEIPT CLOCK' : run.chapter < 2 ? 'Approve practice request' : 'Authorize this practice check', 'approve-practice', false, run.chapter === 1 ? !(run.recipientChecked && run.amountChecked && run.blockChecked) : !(run.recipientChecked && run.amountChecked));
       break;
     case 'signal':
       detail.textContent = run.chapter === 0
@@ -63,11 +67,17 @@ export function createRouteCard(run: RouteRun, act: (action: RouteAction) => voi
         ? `The canopy is blinking. Follow the fresh signal in order: node ${Math.min(3, run.trailNode + 1)} of 3. A cached branch leads nowhere.`
         : run.chapter === 2
         ? 'A duplicate replay is trying to use the harbor route twice. Compare the two requests before the lantern moves.'
+        : run.chapter === 3
+        ? `Receipt clock: ${RECEIPT_STATES[Math.min(3, run.receiptStep)]}. A hash is not safe delivery. Move through each state.`
         : `The display looks successful: “${lesson.weak}”. Is the route ready?`;
       if (run.chapter === 1) {
         button(`FOLLOW THE FRESH TRAIL / ${FADING_TRAIL_NODES[Math.min(2, run.trailNode)] ?? 'route board'}`, 'follow-trail');
         button('CHASE THE STALE TRAIL / cached branch', 'follow-stale-trail');
       } else if (run.chapter === 2) button('COMPARE THE TWO LANTERN REQUESTS', 'compare-requests');
+      else if (run.chapter === 3) {
+        button(`ADVANCE THE RECEIPT CLOCK / ${RECEIPT_STATES[Math.min(3, run.receiptStep)]}`, 'advance-receipt');
+        button('TRUST THE EARLY RECEIPT', 'trust-early-receipt');
+      }
       else button(run.chapter === 0 ? 'FOLLOW THE PARCEL SIGNAL' : 'Try opening the route', 'try-signal');
       break;
     case 'refused':
@@ -83,6 +93,8 @@ export function createRouteCard(run: RouteRun, act: (action: RouteAction) => voi
         ? 'The fresh view agrees with the route board. Choose the record that matches the latest block, not the cached branch.'
         : run.chapter === 2
         ? run.duplicateRejected ? 'The duplicate is blocked. Accept only the original request with the exact recipient, amount and network.' : 'Compare the requests, reject the duplicate replay, then accept the original once.'
+        : run.chapter === 3
+        ? 'The receipt has reached finality. Choose the record that proves it, not the lookup or fast inclusion.'
         : 'At the plaza station, compare the practice records. Which one supports this route?';
       break;
     case 'verified':
@@ -90,9 +102,12 @@ export function createRouteCard(run: RouteRun, act: (action: RouteAction) => voi
         ? 'The current record matches the destination and 0.1 NIM. Carry the checked parcel route to the garden gate.'
         : run.chapter === 2
         ? 'The exact lantern request is the only one that survived review. Deliver one verified lantern to the harbor tower.'
+        : run.chapter === 3
+        ? 'The medicine route is final. Carry the verified receipt to the ferry gate.'
         : `${lesson.evidence}. Practice record accepted. Take the checked relay to the Pay Harbor gate and install it.`;
       if (run.chapter === 0) button('DELIVER THE CHECKED PARCEL', 'install');
       else if (run.chapter === 2) button('DELIVER ONE VERIFIED LANTERN', 'install');
+      else if (run.chapter === 3) button('RELEASE THE MEDICINE', 'install');
       break;
     case 'restored':
       detail.textContent = run.chapter === 0
@@ -101,10 +116,13 @@ export function createRouteCard(run: RouteRun, act: (action: RouteAction) => voi
         ? 'The clinic route is visible again. Light the canopy so families can follow it home.'
         : run.chapter === 2
         ? 'The harbor accepted one exact request. Release the lantern and reopen the night route.'
+        : run.chapter === 3
+        ? 'The medicine is safe to release. Open the ferry route and continue the lesson.'
         : `${lesson.result} ${lesson.question}`;
       if (run.chapter === 0) button('PLACE THE FIRST BEACON THREAD', 'teach-back');
       else if (run.chapter === 1) button('LIGHT THE CLINIC CANOPY', 'teach-back');
       else if (run.chapter === 2) button('RELEASE ONE VERIFIED LANTERN', 'teach-back');
+      else if (run.chapter === 3) button('OPEN THE MEDICINE FERRY', 'teach-back');
       else {
         // Alternate placement so memorizing the first button cannot finish the cascade.
         if (run.chapter % 2 === 0) button(lesson.wrong, 'wrong-answer');
@@ -119,6 +137,8 @@ export function createRouteCard(run: RouteRun, act: (action: RouteAction) => voi
         ? 'The forest relay is restored. The next route leads to Pay Harbor.'
         : run.chapter === 2
         ? 'The harbor is open. The next route carries the medicine across Albatross Causeway.'
+        : run.chapter === 3
+        ? 'The causeway is safe. The next route climbs to Validator Peaks.'
         : run.chapter < 6 ? 'Route restored. The next investigation is available at the Commons training relay.' : 'Seven lessons practiced. Your local journal remembers the investigation; verified rewards still require the separate server-checked challenge.';
       if (run.chapter < 6) button('Investigate the next relay', 'next');
       break;
@@ -150,16 +170,18 @@ export function createEvidenceChoices(run: RouteRun, act: (action: RouteAction) 
     ? 'The parcel is 0.1 NIM, written as 10,000 Lunas. Scan the record that matches its destination and amount.'
     : run.chapter === 1
       ? 'The canopy is at block 4812. Match the provider, consensus signal and latest block before the path opens.'
-    : run.chapter === 2
+      : run.chapter === 2
       ? 'Two requests mention the same lantern. The duplicate changes the route. Reject it, then accept the exact original.'
-    : run.chapter < 2
+      : run.chapter === 3
+      ? 'Receipt clock: lookup, inclusion, confirmation, finality. Choose the record that proves finality.'
+      : run.chapter < 2
       ? 'Practice payment: Ivo has a cargo order for 0.1 NIM, written as 10,000 Lunas. Match the order, recipient, amount and current network record.'
       : `Practice evidence B: ${routeWorld(run).chapter.evidence} Record A only supports the apparent claim. Record C has been withdrawn and must be checked again.`;
   panel.append(record);
   for (const [label, action] of [
-    [run.chapter === 0 ? 'A / Mara approved the request. Permission only.' : run.chapter === 1 ? 'A / Cached canopy view from block 4809.' : run.chapter === 2 ? 'ACCEPT THE EXACT REQUEST / A / Beacon Lantern Shop / 0.1 NIM / current network.' : `Record A · ${lesson.weak}`, run.chapter === 2 ? 'match-evidence' : 'weak-evidence'],
-    [run.chapter === 0 ? 'B / Current record matches destination, amount, and network.' : run.chapter === 1 ? 'B / Fresh provider, consensus and block 4812 agree.' : run.chapter === 2 ? `${run.duplicateRejected ? '✓ DUPLICATE BLOCKED' : 'REJECT THE DUPLICATE'} / B / same order, changed recipient or network.` : `Record B · ${lesson.evidence}`, run.chapter === 2 ? 'reorg-evidence' : 'match-evidence'],
-    [run.chapter === 0 ? 'C / Old record withdrawn after the route changed.' : run.chapter === 1 ? 'C / Bright signal with no current consensus.' : run.chapter === 2 ? 'C / Old request: already fulfilled and cannot be reused.' : 'Record C · withdrawn after a simulated reorganization', run.chapter === 2 ? 'weak-evidence' : 'reorg-evidence'],
+    [run.chapter === 0 ? 'A / Mara approved the request. Permission only.' : run.chapter === 1 ? 'A / Cached canopy view from block 4809.' : run.chapter === 2 ? 'ACCEPT THE EXACT REQUEST / A / Beacon Lantern Shop / 0.1 NIM / current network.' : run.chapter === 3 ? 'A / Lookup received. A hash is a starting point, not delivery proof.' : `Record A · ${lesson.weak}`, run.chapter === 2 ? 'match-evidence' : 'weak-evidence'],
+    [run.chapter === 0 ? 'B / Current record matches destination, amount, and network.' : run.chapter === 1 ? 'B / Fresh provider, consensus and block 4812 agree.' : run.chapter === 2 ? `${run.duplicateRejected ? '✓ DUPLICATE BLOCKED' : 'REJECT THE DUPLICATE'} / B / same order, changed recipient or network.` : run.chapter === 3 ? 'B / Finality reached for the exact medicine route.' : `Record B · ${lesson.evidence}`, run.chapter === 2 ? 'reorg-evidence' : 'match-evidence'],
+    [run.chapter === 0 ? 'C / Old record withdrawn after the route changed.' : run.chapter === 1 ? 'C / Bright signal with no current consensus.' : run.chapter === 2 ? 'C / Old request: already fulfilled and cannot be reused.' : run.chapter === 3 ? 'C / Fast inclusion with no finality.' : 'Record C · withdrawn after a simulated reorganization', run.chapter === 2 ? 'weak-evidence' : 'reorg-evidence'],
   ] as const) {
     const button = document.createElement('button');
     button.type = 'button';
@@ -181,3 +203,4 @@ const ROUTE_CHECKS: readonly (readonly [string, string])[] = [
 ];
 
 const FADING_TRAIL_NODES = ['provider view', 'consensus signal', 'latest block'] as const;
+const RECEIPT_STATES = ['LOOKUP RECEIVED', 'INCLUSION SEEN', 'CONFIRMATIONS GROWING', 'FINALITY READY'] as const;

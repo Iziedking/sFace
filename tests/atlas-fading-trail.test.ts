@@ -45,4 +45,22 @@ describe('Light Forest fading trail', () => {
     run = stepRouteRun(run, 'match-evidence');
     expect(run.stage).toBe('verified');
   });
+
+  it('keeps the Albatross ferry closed until the receipt reaches finality', () => {
+    const genesis = ['talk', 'check-recipient', 'check-amount', 'approve-practice', 'try-signal', 'investigate', 'match-evidence', 'install', 'teach-back', 'next'] as const;
+    const forest = ['talk', 'check-recipient', 'check-amount', 'check-block', 'approve-practice', 'follow-trail', 'follow-trail', 'follow-trail', 'match-evidence', 'install', 'teach-back', 'next'] as const;
+    const harbor = ['talk', 'check-recipient', 'check-amount', 'approve-practice', 'compare-requests', 'reorg-evidence', 'match-evidence', 'install', 'teach-back', 'next'] as const;
+    let run = replayRouteRun('builder', [...genesis, ...forest, ...harbor, 'talk', 'check-recipient', 'check-amount', 'approve-practice']);
+    expect(run).toMatchObject({ chapter: 3, stage: 'signal', receiptStep: 0 });
+    expect(stepRouteRun(run, 'trust-early-receipt')).toMatchObject({ stage: 'signal', receiptStep: 0 });
+    run = stepRouteRun(run, 'advance-receipt');
+    expect(run.receiptStep).toBe(1);
+    run = stepRouteRun(run, 'advance-receipt');
+    expect(run.receiptStep).toBe(2);
+    run = stepRouteRun(run, 'advance-receipt');
+    expect(run.receiptStep).toBe(3);
+    run = stepRouteRun(run, 'advance-receipt');
+    expect(run).toMatchObject({ stage: 'evidence', receiptStep: 4 });
+    expect(stepRouteRun(run, 'match-evidence').stage).toBe('verified');
+  });
 });

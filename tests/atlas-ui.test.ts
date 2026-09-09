@@ -92,6 +92,15 @@ describe('NIM Atlas public first district UI', () => {
     expect(routeUi).toContain('ACCEPT THE EXACT REQUEST');
   });
 
+  it('turns Albatross Causeway into a receipt-clock mission', () => {
+    const app = readFileSync(new URL('../src/atlas/app/atlas-app.ts', import.meta.url), 'utf8');
+    const routeUi = readFileSync(new URL('../src/atlas/ui/route-rescue.ts', import.meta.url), 'utf8');
+    expect(app).toContain('RECEIPT CLOCK / ALBATROSS CAUSEWAY');
+    expect(routeUi).toContain('ADVANCE THE RECEIPT CLOCK');
+    expect(routeUi).toContain('TRUST THE EARLY RECEIPT');
+    expect(routeUi).toContain('RELEASE THE MEDICINE');
+  });
+
   it('uses the living 3D city as the landing backdrop and keeps onboarding to one clear run', () => {
     const app = readFileSync(new URL('../src/atlas/app/atlas-app.ts', import.meta.url), 'utf8');
     const landingStart = app.indexOf('private renderWelcome');

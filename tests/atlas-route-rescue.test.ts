@@ -4,7 +4,8 @@ import { createRouteRun, recoverRouteRun, replayRouteRun, routeLesson, routeRest
 const repair: RouteAction[] = ['talk', 'check-recipient', 'check-amount', 'approve-practice', 'try-signal', 'investigate', 'match-evidence', 'install', 'teach-back'];
 const lightForestRepair: RouteAction[] = ['talk', 'check-recipient', 'check-amount', 'check-block', 'approve-practice', 'follow-trail', 'follow-trail', 'follow-trail', 'match-evidence', 'install', 'teach-back'];
 const payHarborRepair: RouteAction[] = ['talk', 'check-recipient', 'check-amount', 'approve-practice', 'compare-requests', 'reorg-evidence', 'match-evidence', 'install', 'teach-back'];
-const repairForChapter = (chapter: number): RouteAction[] => chapter === 1 ? lightForestRepair : chapter === 2 ? payHarborRepair : repair;
+const causewayRepair: RouteAction[] = ['talk', 'check-recipient', 'check-amount', 'approve-practice', 'advance-receipt', 'advance-receipt', 'advance-receipt', 'advance-receipt', 'match-evidence', 'install', 'teach-back'];
+const repairForChapter = (chapter: number): RouteAction[] => chapter === 1 ? lightForestRepair : chapter === 2 ? payHarborRepair : chapter === 3 ? causewayRepair : repair;
 describe('local route investigation', () => {
   for (const role of ['explorer', 'builder'] as const) {
     it(`${role} completes all seven distinct chapters through replay`, () => {
