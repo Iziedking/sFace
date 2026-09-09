@@ -575,7 +575,9 @@ export class AtlasApp {
     topbar.append(access, mute, motion);
     shell.classList.toggle('has-accessible-movement', this.accessibleMovement);
 
-    const objective = this.cityQuestStep === 'meet-guide'
+    const objective = this.routeRun
+      ? routeObjective(this.routeRun)
+      : this.cityQuestStep === 'meet-guide'
       ? {
           depth: 'glance' as const,
           objective: 'MEET THE COMMONS GUIDE',
@@ -668,7 +670,11 @@ export class AtlasApp {
     if (this.routeFeed.length > 3) this.routeFeed.splice(0, this.routeFeed.length - 3);
     const refusal = action === 'try-signal' || action === 'weak-evidence' || action === 'reorg-evidence' || action === 'wrong-answer';
     this.audio.playWorldCue(refusal ? 'route-refused' : action === 'match-evidence' ? 'route-evidence' : action === 'install' ? 'route-repaired' : action === 'teach-back' ? 'route-complete' : 'city-interaction');
-    if (action === 'install') this.audio.narrate(`Practice route restored. ${routeLesson(next).result}`);
+    if (action === 'install') {
+      const chapter = getAtlasStoryChapter('genesis-garden');
+      if (next.chapter === 0 && chapter) this.audio.narrateLine(chapter.voice.completion);
+      else this.audio.narrate(`Practice route restored. ${routeLesson(next).result}`);
+    }
     this.evidenceOpen = false;
     this.input.clearJoystick();
     this.renderBeaconCommons();
@@ -713,7 +719,7 @@ export class AtlasApp {
     this.cityQuestStep = 'guide-met';
     this.beaconTravelNotice = '';
     this.audio.playWorldCue('city-interaction');
-    this.audio.narrate("Mara's Last Lantern is dark. Run the pink route to Pay Harbor and learn how a verified Nimiq payment can relight it.");
+    this.audio.narrateLine(ATLAS_STORY_CHAPTERS[0]!.voice.arrival);
     this.renderBeaconCommons();
   };
 
@@ -2300,6 +2306,28 @@ function coreRunSteps(view: AtlasCoreRunView): Array<{ label: string; complete: 
     { label: 'Open the garden gate', complete: completed, current: view.actions >= 16 && !completed },
   ];
   return steps.map((step) => ({ ...step, current: completed ? false : step.current }));
+}
+
+function routeObjective(run: RouteRun): { depth: 'glance'; objective: string; detail: string; status: string } {
+  if (run.chapter === 0) {
+    const stages: Record<RouteRun['stage'], { objective: string; detail: string }> = {
+      arrive: { objective: 'HELP THE PARCEL FIND ITS HOME', detail: 'Move to Mara and open the request table.' },
+      request: { objective: 'BUILD THE REQUEST', detail: 'Scan the destination and amount, then assemble the parcel.' },
+      signal: { objective: 'FOLLOW THE PARCEL SIGNAL', detail: 'Approval opened the route. Find the current record.' },
+      refused: { objective: 'FIND THE CURRENT RECORD', detail: 'A permission message is not delivery evidence.' },
+      evidence: { objective: 'CHOOSE THE LIVING ROUTE', detail: 'Pick the record that matches the destination and amount.' },
+      verified: { objective: 'DELIVER THE CHECKED PARCEL', detail: 'Carry the verified route to the garden gate.' },
+      restored: { objective: 'LIGHT THE FIRST THREAD', detail: 'Place the parcel route on the Beacon post.' },
+      complete: { objective: 'FIRST THREAD RESTORED', detail: 'The parcel found its home. Continue toward Pay Harbor.' },
+    };
+    return { depth: 'glance', ...stages[run.stage], status: 'CHAPTER 1 / GENESIS GARDEN / PRACTICE MODE' };
+  }
+  return {
+    depth: 'glance',
+    objective: `${routeLesson(run).name.toUpperCase()} / ${run.stage.toUpperCase()}`,
+    detail: routeLesson(run).need,
+    status: `CHAPTER ${run.chapter + 1} / PRACTICE MODE / NO NIM SENT`,
+  };
 }
 
 function livingCityNavigation(scene: AtlasCitySceneV1): AtlasLivingCityNavigation {

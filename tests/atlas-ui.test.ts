@@ -63,6 +63,17 @@ describe('NIM Atlas public first district UI', () => {
     expect(app).toContain('Builder Trial 1 of 6');
   });
 
+  it('opens the first mission as a rescue action instead of a textbook question', () => {
+    const app = readFileSync(new URL('../src/atlas/app/atlas-app.ts', import.meta.url), 'utf8');
+    const routeUi = readFileSync(new URL('../src/atlas/ui/route-rescue.ts', import.meta.url), 'utf8');
+    expect(app).toContain('HELP THE PARCEL FIND ITS HOME');
+    expect(app).toContain('routeObjective');
+    expect(routeUi).toContain('The Wrong House');
+    expect(routeUi).toContain('SCAN DESTINATION / Beacon Lantern Shop');
+    expect(routeUi).toContain('ASSEMBLE AND SEND PARCEL');
+    expect(routeUi).toContain('PLACE THE FIRST BEACON THREAD');
+  });
+
   it('uses the living 3D city as the landing backdrop and keeps onboarding to one clear run', () => {
     const app = readFileSync(new URL('../src/atlas/app/atlas-app.ts', import.meta.url), 'utf8');
     const landingStart = app.indexOf('private renderWelcome');
