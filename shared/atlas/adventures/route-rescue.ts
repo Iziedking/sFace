@@ -3,7 +3,7 @@ import type { AtlasRestorationState } from '../living-world';
 import type { AtlasMissionProgress } from '../mission-director';
 
 export type RouteStage = 'arrive' | 'request' | 'signal' | 'refused' | 'evidence' | 'verified' | 'restored' | 'complete';
-export type RouteAction = 'talk' | 'check-recipient' | 'check-amount' | 'approve-practice' | 'try-signal' | 'investigate' | 'weak-evidence' | 'reorg-evidence' | 'match-evidence' | 'install' | 'wrong-answer' | 'teach-back' | 'next';
+export type RouteAction = 'talk' | 'check-recipient' | 'check-amount' | 'check-block' | 'approve-practice' | 'try-signal' | 'follow-trail' | 'follow-stale-trail' | 'investigate' | 'weak-evidence' | 'reorg-evidence' | 'match-evidence' | 'install' | 'wrong-answer' | 'teach-back' | 'next';
 export interface RouteRun {
   readonly version: 1;
   readonly role: 'explorer' | 'builder';
@@ -11,6 +11,8 @@ export interface RouteRun {
   readonly stage: RouteStage;
   readonly recipientChecked: boolean;
   readonly amountChecked: boolean;
+  readonly blockChecked: boolean;
+  readonly trailNode: 0 | 1 | 2 | 3;
   readonly notice: string;
   readonly actions: readonly RouteAction[];
 }
@@ -18,21 +20,26 @@ export interface RouteRun {
 // This ledger is deliberately local practice. It cannot produce a payment
 // receipt, competitive score, reward entitlement or wallet request.
 export function createRouteRun(role: RouteRun['role']): RouteRun {
-  return { version: 1, role, chapter: 0, stage: 'arrive', recipientChecked: false, amountChecked: false, notice: '', actions: [] };
+  return { version: 1, role, chapter: 0, stage: 'arrive', recipientChecked: false, amountChecked: false, blockChecked: false, trailNode: 0, notice: '', actions: [] };
 }
 
 export const ROUTE_LESSONS = [
   { name: 'Genesis Garden', citizen: 'Mara', need: 'Mara wants to pay 0.1 NIM for a harbor lantern, but the delivery route is stuck.', weak: 'Mara approved the payment', evidence: 'The current network record matches the shop, order and 0.1 NIM amount', question: 'Why did the shop wait after Mara approved?', answer: 'Approval gives permission. A matching current network record proves the payment.', wrong: 'Approval alone means the shop received the payment.', result: 'The shop releases the lantern. The first route is open.' },
+  { name: 'Light Forest', citizen: 'Nia the network observer', need: 'Nia needs the clinic path lit before her family walks home through the forest.', weak: 'The canopy flashed green', evidence: 'A fresh provider view agrees with consensus and the latest block', question: 'Which trail is safe to follow?', answer: 'Follow provider readiness, consensus and the latest block in order.', wrong: 'The brightest cached branch is safe.', result: 'Nia verifies a living view on a light device. The forest relay wakes.' },
   { name: 'Pay Harbor', citizen: 'Ivo the ferryman', need: 'Ivo has a transaction hash, but cannot safely release the ferry cargo.', weak: 'The lookup returned a hash', evidence: 'Canonical transaction: correct recipient, Lunas and network', question: 'What lets Ivo release the cargo?', answer: 'Verified transaction details, not the hash alone.', wrong: 'Any transaction hash proves the cargo was paid for.', result: 'Ivo releases the cargo. Harbor deliveries resume.' },
   { name: 'Albatross Causeway', citizen: 'Sana the courier', need: 'Sana saw a fast block, but the route monitor still warns of a possible reorganization.', weak: 'A micro block includes the transaction', evidence: 'Canonical inclusion with the required finality evidence', question: 'Does a fast micro block finish the check?', answer: 'No. Check canonical inclusion and the required finality.', wrong: 'Fast inclusion always means finality.', result: 'Sana crosses with confirmed supplies. The causeway signal holds.' },
   { name: 'Validator Peaks', citizen: 'Tavi the route maintainer', need: 'One validator says the route is ready. Tavi needs agreement before reopening it.', weak: 'One validator reports success', evidence: 'Protocol-validated consensus evidence', question: 'Whose statement can Tavi trust on its own?', answer: 'No single statement replaces verified consensus evidence.', wrong: 'One familiar validator is enough.', result: 'Tavi restores the shared route after checking consensus.' },
-  { name: 'Light Forest', citizen: 'Lina the network observer', need: 'Lina has a small phone and needs to check the route without storing the whole chain.', weak: 'A small download must be untrustworthy', evidence: 'A valid light-client proof checked against trusted consensus', question: 'Must Lina download the entire chain?', answer: 'No. A light client can verify the appropriate proofs.', wrong: 'Only a full chain download can verify anything.', result: 'Lina verifies the proof on a light device. The forest relay wakes.' },
   { name: 'Builder City', citizen: 'Noor the shop builder', need: 'Noor sees a green browser badge, but the shop server has not accepted payment evidence.', weak: 'The browser display says paid', evidence: 'Server verification of canonical evidence for this order', question: 'Who decides whether the shop unlocks?', answer: 'The server verifies evidence; the browser presents the result.', wrong: 'A local paid flag authorizes fulfillment.', result: 'Noor repairs the authority boundary. The shop opens safely.' },
   { name: 'Beacon Core', citizen: 'The beacon keeper', need: 'Six routes work separately. The keeper must connect them without turning a guess into authority.', weak: 'All six parts look green', evidence: 'Separate intent, verification and consequence linked by the exact request', question: 'What keeps the whole network trustworthy?', answer: 'Keep consent, verification and fulfillment separate and linked.', wrong: 'Combine all green signals into one success flag.', result: 'The beacon joins six independently checked routes. The city is connected.' },
 ] as const;
 
+// The world registry keeps the original protocol cascade for the 3D scenes.
+// The playable story order is human-first: Genesis, Light Forest, Pay Harbor,
+// Causeway, Peaks, Builder City, then the Beacon finale.
+const ROUTE_WORLD_INDICES: readonly number[] = [0, 4, 1, 2, 3, 5, 6];
+
 export function routeLesson(run: RouteRun) { return ROUTE_LESSONS[run.chapter]!; }
-export function routeWorld(run: RouteRun) { return ATLAS_DISTRICT_WORLDS[run.chapter]!; }
+export function routeWorld(run: RouteRun) { return ATLAS_DISTRICT_WORLDS[ROUTE_WORLD_INDICES[run.chapter]!]!; }
 
 export function routeTarget(run: RouteRun): string {
   if (run.stage === 'evidence') return 'community-plaza';
@@ -57,12 +64,24 @@ export function stepRouteRun(run: RouteRun, action: RouteAction): RouteRun {
     case 'talk': if (at('arrive')) change = { stage: 'request' }; break;
     case 'check-recipient': if (at('request')) change = { recipientChecked: true }; break;
     case 'check-amount': if (at('request')) change = { amountChecked: true }; break;
+    case 'check-block': if (at('request') && run.chapter === 1) change = { blockChecked: true }; break;
     case 'approve-practice':
-      if (at('request')) change = run.recipientChecked && run.amountChecked
+      if (at('request')) change = (run.chapter === 1
+        ? run.recipientChecked && run.amountChecked && run.blockChecked
+        : run.recipientChecked && run.amountChecked)
         ? { stage: 'signal' }
-        : { notice: 'Check both the recipient and the exact amount before giving permission.' };
+        : { notice: run.chapter === 1 ? 'Read the provider, consensus and latest block before following the trail.' : 'Check both the recipient and the exact amount before giving permission.' };
       break;
     case 'try-signal': if (at('signal')) change = { stage: 'refused', notice: routeWorld(run).chapter.refutation }; break;
+    case 'follow-trail':
+      if (at('signal') && run.chapter === 1) {
+        const trailNode = Math.min(3, run.trailNode + 1) as RouteRun['trailNode'];
+        change = trailNode === 3
+          ? { stage: 'evidence', trailNode, notice: 'The fresh view held. Inspect the route record before promising the clinic a path.' }
+          : { trailNode, notice: `Fresh trail node ${trailNode} held. Follow the next signal before it fades.` };
+      }
+      break;
+    case 'follow-stale-trail': if (at('signal') && run.chapter === 1) change = { notice: 'That branch is cached. Return to the bright signal and follow the fresh view in order.' }; break;
     case 'investigate': if (at('refused')) change = { stage: 'evidence' }; break;
     case 'weak-evidence': if (at('evidence')) change = { notice: 'Route stays closed: this message makes a claim, but it does not prove the payment.' }; break;
     case 'reorg-evidence': if (at('evidence')) change = { notice: 'Old record rejected: the practice network changed, so this record is no longer current. Compare the records again.' }; break;
@@ -70,17 +89,18 @@ export function stepRouteRun(run: RouteRun, action: RouteAction): RouteRun {
     case 'install': if (at('verified')) change = { stage: 'restored', notice: routeLesson(run).result }; break;
     case 'wrong-answer': if (at('restored')) change = { notice: 'Think about what the first signal could not prove. Try again; the restored route stays safe.' }; break;
     case 'teach-back': if (at('restored')) change = { stage: 'complete', notice: 'Lesson remembered locally. No NIM sent or reward claimed.' }; break;
-    case 'next': if (at('complete') && run.chapter < ROUTE_LESSONS.length - 1) change = { chapter: run.chapter + 1, stage: 'arrive', recipientChecked: false, amountChecked: false }; break;
+    case 'next': if (at('complete') && run.chapter < ROUTE_LESSONS.length - 1) change = { chapter: run.chapter + 1, stage: 'arrive', recipientChecked: false, amountChecked: false, blockChecked: false, trailNode: 0 }; break;
   }
   if (!change) return run;
   // Keep progression plus the current retry notice, not an unbounded mistake
   // counter. Learners can retry forever without exhausting their saved journal.
   const last = run.actions[run.actions.length - 1];
-  const retry = last === 'weak-evidence' || last === 'reorg-evidence' || last === 'wrong-answer'
+  const retry = last === 'weak-evidence' || last === 'reorg-evidence' || last === 'wrong-answer' || last === 'follow-stale-trail'
     || (last === 'approve-practice' && run.stage === 'request');
   const history = retry ? run.actions.slice(0, -1) : run.actions;
   const repeatedCheck = (action === 'check-recipient' && run.recipientChecked)
-    || (action === 'check-amount' && run.amountChecked);
+    || (action === 'check-amount' && run.amountChecked)
+    || (action === 'check-block' && run.blockChecked);
   return { ...run, notice: '', ...change, actions: repeatedCheck ? history : [...history, action] };
 }
 

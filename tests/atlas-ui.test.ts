@@ -74,6 +74,15 @@ describe('NIM Atlas public first district UI', () => {
     expect(routeUi).toContain('PLACE THE FIRST BEACON THREAD');
   });
 
+  it('turns Light Forest into a fresh-signal action loop', () => {
+    const app = readFileSync(new URL('../src/atlas/app/atlas-app.ts', import.meta.url), 'utf8');
+    const routeUi = readFileSync(new URL('../src/atlas/ui/route-rescue.ts', import.meta.url), 'utf8');
+    expect(app).toContain('FRESH VIEW / LIGHT FOREST');
+    expect(routeUi).toContain('READ PROVIDER STATUS');
+    expect(routeUi).toContain('FOLLOW THE FRESH TRAIL');
+    expect(routeUi).toContain('CHASE THE STALE TRAIL');
+  });
+
   it('uses the living 3D city as the landing backdrop and keeps onboarding to one clear run', () => {
     const app = readFileSync(new URL('../src/atlas/app/atlas-app.ts', import.meta.url), 'utf8');
     const landingStart = app.indexOf('private renderWelcome');

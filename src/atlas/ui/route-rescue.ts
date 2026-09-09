@@ -10,7 +10,11 @@ export function createRouteCard(run: RouteRun, act: (action: RouteAction) => voi
   heading.textContent = run.chapter === 0 ? 'The Wrong House' : `${lesson.name} relay`;
   const provenance = document.createElement('p');
   provenance.className = 'atlas-route-provenance';
-  provenance.textContent = run.chapter === 0 ? 'CHAPTER 1 / GENESIS GARDEN / HELP THE PARCEL FIND ITS HOME' : `Practice · no NIM sent · ${run.chapter + 1}/7 · ${run.role}`;
+  provenance.textContent = run.chapter === 0
+    ? 'CHAPTER 1 / GENESIS GARDEN / HELP THE PARCEL FIND ITS HOME'
+    : run.chapter === 1
+      ? 'CHAPTER 2 / LIGHT FOREST / FOLLOW THE FRESH SIGNAL'
+      : `Practice · no NIM sent · ${run.chapter + 1}/7 · ${run.role}`;
   const detail = document.createElement('p');
   const actions = document.createElement('div');
   actions.className = 'atlas-route-choices';
@@ -33,17 +37,28 @@ export function createRouteCard(run: RouteRun, act: (action: RouteAction) => voi
       detail.textContent = run.chapter === 0
         ? 'Scan the two route fragments, then assemble the parcel request. The correct home lights when the route is readable.'
         : run.chapter === 1
-        ? run.role === 'builder' ? 'Finding Nimiq Pay does not give the app permission to pay. Check the practice request before approving it.' : 'Check who gets the NIM, how much they get, and the network before approving this practice payment.'
+        ? 'The forest path is bright, but the view may be old. Read the provider, consensus signal and latest block before you promise a safe route.'
         : `Investigate: ${lesson.need} Check the scope and authority before testing the apparent signal.`;
-      button(`${run.recipientChecked ? '✓ ' : ''}${run.chapter === 0 ? 'SCAN DESTINATION / Beacon Lantern Shop' : ROUTE_CHECKS[run.chapter]![0]}`, 'check-recipient', run.recipientChecked);
-      button(`${run.amountChecked ? '✓ ' : ''}${run.chapter === 0 ? 'SCAN AMOUNT / 0.1 NIM = 10,000 Lunas' : ROUTE_CHECKS[run.chapter]![1]}`, 'check-amount', run.amountChecked);
-      button(run.chapter === 0 ? 'ASSEMBLE AND SEND PARCEL' : run.chapter < 2 ? 'Approve practice request' : 'Authorize this practice check', 'approve-practice', false, !(run.recipientChecked && run.amountChecked));
+      if (run.chapter === 1) {
+        button(`${run.recipientChecked ? '✓ ' : ''}READ PROVIDER STATUS / ready`, 'check-recipient', run.recipientChecked);
+        button(`${run.amountChecked ? '✓ ' : ''}READ CONSENSUS SIGNAL / current`, 'check-amount', run.amountChecked);
+        button(`${run.blockChecked ? '✓ ' : ''}READ LATEST BLOCK / height 4812`, 'check-block', run.blockChecked);
+      } else {
+        button(`${run.recipientChecked ? '✓ ' : ''}${run.chapter === 0 ? 'SCAN DESTINATION / Beacon Lantern Shop' : ROUTE_CHECKS[run.chapter]![0]}`, 'check-recipient', run.recipientChecked);
+        button(`${run.amountChecked ? '✓ ' : ''}${run.chapter === 0 ? 'SCAN AMOUNT / 0.1 NIM = 10,000 Lunas' : ROUTE_CHECKS[run.chapter]![1]}`, 'check-amount', run.amountChecked);
+      }
+      button(run.chapter === 0 ? 'ASSEMBLE AND SEND PARCEL' : run.chapter === 1 ? 'OPEN THE FRESH TRAIL' : run.chapter < 2 ? 'Approve practice request' : 'Authorize this practice check', 'approve-practice', false, run.chapter === 1 ? !(run.recipientChecked && run.amountChecked && run.blockChecked) : !(run.recipientChecked && run.amountChecked));
       break;
     case 'signal':
       detail.textContent = run.chapter === 0
         ? 'Mara gave permission. The parcel still needs a current route record before it can leave.'
+        : run.chapter === 1
+        ? `The canopy is blinking. Follow the fresh signal in order: node ${Math.min(3, run.trailNode + 1)} of 3. A cached branch leads nowhere.`
         : `The display looks successful: “${lesson.weak}”. Is the route ready?`;
-      button(run.chapter === 0 ? 'FOLLOW THE PARCEL SIGNAL' : 'Try opening the route', 'try-signal');
+      if (run.chapter === 1) {
+        button(`FOLLOW THE FRESH TRAIL / ${FADING_TRAIL_NODES[Math.min(2, run.trailNode)] ?? 'route board'}`, 'follow-trail');
+        button('CHASE THE STALE TRAIL / cached branch', 'follow-stale-trail');
+      } else button(run.chapter === 0 ? 'FOLLOW THE PARCEL SIGNAL' : 'Try opening the route', 'try-signal');
       break;
     case 'refused':
       detail.textContent = run.chapter === 0
@@ -54,6 +69,8 @@ export function createRouteCard(run: RouteRun, act: (action: RouteAction) => voi
     case 'evidence':
       detail.textContent = run.chapter === 0
         ? 'One record is a message. One is current. One was withdrawn. Choose the record that matches the destination and amount.'
+        : run.chapter === 1
+        ? 'The fresh view agrees with the route board. Choose the record that matches the latest block, not the cached branch.'
         : 'At the plaza station, compare the practice records. Which one supports this route?';
       break;
     case 'verified':
@@ -65,8 +82,11 @@ export function createRouteCard(run: RouteRun, act: (action: RouteAction) => voi
     case 'restored':
       detail.textContent = run.chapter === 0
         ? 'The parcel found its home. Place the first Beacon thread on the garden post.'
+        : run.chapter === 1
+        ? 'The clinic route is visible again. Light the canopy so families can follow it home.'
         : `${lesson.result} ${lesson.question}`;
       if (run.chapter === 0) button('PLACE THE FIRST BEACON THREAD', 'teach-back');
+      else if (run.chapter === 1) button('LIGHT THE CLINIC CANOPY', 'teach-back');
       else {
         // Alternate placement so memorizing the first button cannot finish the cascade.
         if (run.chapter % 2 === 0) button(lesson.wrong, 'wrong-answer');
@@ -106,14 +126,16 @@ export function createEvidenceChoices(run: RouteRun, act: (action: RouteAction) 
   const record = document.createElement('p');
   record.textContent = run.chapter === 0
     ? 'The parcel is 0.1 NIM, written as 10,000 Lunas. Scan the record that matches its destination and amount.'
+    : run.chapter === 1
+      ? 'The canopy is at block 4812. Match the provider, consensus signal and latest block before the path opens.'
     : run.chapter < 2
       ? 'Practice payment: Ivo has a cargo order for 0.1 NIM, written as 10,000 Lunas. Match the order, recipient, amount and current network record.'
       : `Practice evidence B: ${routeWorld(run).chapter.evidence} Record A only supports the apparent claim. Record C has been withdrawn and must be checked again.`;
   panel.append(record);
   for (const [label, action] of [
-    [run.chapter === 0 ? 'A / Mara approved the request. Permission only.' : `Record A · ${lesson.weak}`, 'weak-evidence'],
-    [run.chapter === 0 ? 'B / Current record matches destination, amount, and network.' : `Record B · ${lesson.evidence}`, 'match-evidence'],
-    [run.chapter === 0 ? 'C / Old record withdrawn after the route changed.' : 'Record C · withdrawn after a simulated reorganization', 'reorg-evidence'],
+    [run.chapter === 0 ? 'A / Mara approved the request. Permission only.' : run.chapter === 1 ? 'A / Cached canopy view from block 4809.' : `Record A · ${lesson.weak}`, 'weak-evidence'],
+    [run.chapter === 0 ? 'B / Current record matches destination, amount, and network.' : run.chapter === 1 ? 'B / Fresh provider, consensus and block 4812 agree.' : `Record B · ${lesson.evidence}`, 'match-evidence'],
+    [run.chapter === 0 ? 'C / Old record withdrawn after the route changed.' : run.chapter === 1 ? 'C / Bright signal with no current consensus.' : 'Record C · withdrawn after a simulated reorganization', 'reorg-evidence'],
   ] as const) {
     const button = document.createElement('button');
     button.type = 'button';
@@ -126,10 +148,12 @@ export function createEvidenceChoices(run: RouteRun, act: (action: RouteAction) 
 
 const ROUTE_CHECKS: readonly (readonly [string, string])[] = [
   ['Who gets the NIM: Beacon Lantern Shop', 'Amount: 0.1 NIM = 10,000 Lunas'],
+  ['Provider: local light view ready', 'Consensus: current signal agrees with the view'],
   ['Order: Ivo cargo delivery · local practice', 'Request: exact recipient, integer Lunas and network'],
   ['Scope: transaction inclusion in the current canonical branch', 'Authority: the required finality evidence, not speed'],
   ['Scope: the route claim made by one validator', 'Authority: protocol-validated consensus'],
-  ['Scope: the route proof and its consensus reference', 'Authority: verify the proof, not the download size'],
   ['Scope: exact shop order and requested consequence', 'Authority: server checks canonical evidence'],
   ['Scope: six completed route lessons', 'Authority: separate consent, verification and fulfillment'],
 ];
+
+const FADING_TRAIL_NODES = ['provider view', 'consensus signal', 'latest block'] as const;

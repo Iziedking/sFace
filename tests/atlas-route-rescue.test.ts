@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { createRouteRun, recoverRouteRun, replayRouteRun, routeLesson, routeRestoration, stepRouteRun, type RouteAction } from '../shared/atlas/adventures/route-rescue';
 
 const repair: RouteAction[] = ['talk', 'check-recipient', 'check-amount', 'approve-practice', 'try-signal', 'investigate', 'match-evidence', 'install', 'teach-back'];
+const lightForestRepair: RouteAction[] = ['talk', 'check-recipient', 'check-amount', 'check-block', 'approve-practice', 'follow-trail', 'follow-trail', 'follow-trail', 'match-evidence', 'install', 'teach-back'];
+const repairForChapter = (chapter: number): RouteAction[] => chapter === 1 ? lightForestRepair : repair;
 describe('local route investigation', () => {
   for (const role of ['explorer', 'builder'] as const) {
     it(`${role} completes all seven distinct chapters through replay`, () => {
-      const actions = Array.from({ length: 7 }, (_, i) => [...repair, ...(i < 6 ? ['next' as const] : [])]).flat();
+      const actions = Array.from({ length: 7 }, (_, i) => [...repairForChapter(i), ...(i < 6 ? ['next' as const] : [])]).flat();
       const completed = replayRouteRun(role, actions);
       expect(completed).toMatchObject({ chapter: 6, stage: 'complete', role });
       expect(recoverRouteRun(JSON.parse(JSON.stringify(completed)))).toEqual(completed);

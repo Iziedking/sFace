@@ -606,7 +606,7 @@ export class AtlasApp {
     movement.append(accessibleDirections);
     const actions = element('div', 'atlas-actions');
     actions.append(this.createCitySprint());
-    const routeAction = this.routeRun?.stage === 'arrive' ? 'Talk' : this.routeRun?.stage === 'evidence' ? 'Inspect' : this.routeRun?.stage === 'verified' ? 'Install' : this.routeRun?.stage === 'complete' ? 'Travel' : 'Mission';
+    const routeAction = this.routeRun?.stage === 'arrive' ? 'Talk' : this.routeRun?.stage === 'evidence' ? 'Inspect' : this.routeRun?.stage === 'verified' ? 'Install' : this.routeRun?.stage === 'complete' ? 'Travel' : this.routeRun?.chapter === 1 && this.routeRun?.stage === 'signal' ? 'Follow trail' : 'Mission';
     const interact = actionButton(
       this.routeRun ? routeAction : this.cityQuestStep === 'meet-guide' ? 'Talk' : 'Travel',
       this.routeRun ? this.interactRoute : this.cityQuestStep === 'meet-guide' ? this.interactWithCommonsGuide : this.travelToPayHarbor,
@@ -668,11 +668,11 @@ export class AtlasApp {
     catch { this.routeFeed.push('Local saving unavailable. Keep this tab open to continue.'); }
     if (next.notice) this.routeFeed.push(next.notice);
     if (this.routeFeed.length > 3) this.routeFeed.splice(0, this.routeFeed.length - 3);
-    const refusal = action === 'try-signal' || action === 'weak-evidence' || action === 'reorg-evidence' || action === 'wrong-answer';
+    const refusal = action === 'try-signal' || action === 'follow-stale-trail' || action === 'weak-evidence' || action === 'reorg-evidence' || action === 'wrong-answer';
     this.audio.playWorldCue(refusal ? 'route-refused' : action === 'match-evidence' ? 'route-evidence' : action === 'install' ? 'route-repaired' : action === 'teach-back' ? 'route-complete' : 'city-interaction');
     if (action === 'install') {
-      const chapter = getAtlasStoryChapter('genesis-garden');
-      if (next.chapter === 0 && chapter) this.audio.narrateLine(chapter.voice.completion);
+      const chapter = next.chapter === 0 ? getAtlasStoryChapter('genesis-garden') : next.chapter === 1 ? getAtlasStoryChapter('light-forest') : undefined;
+      if (chapter) this.audio.narrateLine(chapter.voice.completion);
       else this.audio.narrate(`Practice route restored. ${routeLesson(next).result}`);
     }
     this.evidenceOpen = false;
@@ -2321,6 +2321,19 @@ function routeObjective(run: RouteRun): { depth: 'glance'; objective: string; de
       complete: { objective: 'FIRST THREAD RESTORED', detail: 'The parcel found its home. Continue toward Pay Harbor.' },
     };
     return { depth: 'glance', ...stages[run.stage], status: 'CHAPTER 1 / GENESIS GARDEN / PRACTICE MODE' };
+  }
+  if (run.chapter === 1) {
+    const stages: Record<RouteRun['stage'], { objective: string; detail: string }> = {
+      arrive: { objective: 'FIND NIA / LIGHT FOREST', detail: 'The clinic path is fading. Move to Nia and open the canopy relay.' },
+      request: { objective: 'READ THE LIVING VIEW', detail: 'Read provider status, consensus signal and latest block.' },
+      signal: { objective: 'FOLLOW THE FRESH TRAIL', detail: `Follow signal node ${Math.min(3, run.trailNode + 1)} of 3 before the canopy fades.` },
+      refused: { objective: 'FIND THE CURRENT VIEW', detail: 'A bright cached branch is not a living network view.' },
+      evidence: { objective: 'CHOOSE THE FRESH RECORD', detail: 'Pick the record that agrees with the current provider, consensus and block.' },
+      verified: { objective: 'RESTORE THE CLINIC PATH', detail: 'Carry the checked view to the forest relay.' },
+      restored: { objective: 'LIGHT THE CLINIC CANOPY', detail: 'Make the safe route visible for the families waiting at home.' },
+      complete: { objective: 'FOREST RELAY RESTORED', detail: 'The clinic path is lit. Continue toward Pay Harbor.' },
+    };
+     return { depth: 'glance', ...stages[run.stage], status: 'FRESH VIEW / LIGHT FOREST / CHAPTER 2 / PRACTICE MODE' };
   }
   return {
     depth: 'glance',
