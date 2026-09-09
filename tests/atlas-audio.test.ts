@@ -82,4 +82,12 @@ describe('NIM Atlas adaptive audio', () => {
     audio.narrateLine({ speaker: 'mara', locale: 'en-US', text: 'The harbor is listening.' });
     expect(fake.events.find((event) => event.type === 'narrate')).toEqual({ type: 'narrate', text: 'The harbor is listening.', locale: 'en-US', speaker: 'mara' });
   });
+
+  it('normalizes legacy non-English narration metadata to English', () => {
+    const fake = fakeBackend();
+    const audio = createAtlasAudio(fake.backend);
+    audio.unlock();
+    audio.narrateLine({ speaker: 'atlas', locale: 'ja-JP', text: 'The route is open.' });
+    expect(fake.events.find((event) => event.type === 'narrate')?.locale).toBe('en-US');
+  });
 });

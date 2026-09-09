@@ -96,12 +96,13 @@ export class AtlasAudio {
 
   narrate(text: string, locale: string = ATLAS_NARRATION_LOCALE): void {
     if (!this.unlocked || !text.trim()) return;
-    try { this.backend.narrate?.(text, locale, 'atlas'); } catch { /* Voice is optional and never blocks play. */ }
+    const safeLocale = englishNarrationLocale(locale);
+    try { this.backend.narrate?.(text, safeLocale, 'atlas'); } catch { /* Voice is optional and never blocks play. */ }
   }
 
   narrateLine(line: { readonly text: string; readonly locale: string; readonly speaker: AtlasVoiceProfile }): void {
     if (!this.unlocked || !line.text.trim()) return;
-    try { this.backend.narrate?.(line.text, line.locale, line.speaker); } catch { /* Voice is optional and never blocks play. */ }
+    try { this.backend.narrate?.(line.text, englishNarrationLocale(line.locale), line.speaker); } catch { /* Voice is optional and never blocks play. */ }
   }
 
   destroy(): void {
@@ -199,6 +200,10 @@ const VOICE_PROFILES: Record<AtlasVoiceProfile, { readonly rate: number; readonl
   ada: { rate: 0.88, pitch: 1.06 },
 };
 
+function englishNarrationLocale(locale: string): string {
+  return locale.toLowerCase().startsWith('en-') ? locale : ATLAS_NARRATION_LOCALE;
+}
+
 function createWebAudioBackend(): AtlasAudioBackend {
   let context: AudioContext | null = null;
   const buses = new Map<AtlasAudioBus, GainNode>();
@@ -214,6 +219,34 @@ function createWebAudioBackend(): AtlasAudioBackend {
   const playing = new Map<AtlasAudioCue, AudioBufferSourceNode>();
   const loading = new Set<AtlasAudioCue>();
   const wanted = new Set<AtlasAudioCue>();
+  let pendingNarration: { text: string; locale: string; speaker: AtlasVoiceProfile } | null = null;
+  let voiceListenerInstalled = false;
+
+  function speakPendingNarration(): void {
+    const pending = pendingNarration;
+    if (!pending) return;
+    const synth = globalThis.speechSynthesis;
+    const Utterance = globalThis.SpeechSynthesisUtterance;
+    if (!synth || !Utterance || volumes.voice === 0) return;
+    const voices = synth.getVoices();
+    const requestedLocale = pending.locale.toLowerCase();
+    const voice = voices.find((candidate) => candidate.lang.toLowerCase() === requestedLocale)
+      ?? voices.find((candidate) => candidate.lang.toLowerCase().startsWith('en-'));
+    // Some WebViews expose speechSynthesis before their voice list is ready.
+    // Keep the English line pending until voiceschanged instead of allowing a
+    // device default (which may be an unrelated language) to speak it.
+    if (!voice) return;
+    pendingNarration = null;
+    synth.cancel();
+    const utterance = new Utterance(pending.text);
+    utterance.lang = pending.locale;
+    utterance.volume = volumes.voice;
+    const profile = VOICE_PROFILES[pending.speaker];
+    utterance.rate = profile.rate;
+    utterance.pitch = profile.pitch;
+    utterance.voice = voice;
+    synth.speak(utterance);
+  }
 
   function startSample(cue: AtlasAudioCue, buffer: AudioBuffer, bus: AtlasAudioBus, loop: boolean): void {
     if (!context) return;
@@ -317,18 +350,13 @@ function createWebAudioBackend(): AtlasAudioBackend {
       const synth = globalThis.speechSynthesis;
       const Utterance = globalThis.SpeechSynthesisUtterance;
       if (!synth || !Utterance) return;
-      synth.cancel();
-      const utterance = new Utterance(text);
-      utterance.lang = locale;
-      utterance.volume = volumes.voice;
-      const profile = VOICE_PROFILES[speaker];
-      utterance.rate = profile.rate;
-      utterance.pitch = profile.pitch;
-      const requestedLocale = locale.toLowerCase();
-      const voice = synth.getVoices().find((candidate) => candidate.lang.toLowerCase() === requestedLocale)
-        ?? synth.getVoices().find((candidate) => candidate.lang.toLowerCase().startsWith('en-'));
-      if (voice) utterance.voice = voice;
-      synth.speak(utterance);
+      const safeLocale = englishNarrationLocale(locale);
+      pendingNarration = { text, locale: safeLocale, speaker };
+      if (!voiceListenerInstalled) {
+        synth.addEventListener?.('voiceschanged', speakPendingNarration);
+        voiceListenerInstalled = true;
+      }
+      speakPendingNarration();
     },
     visualCue: () => undefined,
     destroy: () => {
@@ -336,6 +364,9 @@ function createWebAudioBackend(): AtlasAudioBackend {
       for (const source of playing.values()) source.stop();
       playing.clear();
       decoded.clear();
+      pendingNarration = null;
+      if (voiceListenerInstalled) globalThis.speechSynthesis?.removeEventListener?.('voiceschanged', speakPendingNarration);
+      voiceListenerInstalled = false;
       globalThis.speechSynthesis?.cancel();
       if (context) void context.close().catch(() => undefined);
       context = null;

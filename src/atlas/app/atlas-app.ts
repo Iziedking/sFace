@@ -20,7 +20,7 @@ import { ATLAS_LANTERN_PRICE_NIM, ATLAS_LUNAS_PER_NIM } from '../../../shared/at
 import { ATLAS_KNOWLEDGE_BOOK, createKnowledgeBookState, gradeKnowledgeTeachBack, unlockKnowledgeFragment, type KnowledgeBookState } from '../../../shared/atlas/knowledge';
 import { ATLAS_EVERGREEN_ADVENTURES, replayEvergreenAdventure, type EvergreenAction, type EvergreenAdventure, type EvergreenState } from '../../../shared/atlas/adventures/evergreen';
 import { ATLAS_MAINNET_SHOP_ITEMS } from '../../../shared/atlas/shop';
-import { createAtlasApiClient, type AtlasCompetitionSummary } from '../api';
+import { createAtlasApiClient, type AtlasCompetitionSummary, type AtlasCompetitiveTicket } from '../api';
 import { createAtlasWalletAdapter } from '../wallet';
 import { createAtlasWalletBindingFlow } from '../wallet-binding';
 import { getOrCreateCredential } from '../../net/player-credential';
@@ -97,6 +97,7 @@ export class AtlasApp {
   private teachBackStep = 0;
   private teachBackNotice = '';
   private dailyNotice = '';
+  private dailyCompletedDate: string | null = readDailyCompletedDate();
   private evergreenAdventure: EvergreenAdventure = ATLAS_EVERGREEN_ADVENTURES[0]!;
   private evergreenActions: EvergreenAction[] = [];
   private evergreenState: EvergreenState = replayEvergreenAdventure(this.evergreenAdventure, []);
@@ -106,6 +107,10 @@ export class AtlasApp {
   private walletBindingBusy = false;
   private walletBindingNotice = '';
   private atlasWalletBinding: AtlasWalletBinding | null = null;
+  private atlasCompetitiveTicket: AtlasCompetitiveTicket | null = null;
+  private atlasCompetitiveTicketBusy = false;
+  private coreRunActorId: string | null = null;
+  private coreRunId = createAtlasClientRunId();
   private atlasServiceStatus: 'loading' | 'local-first' | 'unavailable' = 'loading';
   private atlasBeaconStatus: 'loading' | 'live' | 'stale' | 'unavailable' = 'loading';
   private atlasContributorCount = 0;
@@ -477,7 +482,9 @@ export class AtlasApp {
   private renderLeaderboards(): HTMLElement {
     const board = element('section', 'atlas-leaderboards');
     board.setAttribute('aria-label', 'Verified Atlas leaderboards');
-    board.append(element('strong', '', 'VERIFIED PLAY / SEPARATE PATHS'), element('p', 'atlas-quiet', 'Explorer and Builder scores are ranked separately. Public ranking is not connected in this build, so the interface shows no names, scores, or rewards.' ));
+    board.append(element('strong', '', 'VERIFIED PLAY / SEPARATE PATHS'), element('p', 'atlas-quiet', this.atlasCompetition.length > 0
+      ? 'Explorer and Builder scores are ranked separately. These standings come from server summaries; rewards still require the published eligibility and verification gates.'
+      : 'Explorer and Builder scores are ranked separately. Public standings appear here after the server summary is available; local play never invents names, scores, or rewards.' ));
     const tracks = element('div', 'atlas-leaderboard-grid');
     if (this.atlasCompetition.length > 0) {
       board.append(createCompetitionView(this.atlasCompetition));
@@ -1372,6 +1379,7 @@ export class AtlasApp {
     void this.stopLivingCity();
     this.screen = 'daily';
     this.dailyNotice = '';
+    this.dailyCompletedDate = readDailyCompletedDate();
     const dispatch = selectAtlasHubDispatch(new Date());
     const chapter = getAtlasStoryChapter(dispatch.chapterId);
     if (chapter) {
@@ -1386,6 +1394,9 @@ export class AtlasApp {
     this.screen = 'core-run';
     this.canvas.hidden = false;
     this.coreRun.reset();
+    this.atlasCompetitiveTicket = null;
+    this.coreRunActorId = this.atlasWalletBinding?.actorId ?? null;
+    this.coreRunId = createAtlasClientRunId();
     this.renderCoreRun();
   };
 
@@ -1414,9 +1425,11 @@ export class AtlasApp {
         return;
       }
       const credential = await getOrCreateCredential();
+      this.coreRunActorId = credential.playerId;
       const result = await this.walletBinding.bind({ actorId: credential.playerId, seasonId, network: 'testalbatross' });
       if (result.ok) {
         this.atlasWalletBinding = result.value;
+        this.atlasCompetitiveTicket = null;
         this.walletBindingNotice = 'Wallet identity bound for this season. The next step is requesting a server competitive ticket.';
       } else {
         this.walletBindingNotice = result.error;
@@ -1427,6 +1440,31 @@ export class AtlasApp {
       this.walletBindingBusy = false;
       this.renderCoreRun();
     }
+  };
+
+  private requestCoreRunTicket = async (): Promise<void> => {
+    if (this.atlasCompetitiveTicketBusy || !this.atlasWalletBinding || !this.coreRunActorId) return;
+    this.atlasCompetitiveTicketBusy = true;
+    this.walletBindingNotice = 'Requesting a server ticket for this completed replay...';
+    this.renderCoreRun();
+    try {
+      const response = await this.api.issueCompetitiveTicket({ actorId: this.coreRunActorId, walletAddress: this.atlasWalletBinding.address, role: this.selectedRole });
+      if (response.ok) {
+        this.atlasCompetitiveTicket = response.value;
+        this.walletBindingNotice = 'Server ticket issued. Submit this completed replay for authoritative verification.';
+      } else this.walletBindingNotice = response.error;
+    } catch (error) {
+      this.walletBindingNotice = error instanceof Error ? error.message : 'The server ticket could not be requested.';
+    } finally {
+      this.atlasCompetitiveTicketBusy = false;
+      this.renderCoreRun();
+    }
+  };
+
+  private submitCoreRun = async (): Promise<void> => {
+    if (!this.atlasCompetitiveTicket || !this.atlasWalletBinding || !this.coreRunActorId) return;
+    await this.coreRun.submit({ ticket: this.atlasCompetitiveTicket, runId: this.coreRunId, actorId: this.coreRunActorId, walletAddress: this.atlasWalletBinding.address, role: this.selectedRole, origin: window.location.origin });
+    this.renderCoreRun();
   };
 
   private renderCoreRun(): void {
@@ -1477,12 +1515,25 @@ export class AtlasApp {
       if (view.result) proof.append(element('p', 'atlas-core-proof-score', `VERIFIED SCORE ${view.result.run.score} / ${view.result.run.role.toUpperCase()}`));
       if (this.atlasWalletBinding) {
         proof.append(element('p', 'atlas-builder-success', `WALLET BOUND / ${this.atlasWalletBinding.address}`));
+        if (this.atlasCompetitiveTicket) {
+          proof.append(element('p', 'atlas-quiet', `SERVER TICKET READY / ${this.atlasCompetitiveTicket.ticketId.slice(0, 12)}…`));
+          const submit = actionButton(view.submission === 'submitting' ? 'Submitting replay...' : view.submission === 'verified' ? 'Replay verified' : 'Submit completed replay', this.submitCoreRun, 'Submit the completed core replay for server verification');
+          submit.disabled = view.submission === 'submitting' || view.submission === 'verified';
+          proof.append(submit);
+        } else {
+          const ticket = actionButton(this.atlasCompetitiveTicketBusy ? 'Requesting server ticket...' : 'Request competitive ticket', this.requestCoreRunTicket, 'Request a server ticket for the completed core replay');
+          ticket.disabled = this.atlasCompetitiveTicketBusy;
+          proof.append(ticket);
+        }
       } else {
         const bind = actionButton(this.walletBindingBusy ? 'Waiting for wallet...' : 'Connect Nimiq wallet identity', this.bindCoreRunWallet, 'Connect Nimiq Pay and sign the Atlas identity challenge');
         bind.disabled = this.walletBindingBusy;
         proof.append(bind);
       }
-      if (this.walletBindingNotice) proof.append(element('p', this.walletBindingNotice.includes('bound') ? 'atlas-builder-success' : 'atlas-quiet', this.walletBindingNotice));
+      if (this.walletBindingNotice) {
+        const noticeIsSuccess = this.walletBindingNotice.includes('bound') || this.walletBindingNotice.includes('issued') || this.walletBindingNotice.includes('verified');
+        proof.append(element('p', noticeIsSuccess ? 'atlas-builder-success' : 'atlas-quiet', this.walletBindingNotice));
+      }
       panel.append(proof);
     }
     this.ui.append(panel);
@@ -1492,6 +1543,8 @@ export class AtlasApp {
     this.ui.replaceChildren();
     const challenge = selectDailyChallenge(new Date());
     const dispatch = selectAtlasHubDispatch(new Date());
+    const today = dailyDateKey(new Date());
+    const completedToday = this.dailyCompletedDate === today;
     const panel = this.screenPanel('atlas-daily');
     panel.setAttribute('aria-label', 'Daily Atlas puzzle');
     panel.append(
@@ -1505,18 +1558,28 @@ export class AtlasApp {
       element('p', 'atlas-book-sequence', `DAY ${challenge.day} OF 28 / ${challenge.theme.toUpperCase()} / LEARN / SOLVE / VERIFY`),
       element('p', 'atlas-trial-copy', challenge.prompt),
       element('p', 'atlas-lantern-mode', dispatch.rewardCopy),
+      element('p', completedToday ? 'atlas-builder-success' : 'atlas-lantern-mode', completedToday
+        ? 'TODAY\'S DISPATCH COMPLETE / COME BACK TOMORROW FOR A NEW FIELD JOB'
+        : 'ONE DAILY DISPATCH / LEARN ONE RULE / RETURN TOMORROW'),
       element('p', 'atlas-lantern-mode', 'FREE CORE / LOCAL PRACTICE / SERVER VERIFICATION REQUIRED FOR REWARDS'),
     );
     const choices = element('div', 'atlas-daily-choices');
-    for (const answer of dailyChallengeChoices(challenge)) choices.append(actionButton(formatDailyChoice(answer), () => {
-      this.dailyNotice = answer === challenge.answer ? 'Correct locally. Reward share appears only after server verification.' : dailyRetryHint(challenge);
-      if (answer === challenge.answer) {
-        const dispatch = selectAtlasHubDispatch(new Date());
-        const chapter = getAtlasStoryChapter(dispatch.chapterId);
-        if (chapter) this.audio.narrateLine(chapter.voice.completion);
-      }
-      this.renderDailyPuzzle();
-    }, `Answer ${formatDailyChoice(answer)}`));
+    for (const answer of dailyChallengeChoices(challenge)) {
+      const choice = actionButton(formatDailyChoice(answer), () => {
+        if (this.dailyCompletedDate === today) return;
+        this.dailyNotice = answer === challenge.answer ? 'Correct locally. Reward share appears only after server verification.' : dailyRetryHint(challenge);
+        if (answer === challenge.answer) {
+          this.dailyCompletedDate = today;
+          writeDailyCompletedDate(today);
+          const dispatch = selectAtlasHubDispatch(new Date());
+          const chapter = getAtlasStoryChapter(dispatch.chapterId);
+          if (chapter) this.audio.narrateLine(chapter.voice.completion);
+        }
+        this.renderDailyPuzzle();
+      }, `Answer ${formatDailyChoice(answer)}`);
+      choice.disabled = completedToday;
+      choices.append(choice);
+    }
     panel.append(choices);
     if (this.dailyNotice) panel.append(element('p', this.dailyNotice.startsWith('Correct') ? 'atlas-builder-success' : 'atlas-lantern-error', this.dailyNotice));
     this.ui.append(panel);
@@ -2448,6 +2511,28 @@ function livingCityNavigation(scene: AtlasCitySceneV1): AtlasLivingCityNavigatio
  */
 const TUTORIAL_DONE_KEY = 'sface.atlas.tutorial.v1';
 const LAST_LANTERN_STORAGE_PREFIX = 'sface.atlas.last-lantern.v1';
+const DAILY_COMPLETED_KEY = 'sface.atlas.daily-completed.v1';
+
+function dailyDateKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function readDailyCompletedDate(): string | null {
+  try {
+    const value = globalThis.localStorage?.getItem(DAILY_COMPLETED_KEY);
+    return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeDailyCompletedDate(value: string): void {
+  try {
+    globalThis.localStorage?.setItem(DAILY_COMPLETED_KEY, value);
+  } catch {
+    // A private browsing storage failure must not block the daily mission.
+  }
+}
 
 function lastLanternStorageKey(actorId: string, role: AtlasRole, mode: LastLanternState['mode']): string {
   return `${LAST_LANTERN_STORAGE_PREFIX}:${actorId}:${role}:${mode}`;
@@ -2568,6 +2653,11 @@ function getAtlasSessionActorId(storage: Pick<Storage, 'getItem' | 'setItem'>): 
   const value = `atlas-session-${suffix}`;
   storage.setItem(key, value);
   return value;
+}
+
+function createAtlasClientRunId(): string {
+  const suffix = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `atlas-core-${suffix}`;
 }
 
 function createPaymentPersistence(storage: Pick<Storage, 'getItem' | 'setItem'>, key: string): { load: () => import('./payment-controller').AtlasPaymentControllerSnapshot | null; save: (snapshot: import('./payment-controller').AtlasPaymentControllerSnapshot) => void } {

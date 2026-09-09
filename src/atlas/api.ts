@@ -1,8 +1,11 @@
 import type { AtlasAction, AtlasSnapshot } from '../../shared/atlas/state';
-import type { AtlasCompetitiveTicket, AtlasAssistance, AtlasNetwork, AtlasRole } from '../../shared/atlas/types';
+import type { AtlasAssistance, AtlasNetwork, AtlasRole } from '../../shared/atlas/types';
+import type { AtlasCompetitiveTicket } from '../../shared/atlas/types';
 import type { AtlasWalletBinding, AtlasWalletBindingChallenge } from '../../shared/atlas/wallet-binding';
 import { authenticatedRequest, type ApiFetch, type ApiResult } from '../net/api';
 import { createAtlasCoreRunSubmission, type AtlasCoreRunRequest } from './competitive-run';
+
+export type { AtlasCompetitiveTicket } from '../../shared/atlas/types';
 
 export interface AtlasOrderSummary {
   id: string;
