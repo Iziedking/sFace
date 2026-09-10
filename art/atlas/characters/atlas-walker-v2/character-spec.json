@@ -1,0 +1,44 @@
+{
+  "asset": "atlas-walker-v2",
+  "displayName": "Atlas Walker",
+  "version": "2.0.0",
+  "status": "in-progress",
+  "authorship": "Original geometry authored for SFACE by script, using Blender's own modifiers over an authored joint graph. No generated images, image-to-3D input, scans, stock models, or external meshes. The toolchain changed from hand-rolled glTF assembly to scripted Blender; the geometry is still ours and still procedural.",
+  "toolchain": "Blender 5.2.1 LTS, driven headlessly: blender --background --python build_character.py",
+  "design": {
+    "role": "A practical network field guide who can grow into both Explorer and Builder mission kits.",
+    "proportions": "Six heads tall, stylised-hero rather than chibi. v1 shipped 3.7 heads, adopted so a geometry-only face stayed readable at small size; a play test on real phones on 2026-09-10 reported the characters as 'not close to being human'. v2 carries facial detail in a texture, so the body no longer has to be stylised to compensate.",
+    "surfaceLanguage": "One continuous skinned surface grown along the joint graph by Blender's Skin modifier, then subdivided and smooth shaded. v1 assembled separate ellipsoids and cylinders, which is why limb joints showed as intersecting blobs.",
+    "faceDirection": "Painted into the texture rather than modelled, because the follow camera frames the avatar at about 17.5 percent of viewport height and a 6-head figure gives roughly a 25 pixel head. Painted eyes and brows read at that size; geometry of that scale does not.",
+    "frontDirection": "+Z"
+  },
+  "palette": {
+    "skin": "#C98C68",
+    "skinShadow": "#A7684F",
+    "ink": "#14110E",
+    "workwear": "#292725",
+    "cream": "#F4EDE0",
+    "orange": "#FF5A1F",
+    "seafoam": "#8FB3A8",
+    "leather": "#65513B"
+  },
+  "mobileBudget": {
+    "maxTriangles": 12000,
+    "maxMaterials": 8,
+    "maxBones": 24,
+    "maxGlbBytes": 1048576,
+    "textureMaps": 1,
+    "animationClips": 4,
+    "budgetNote": "Raised from v1's 5200 triangles and zero texture maps. v1 sat at 4626 with only 574 of headroom, which is why joints were faceted. A single hero plus two LODs at 12000 is within reach for a mobile WebView, and the number is checked by scripts/verify-atlas-3d.mjs rather than trusted."
+  },
+  "animationClips": {
+    "note": "src/atlas/render/three/character-animation.ts throws if any of these is missing, so the names are a hard contract.",
+    "required": ["idle", "walk", "run", "talk"]
+  },
+  "scaleMeters": {
+    "height": 1.76,
+    "shoulderWidth": 0.42,
+    "bootLength": 0.24
+  },
+  "headsTallBand": [5.7, 6.3]
+}
