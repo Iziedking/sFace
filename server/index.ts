@@ -157,8 +157,17 @@ const relayLeaderboard = createRelayLeaderboardService({ runs: async () => Objec
 const relayRewards = createRelayRewardService({ store: getRelayStore(), fundedAllocationLuna: RELAY_CONFIG.seasonAllocationLuna });
 const relayChain = createNimiqRelayChainReader({ network: RELAY_CONFIG.network, rpcUrls: RELAY_CONFIG.rpcUrls, minConfirmations: RELAY_CONFIG.minConfirmations });
 const relayPayouts = createRelayPayoutService({ store: getRelayStore(), chain: relayChain, treasuryAddress: RELAY_CONFIG.treasuryAddress ?? '', minConfirmations: RELAY_CONFIG.minConfirmations, network: RELAY_CONFIG.network });
-const atlasOrders = ATLAS_PAYMENT_CONFIG.enabled ? createAtlasOrderStore({ recipient: ATLAS_PAYMENT_CONFIG.recipient!, priceLuna: ATLAS_PAYMENT_CONFIG.valueLuna, minimumConfirmations: ATLAS_PAYMENT_CONFIG.minConfirmations, repository: createAtlasJsonRepository({ directory: join(DATA_DIR, 'atlas') }) }) : undefined;
-const atlasChain = ATLAS_PAYMENT_CONFIG.enabled ? createAtlasChainReader({ network: ATLAS_PAYMENT_CONFIG.network, rpcUrls: ATLAS_PAYMENT_CONFIG.rpcUrls, minConfirmations: ATLAS_PAYMENT_CONFIG.minConfirmations }) : undefined;
+const atlasOrders = ATLAS_PAYMENT_CONFIG.enabled ? createAtlasOrderStore({ network: ATLAS_PAYMENT_CONFIG.network, recipient: ATLAS_PAYMENT_CONFIG.recipient!, priceLuna: ATLAS_PAYMENT_CONFIG.valueLuna, minimumConfirmations: ATLAS_PAYMENT_CONFIG.minConfirmations, repository: createAtlasJsonRepository({ directory: join(DATA_DIR, 'atlas') }) }) : undefined;
+const atlasChain = ATLAS_PAYMENT_CONFIG.enabled
+  ? createAtlasChainReader({
+      network: ATLAS_PAYMENT_CONFIG.network,
+      rpcUrls: ATLAS_PAYMENT_CONFIG.rpcUrls,
+      minConfirmations: ATLAS_PAYMENT_CONFIG.minConfirmations,
+      // Without this the reader labels observations with the configured network
+      // name and nothing ever checks which chain answered.
+      expectedGenesisHash: ATLAS_PAYMENT_CONFIG.genesisHash ?? undefined,
+    })
+  : undefined;
 const atlasStateStore = createAtlasStateStore(createAtlasJsonRepository({ directory: join(DATA_DIR, 'atlas-state') }));
 const atlasBeacon = ATLAS_PRODUCTION_GATE.durableRepository ? createAtlasBeaconService({ repository: createAtlasBeaconRepository({ stateStore: atlasStateStore }) }) : undefined;
 const atlasEchoes = ATLAS_PRODUCTION_GATE.durableRepository ? createAtlasEchoService({ repository: createAtlasEchoRepository({ stateStore: atlasStateStore }) }) : undefined;

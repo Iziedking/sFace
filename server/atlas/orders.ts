@@ -1,3 +1,4 @@
+import type { AtlasPaymentNetwork } from '../../shared/atlas/payment-config';
 import { randomUUID } from 'node:crypto';
 
 import { LAST_LANTERN } from '../../shared/atlas/adventures/last-lantern';
@@ -21,7 +22,7 @@ export interface AtlasOrder {
   actorId: string;
   walletAddress: string;
   itemId: 'harbor-lantern';
-  network: 'testalbatross';
+  network: AtlasPaymentNetwork;
   recipient: string;
   valueLuna: number;
   status: AtlasOrderStatus;
@@ -31,7 +32,7 @@ export interface AtlasOrder {
 }
 
 export interface AtlasOrderStore {
-  create(input: { actorId: string; walletAddress: string; itemId: 'harbor-lantern'; network: 'testalbatross'; recipient: string; valueLuna: number; idempotencyKey?: string }): Promise<AtlasOrder>;
+  create(input: { actorId: string; walletAddress: string; itemId: 'harbor-lantern'; network: AtlasPaymentNetwork; recipient: string; valueLuna: number; idempotencyKey?: string }): Promise<AtlasOrder>;
   get(orderId: string): Promise<AtlasOrder>;
   submitLookup(orderId: string, lookup: string): Promise<AtlasOrder>;
   reconcile(orderId: string, evidence: AtlasOrderEvidence): Promise<AtlasOrder>;
@@ -58,9 +59,13 @@ interface PersistedAtlasOrders {
 
 const PERSISTENCE_KEY = 'atlas-orders-v1';
 
-export function createAtlasOrderStore(options: { now?: () => number; recipient?: string; priceLuna?: number; minimumConfirmations?: number; repository?: AtlasRepository } = {}): AtlasOrderStore {
+export function createAtlasOrderStore(options: { now?: () => number; network?: AtlasPaymentNetwork; recipient?: string; priceLuna?: number; minimumConfirmations?: number; repository?: AtlasRepository } = {}): AtlasOrderStore {
   const now = options.now ?? Date.now;
-  const catalog = { recipient: options.recipient ?? LAST_LANTERN.recipient, priceLuna: options.priceLuna ?? LAST_LANTERN.priceLuna };
+  const catalog = {
+    network: options.network ?? LAST_LANTERN.request.network,
+    recipient: options.recipient ?? LAST_LANTERN.recipient,
+    priceLuna: options.priceLuna ?? LAST_LANTERN.priceLuna,
+  };
   const minimumConfirmations = options.minimumConfirmations ?? LAST_LANTERN.minimumConfirmations;
   const orders = new Map<string, AtlasOrder>();
   const idempotency = new Map<string, { fingerprint: string; orderId: string }>();
@@ -245,8 +250,18 @@ export function toPublicAtlasOrder(order: AtlasOrder): PublicAtlasOrder {
   };
 }
 
-function assertExactLantern(input: { itemId: string; network: string; recipient: string; valueLuna: number }, catalog: { recipient: string; priceLuna: number }): void {
-  if (input.itemId !== LAST_LANTERN.request.itemId || input.network !== LAST_LANTERN.request.network || input.recipient !== catalog.recipient || input.valueLuna !== catalog.priceLuna) {
+function assertExactLantern(
+  input: { itemId: string; network: string; recipient: string; valueLuna: number },
+  catalog: { network: string; recipient: string; priceLuna: number },
+): void {
+  /*
+   * The network is compared against the configured catalog, not against
+   * LAST_LANTERN. That constant is the wallet-free practice fixture, and using
+   * it here meant a live mainnet deployment could never accept its own orders.
+   * The network is part of what the player reviewed before approving, so a
+   * mismatch is a refusal rather than a coercion.
+   */
+  if (input.itemId !== LAST_LANTERN.request.itemId || input.network !== catalog.network || input.recipient !== catalog.recipient || input.valueLuna !== catalog.priceLuna) {
     throw new Error('Atlas order does not match the approved lantern catalog.');
   }
 }
@@ -287,7 +302,7 @@ function isPersistedOrder(value: unknown): value is AtlasOrder {
   return typeof order.id === 'string' && /^atlas-order-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(order.id)
     && typeof order.actorId === 'string' && order.actorId.length > 0 && order.actorId.length <= 256
     && typeof order.walletAddress === 'string' && order.walletAddress.length > 0 && order.walletAddress.length <= 256
-    && order.itemId === 'harbor-lantern' && order.network === 'testalbatross'
+    && order.itemId === 'harbor-lantern' && (order.network === 'testalbatross' || order.network === 'mainalbatross')
     && typeof order.recipient === 'string' && order.recipient.length > 0 && order.recipient.length <= 256
     && typeof order.valueLuna === 'number' && Number.isSafeInteger(order.valueLuna) && order.valueLuna > 0
     && ['created', 'submitted', 'confirming', 'fulfilled', 'cancelled'].includes(order.status ?? '')

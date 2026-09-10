@@ -1,4 +1,4 @@
-import type { AtlasChainObservation, AtlasChainReader } from './chain';
+import type { AtlasChainObservation, AtlasChainObserver } from './chain';
 import type { AtlasNetwork } from '../../shared/atlas/types';
 
 export type AtlasPayoutStatus = 'draft' | 'approved' | 'submitted' | 'confirming' | 'unknown' | 'verified' | 'failed' | 'reorg';
@@ -24,7 +24,7 @@ export interface AtlasPayoutService {
   list(): Promise<AtlasPayoutRecord[]>;
 }
 
-export function createAtlasPayoutService(options: { network: AtlasNetwork; treasuryAddress: string; minConfirmations: number; chain: AtlasChainReader; now?: () => number }): AtlasPayoutService {
+export function createAtlasPayoutService(options: { network: AtlasNetwork; treasuryAddress: string; minConfirmations: number; chain: AtlasChainObserver; now?: () => number }): AtlasPayoutService {
   const now = options.now ?? Date.now;
   const payouts = new Map<string, AtlasPayoutRecord>();
   let operations: Promise<void> = Promise.resolve();

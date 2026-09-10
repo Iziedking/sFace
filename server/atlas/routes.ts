@@ -1,3 +1,4 @@
+import type { AtlasPaymentNetwork } from '../../shared/atlas/payment-config';
 import type { Express, RequestHandler } from 'express';
 import { z } from 'zod';
 import { Address } from '@nimiq/core';
@@ -7,7 +8,7 @@ import { LAST_LANTERN } from '../../shared/atlas/adventures/last-lantern';
 import type { AtlasCurriculum } from '../../shared/atlas/types';
 import { toPublicAtlasOrder, type AtlasOrder, type AtlasOrderStore } from './orders';
 import type { AtlasBeaconService } from './beacon';
-import type { AtlasChainReader } from './chain';
+import type { AtlasChainObserver } from './chain';
 import type { AtlasEchoService } from './echoes';
 import type { AtlasCompetitionSummary } from './rewards';
 import type { AtlasCompetitiveRuntime } from './competitive';
@@ -17,7 +18,7 @@ import type { AtlasSnapshot } from '../../shared/atlas/state';
 
 export interface AtlasOrderCatalog {
   itemId: 'harbor-lantern';
-  network: 'testalbatross';
+  network: AtlasPaymentNetwork;
   recipient: string;
   valueLuna: number;
 }
@@ -36,7 +37,7 @@ export interface AtlasApi {
   competition?: () => Promise<AtlasCompetitionSummary[]>;
   orders?: AtlasOrderStore;
   orderCatalog?: AtlasOrderCatalog;
-  chain?: AtlasChainReader;
+  chain?: AtlasChainObserver;
   identity?: AtlasIdentityService;
   competitive?: AtlasCompetitiveRuntime;
   authorize?: (proof: DeviceProof, action: AuthAction, actorId: string, body: unknown) => Promise<boolean>;
@@ -51,7 +52,7 @@ export function createAtlasApi(options: {
   echoes?: AtlasEchoService;
   competition?: () => Promise<AtlasCompetitionSummary[]>;
   orderCatalog?: AtlasOrderCatalog;
-  chain?: AtlasChainReader;
+  chain?: AtlasChainObserver;
   identity?: AtlasIdentityService;
   competitive?: AtlasCompetitiveRuntime;
   authorize?: (proof: DeviceProof, action: AuthAction, actorId: string, body: unknown) => Promise<boolean>;

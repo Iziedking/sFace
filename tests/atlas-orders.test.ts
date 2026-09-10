@@ -46,3 +46,34 @@ describe('NIM Atlas testnet order machine', () => {
     await expect(store.cancel(privateReasonOrder.id, 'wallet stack included a private diagnostic')).rejects.toThrow(/reason/i);
   });
 });
+
+/*
+ * Order network. AtlasOrder.network, AtlasOrderStore.create's input,
+ * AtlasOrderCatalog.network and isPersistedOrder all pinned the literal
+ * 'testalbatross', while AtlasOrderEvidence.network already accepted both. So
+ * a mainnet deployment could observe mainnet evidence but never create or
+ * reload a mainnet order.
+ *
+ * The store takes its network from configuration alongside recipient and
+ * price, and refuses any order that does not match, because the network is
+ * part of what the player reviewed before approving.
+ */
+describe('NIM Atlas order network binding', () => {
+  const recipient = `NQ00${'A'.repeat(32)}`;
+  const base = { actorId: 'actor-1', walletAddress: 'NQWALLET', itemId: 'harbor-lantern' as const, recipient, valueLuna: 100_000 };
+
+  it('creates an order on the configured mainnet catalog', async () => {
+    const store = createAtlasOrderStore({ network: 'mainalbatross', recipient, priceLuna: 100_000 });
+    await expect(store.create({ ...base, network: 'mainalbatross' })).resolves.toMatchObject({ network: 'mainalbatross', recipient });
+  });
+
+  it('refuses an order whose network is not the configured one', async () => {
+    const store = createAtlasOrderStore({ network: 'mainalbatross', recipient, priceLuna: 100_000 });
+    await expect(store.create({ ...base, network: 'testalbatross' })).rejects.toThrow(/approved lantern catalog/i);
+  });
+
+  it('still defaults to the practice network when none is configured', async () => {
+    const store = createAtlasOrderStore({ recipient, priceLuna: 100_000 });
+    await expect(store.create({ ...base, network: 'testalbatross' })).resolves.toMatchObject({ network: 'testalbatross' });
+  });
+});
