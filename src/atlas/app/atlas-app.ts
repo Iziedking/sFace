@@ -1,3 +1,4 @@
+import { createNimiqMark } from '../ui/nimiq-mark';
 import { createAtlasState } from '../../../shared/atlas/state';
 import { BEACON_SEALS, createRouteRun, recoverRouteRun, routeLesson, routeProgress, routeRestoration, routeTarget, routeWorld, stepRouteRun, type RouteAction, type RouteRun } from '../../../shared/atlas/adventures/route-rescue';
 import { createEvidenceChoices, createRouteCard } from '../ui/route-rescue';
@@ -318,6 +319,7 @@ export class AtlasApp {
       this.ui.append(panel);
       return;
     }
+    panel.append(createNimiqMark('lockup'));
     const eyebrow = element('p', 'atlas-eyebrow', 'NIM ATLAS / BEACON COMMONS');
     const heading = element('h1', '', 'Explore Nimiq. Build what survives.');
     const tagline = element('p', 'atlas-tagline', 'Learn how Nimiq works by walking through a living city, meeting its people, and making the right move.');
@@ -410,6 +412,7 @@ export class AtlasApp {
   private renderLandingSplash(): HTMLElement {
     const splash = element('div', 'atlas-landing-splash');
     const state = this.cityLoadState === 'unavailable';
+    splash.append(createNimiqMark('lockup'));
     splash.append(
       element('p', 'atlas-eyebrow', 'SFACE / NIM ATLAS'),
       element('h1', '', state ? 'Reconnect the city.' : 'Entering Beacon Commons.'),
@@ -943,7 +946,12 @@ export class AtlasApp {
     brand.className = 'atlas-brand';
     brand.setAttribute('aria-label', ariaLabel);
     brand.addEventListener('click', this.returnHome);
-    brand.append(element('span', '', 'NIM ATLAS'), element('small', '', locationLabel));
+    /*
+     * The persistent Nimiq mark. Decorative, because the button already
+     * carries an aria-label and a second "Nimiq" would be announced on every
+     * screen the HUD appears on.
+     */
+    brand.append(createNimiqMark('signet', { decorative: true }), element('span', '', 'NIM ATLAS'), element('small', '', locationLabel));
     return brand;
   }
 
@@ -1037,7 +1045,7 @@ export class AtlasApp {
     const review = element('dl', 'atlas-city-payment-review');
     review.setAttribute('aria-label', 'Exact payment fields');
     review.append(
-      element('dt', '', 'NETWORK'), element('dd', '', request.network),
+      element('dt', '', 'NETWORK'), this.networkValueCell(request.network),
       element('dt', '', 'RECIPIENT'), element('dd', '', request.recipient),
       element('dt', '', 'AMOUNT'), element('dd', '', formatLanternAmount(request.valueLuna)),
       element('dt', '', 'FEE'), element('dd', '', fee),
@@ -1047,6 +1055,12 @@ export class AtlasApp {
         : 'Approval gives permission to request this payment. It does not prove the shop received NIM.'),
     );
     return review;
+  }
+
+  private networkValueCell(network: string): HTMLElement {
+    const value = element('dd', 'atlas-payment-network');
+    value.append(createNimiqMark('signet', { decorative: true }), element('span', '', network));
+    return value;
   }
 
   private advancePhysicalLantern(action: LastLanternAction): void {
@@ -1830,6 +1844,9 @@ export class AtlasApp {
     panel.setAttribute('aria-label', 'The Last Lantern local practice');
     panel.append(
       this.screenNav('Pay Harbor'),
+      // This is the screen a player approves a transfer on, so it carries the
+      // full lockup rather than the signet alone.
+      createNimiqMark('lockup'),
       element('p', 'atlas-eyebrow', 'PAY HARBOR / THE LAST LANTERN'),
       element('h1', '', 'Keep the harbor open'),
       element('p', 'atlas-trial-copy', this.selectedRole === 'builder' ? 'Repair Mara\'s payment route: provider request, exact Lunas, then authoritative confirmation.' : 'Walk through Mara\'s shop, review a NIM payment, and carry the lantern to the harbor tower.'),
@@ -1846,7 +1863,7 @@ export class AtlasApp {
       const requestValue = this.currentLanternRequest();
       const request = element('dl', 'atlas-payment-review');
       request.append(
-        element('dt', '', 'NETWORK'), element('dd', '', requestValue.network),
+        element('dt', '', 'NETWORK'), this.networkValueCell(requestValue.network),
         element('dt', '', 'RECIPIENT'), element('dd', '', requestValue.recipient),
         element('dt', '', 'AMOUNT'), element('dd', '', formatLanternAmount(requestValue.valueLuna)),
       );

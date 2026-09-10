@@ -293,14 +293,44 @@ button:focus-visible, input:focus-visible, a:focus-visible, [tabindex]:focus-vis
  * button now, which restores the layout the grid was written for.
  */
 .atlas-topbar-actions { display: flex; gap: 6px; align-items: center; }
+/*
+ * Deliberately no grid placement for .atlas-city-topbar here.
+ *
+ * On the living-city shell that element is not a grid at all:
+ * src/atlas/ui/route-rescue.css redeclares it as `display: flex; flex-wrap:
+ * wrap` with `.atlas-brand { flex: 1 1 170px }`, so the brand grows and the
+ * action group wraps to a second line. Grid properties written against
+ * .atlas-topbar's `1fr auto auto` are inert on this screen, and three such
+ * declarations were measured doing nothing before being removed.
+ *
+ * Collapsing the bar to one row means deciding which stylesheet owns this
+ * element, which is a layout change the standing HUD decision freezes. Left
+ * alone on purpose.
+ */
 .atlas-hud-settings { position: absolute; top: 108px; right: 18px; z-index: 3; display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid rgb(var(--atlas-ink-rgb) / .18); border-radius: var(--atlas-radius); background: var(--atlas-raised); backdrop-filter: var(--atlas-glass-blur); box-shadow: var(--atlas-glow); pointer-events: auto; }
 .atlas-hud-settings .atlas-pause { min-width: 132px; min-height: 44px; }
 /* display: flex above beats the user agent's [hidden] rule, so state it here. */
 .atlas-hud-settings[hidden] { display: none; }
 .atlas-brand, .atlas-integrity, .atlas-pause { border: 1px solid rgb(var(--atlas-ink-rgb) / .18); border-radius: var(--atlas-radius-pill); background: var(--atlas-raised); backdrop-filter: var(--atlas-glass-blur); color: var(--atlas-ink); box-shadow: var(--atlas-glow); }
-.atlas-brand { min-height: 52px; padding: 8px 16px; display: grid; align-content: center; text-align: left; cursor: pointer; }
-.atlas-brand span { font: 400 19px/1 AtlasDisplay, Georgia, serif; }
-.atlas-brand small { margin-top: 4px; font: 700 13px/1.25 system-ui, sans-serif; letter-spacing: .08em; }
+/*
+ * Nimiq's own artwork. Never filtered, tinted or faded: the product rule that
+ * magenta is the only accent is satisfied by treating this as a brand mark
+ * rather than a UI accent, not by recolouring someone else's logo. See
+ * src/atlas/ui/nimiq-mark.ts.
+ */
+.atlas-nimiq-mark { display: block; width: auto; height: 20px; flex: none; }
+.atlas-nimiq-mark[data-variant="lockup"] { height: 28px; margin: 0 0 14px; }
+
+.atlas-brand { min-height: 52px; padding: 8px 14px; display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 9px; align-content: center; text-align: left; cursor: pointer; }
+.atlas-brand > .atlas-nimiq-mark { grid-column: 1; grid-row: 1 / span 2; align-self: center; height: 18px; }
+.atlas-brand > span { grid-column: 2; font: 400 19px/1 AtlasDisplay, Georgia, serif; }
+.atlas-brand > small { grid-column: 2; margin-top: 4px; font: 700 13px/1.25 system-ui, sans-serif; letter-spacing: .08em; }
+
+/* The mark sits beside the network name a player is asked to approve. Both
+ * payment surfaces use this cell: the panel over the city and the standalone
+ * lantern screen. */
+.atlas-payment-network { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.atlas-payment-network .atlas-nimiq-mark { height: 13px; }
 .atlas-integrity { min-height: 52px; padding: 0 9px; display: grid; place-items: center; font: 700 13px/1.25 system-ui, sans-serif; white-space: nowrap; }
 .atlas-pause { min-width: 52px; min-height: 52px; padding: 0 8px; font: 700 13px/1.25 system-ui, sans-serif; cursor: pointer; }
 .atlas-objective { width: min(100%, 520px); margin-top: 8px; padding: 10px 12px; border: 2px solid var(--atlas-ink); background: var(--atlas-ink); color: var(--atlas-paper); pointer-events: auto; }
