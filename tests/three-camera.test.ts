@@ -1,18 +1,37 @@
 import { PerspectiveCamera, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
-import { AtlasCameraRig, nearestCameraObstructionDistance } from '../src/atlas/render/three/camera-rig';
+import {
+  ATLAS_FRAMING_BAND,
+  AtlasCameraRig,
+  nearestCameraObstructionDistance,
+  projectedAtlasScreenHeightPercent,
+  solveAtlasFollowGeometry,
+} from '../src/atlas/render/three/camera-rig';
 
 describe('Atlas mobile camera rig', () => {
-  it('locks the approved close portrait framing values', () => {
+  it('derives its follow geometry from the approved framing goal', () => {
     const camera = new PerspectiveCamera();
     const rig = new AtlasCameraRig(camera);
-    expect(rig.fieldOfViewDegrees).toBe(60);
-    expect(rig.targetPlayerScreenHeightPercent).toBe(0.28);
-    expect(rig.followDistanceMeters).toBe(4.75);
-    expect(camera.fov).toBe(60);
-    expect(camera.position.x).toBeCloseTo(0.52);
-    expect(camera.position.y).toBeCloseTo(2.62);
-    expect(camera.position.z).toBeCloseTo(8.95);
+    expect(rig.targetPlayerScreenHeightPercent).toBeGreaterThanOrEqual(ATLAS_FRAMING_BAND.minimum);
+    expect(rig.targetPlayerScreenHeightPercent).toBeLessThanOrEqual(ATLAS_FRAMING_BAND.maximum);
+    expect(camera.fov).toBe(rig.fieldOfViewDegrees);
+    const solved = solveAtlasFollowGeometry({
+      avatarHeightMeters: rig.avatarHeightMeters,
+      targetScreenHeightPercent: rig.targetPlayerScreenHeightPercent,
+      fieldOfViewDegrees: rig.fieldOfViewDegrees,
+      pitchDegrees: rig.pitchDegrees,
+    });
+    expect(rig.followDistanceMeters).toBeCloseTo(solved.followDistanceMeters, 6);
+    expect(rig.cameraLiftMeters).toBeCloseTo(solved.cameraLiftMeters, 6);
+    expect(rig.cameraHeightMeters).toBeCloseTo(rig.aimHeightMeters + solved.cameraLiftMeters, 6);
+  });
+
+  it('sits further back and higher than the rejected close framing', () => {
+    const rig = new AtlasCameraRig(new PerspectiveCamera());
+    expect(rig.followDistanceMeters).toBeGreaterThan(4.75);
+    expect(rig.cameraHeightMeters).toBeGreaterThan(2.62);
+    expect(rig.lookAheadMeters).toBeLessThan(4.1);
+    expect(rig.fieldOfViewDegrees).toBeLessThan(60);
   });
 
   it('stays behind the player and looks ahead in the facing direction', () => {
@@ -49,7 +68,7 @@ describe('Atlas mobile camera rig', () => {
     for (let index = 0; index < 30; index += 1) {
       rig.update({ width: 844, height: 390, deltaSeconds: 1 / 60, playerHeadingRadians: Math.PI * 0.75, playerMoving: true, playerRunning: true });
     }
-    expect(camera.fov).toBeGreaterThan(62);
+    expect(camera.fov).toBeGreaterThan(rig.fieldOfViewDegrees + 2);
     expect(camera.position.x).toBeLessThan(0);
     expect(camera.position.z).toBeGreaterThan(0);
   });
@@ -59,10 +78,10 @@ describe('Atlas mobile camera rig', () => {
     const rig = new AtlasCameraRig(camera);
     rig.update({ width: 390, height: 844, deltaSeconds: 1 / 60, playerMoving: true });
     const firstMovingFrame = camera.fov;
-    expect(firstMovingFrame).toBeGreaterThan(60);
-    expect(firstMovingFrame).toBeLessThan(60.25);
+    expect(firstMovingFrame).toBeGreaterThan(rig.fieldOfViewDegrees);
+    expect(firstMovingFrame).toBeLessThan(rig.fieldOfViewDegrees + 0.25);
     rig.update({ width: 390, height: 844, deltaSeconds: 1 / 60, playerMoving: false });
-    expect(camera.fov).toBeGreaterThan(60);
+    expect(camera.fov).toBeGreaterThan(rig.fieldOfViewDegrees);
     expect(firstMovingFrame - camera.fov).toBeLessThan(0.08);
   });
 
@@ -139,5 +158,95 @@ describe('Atlas mobile camera rig', () => {
     expect(camera.aspect).toBeCloseTo(390 / 844);
     rig.resize(0, 0);
     expect(camera.aspect).toBe(1);
+  });
+});
+
+/*
+ * Framing solver. The rig previously accepted targetPlayerScreenHeightPercent,
+ * defaulted it to 0.28, exposed it as a readonly field, and never read it in
+ * update(). A test asserted the field equalled 0.28 and passed green while
+ * proving nothing about what a player sees. These tests pin the projected
+ * result instead of the stored input, so the framing goal cannot go dead again.
+ *
+ * The avatar is 1.76 m in art/atlas/characters/atlas-walker-v1/character-spec.json
+ * scaled by PLAYER_WORLD_SCALE 0.72 in three-renderer.ts, so it stands
+ * 1.2672 m in world space.
+ */
+describe('Atlas camera framing solver', () => {
+  const AVATAR_HEIGHT_METERS = 1.76 * 0.72;
+
+  it('solves a follow geometry that projects the avatar at the requested screen height', () => {
+    const geometry = solveAtlasFollowGeometry({
+      avatarHeightMeters: AVATAR_HEIGHT_METERS,
+      targetScreenHeightPercent: 0.175,
+      fieldOfViewDegrees: 52,
+      pitchDegrees: 31,
+    });
+    const projected = projectedAtlasScreenHeightPercent({
+      avatarHeightMeters: AVATAR_HEIGHT_METERS,
+      slantDistanceMeters: geometry.slantDistanceMeters,
+      fieldOfViewDegrees: 52,
+    });
+    expect(projected).toBeCloseTo(0.175, 4);
+  });
+
+  it('decomposes the slant distance into a follow distance and a camera lift for the requested pitch', () => {
+    const geometry = solveAtlasFollowGeometry({
+      avatarHeightMeters: AVATAR_HEIGHT_METERS,
+      targetScreenHeightPercent: 0.175,
+      fieldOfViewDegrees: 52,
+      pitchDegrees: 31,
+    });
+    const pitchRadians = Math.atan2(geometry.cameraLiftMeters, geometry.followDistanceMeters);
+    expect((pitchRadians * 180) / Math.PI).toBeCloseTo(31, 3);
+    expect(Math.hypot(geometry.followDistanceMeters, geometry.cameraLiftMeters)).toBeCloseTo(geometry.slantDistanceMeters, 6);
+  });
+
+  it('pulls the camera back rather than forward compared with the rejected close framing', () => {
+    const geometry = solveAtlasFollowGeometry({
+      avatarHeightMeters: AVATAR_HEIGHT_METERS,
+      targetScreenHeightPercent: 0.175,
+      fieldOfViewDegrees: 52,
+      pitchDegrees: 31,
+    });
+    expect(geometry.followDistanceMeters).toBeGreaterThan(4.75);
+  });
+
+  it('frames the avatar inside the approved band on a 390x844 portrait viewport', () => {
+    const camera = new PerspectiveCamera();
+    const rig = new AtlasCameraRig(camera, { avatarHeightMeters: AVATAR_HEIGHT_METERS });
+    const player = new Vector3(0, 0, 4.2);
+    for (let index = 0; index < 60; index += 1) {
+      rig.update({ width: 390, height: 844, deltaSeconds: 1 / 60, playerPosition: player, cameraHeadingRadians: Math.PI });
+    }
+    const projected = projectedAtlasScreenHeightPercent({
+      avatarHeightMeters: AVATAR_HEIGHT_METERS,
+      slantDistanceMeters: camera.position.distanceTo(new Vector3(player.x, player.y + AVATAR_HEIGHT_METERS / 2, player.z)),
+      fieldOfViewDegrees: camera.fov,
+    });
+    expect(projected).toBeGreaterThanOrEqual(0.16);
+    expect(projected).toBeLessThanOrEqual(0.19);
+  });
+
+  it('aims at the avatar body rather than above its head', () => {
+    const rig = new AtlasCameraRig(new PerspectiveCamera(), { avatarHeightMeters: AVATAR_HEIGHT_METERS });
+    expect(rig.aimHeightMeters).toBeLessThan(AVATAR_HEIGHT_METERS);
+    expect(rig.aimHeightMeters).toBeGreaterThan(AVATAR_HEIGHT_METERS * 0.5);
+  });
+
+  it('holds the framing band on a narrower viewport, because vertical field of view is aspect independent', () => {
+    const camera = new PerspectiveCamera();
+    const rig = new AtlasCameraRig(camera, { avatarHeightMeters: AVATAR_HEIGHT_METERS });
+    const player = new Vector3(0, 0, 4.2);
+    for (let index = 0; index < 60; index += 1) {
+      rig.update({ width: 320, height: 700, deltaSeconds: 1 / 60, playerPosition: player, cameraHeadingRadians: Math.PI });
+    }
+    const projected = projectedAtlasScreenHeightPercent({
+      avatarHeightMeters: AVATAR_HEIGHT_METERS,
+      slantDistanceMeters: camera.position.distanceTo(new Vector3(player.x, player.y + AVATAR_HEIGHT_METERS / 2, player.z)),
+      fieldOfViewDegrees: camera.fov,
+    });
+    expect(projected).toBeGreaterThanOrEqual(0.16);
+    expect(projected).toBeLessThanOrEqual(0.19);
   });
 });

@@ -5,10 +5,22 @@ import type { AtlasCityCollider } from '../../../../shared/atlas/city/types';
 export interface AtlasCameraRigOptions {
   readonly fieldOfViewDegrees?: number;
   readonly targetPlayerScreenHeightPercent?: number;
+  readonly avatarHeightMeters?: number;
+  readonly pitchDegrees?: number;
+  /** Overrides the solved distance. Leave unset so framing stays the input. */
   readonly followDistanceMeters?: number;
   readonly cameraHeightMeters?: number;
   readonly shoulderOffsetMeters?: number;
   readonly lookAheadMeters?: number;
+}
+
+export interface AtlasFollowGeometry {
+  /** Camera to aim-point distance, which is what sets projected size. */
+  readonly slantDistanceMeters: number;
+  /** Horizontal component, behind the player. */
+  readonly followDistanceMeters: number;
+  /** Vertical component, above the aim point. */
+  readonly cameraLiftMeters: number;
 }
 
 export interface AtlasCameraFrame {
@@ -29,7 +41,34 @@ export interface AtlasCameraFrame {
 
 const DEFAULT_PLAYER_POSITION = new Vector3(0, 0, 4.2);
 const DEFAULT_HEADING_RADIANS = Math.PI;
-const TARGET_HEIGHT_METERS = 1.42;
+
+/*
+ * The avatar stands 1.76 m in
+ * art/atlas/characters/atlas-walker-v1/character-spec.json, scaled by
+ * PLAYER_WORLD_SCALE 0.72 in three-renderer.ts. The previous aim height of
+ * 1.42 m was therefore 15 cm above the top of its head, which is part of why
+ * the avatar sat low in frame while the lens pointed at empty street.
+ */
+export const ATLAS_AVATAR_WORLD_HEIGHT_METERS = 1.76 * 0.72;
+
+/**
+ * The single owner of the camera's field of view.
+ *
+ * three-renderer.ts used to construct PerspectiveCamera with 50 while this rig
+ * overwrote it with 60 in the constructor, so a tuned value silently did
+ * nothing. Both sites read this constant now.
+ */
+export const ATLAS_CAMERA_FIELD_OF_VIEW_DEGREES = 52;
+
+/** Aim at the upper torso, so the head is not pinned to the frame centre. */
+const AIM_HEIGHT_FRACTION = 0.62;
+
+/**
+ * Owner-approved framing band, from
+ * docs/superpowers/specs/2026-09-10-nim-atlas-round-2-design.md. Landed against
+ * real captures by scripts/measure-atlas.mjs rather than by taste.
+ */
+export const ATLAS_FRAMING_BAND = Object.freeze({ minimum: 0.16, maximum: 0.19 });
 const CAMERA_COLLISION_RADIUS_METERS = 0.24;
 const CAMERA_WALL_PADDING_METERS = 0.16;
 const MINIMUM_CAMERA_ARM_METERS = 0.32;
@@ -40,7 +79,11 @@ const CAMERA_ESCAPE_ANGLES_RADIANS = [-0.58, 0.58, -1.05, 1.05] as const;
 export class AtlasCameraRig {
   readonly fieldOfViewDegrees: number;
   readonly targetPlayerScreenHeightPercent: number;
+  readonly avatarHeightMeters: number;
+  readonly pitchDegrees: number;
+  readonly aimHeightMeters: number;
   readonly followDistanceMeters: number;
+  readonly cameraLiftMeters: number;
   readonly cameraHeightMeters: number;
   readonly shoulderOffsetMeters: number;
   readonly lookAheadMeters: number;
@@ -60,12 +103,23 @@ export class AtlasCameraRig {
   private currentFovDegrees: number;
 
   constructor(private readonly camera: PerspectiveCamera, options: AtlasCameraRigOptions = {}) {
-    this.fieldOfViewDegrees = options.fieldOfViewDegrees ?? 60;
-    this.targetPlayerScreenHeightPercent = options.targetPlayerScreenHeightPercent ?? 0.28;
-    this.followDistanceMeters = options.followDistanceMeters ?? 4.75;
-    this.cameraHeightMeters = options.cameraHeightMeters ?? 2.62;
+    this.fieldOfViewDegrees = options.fieldOfViewDegrees ?? ATLAS_CAMERA_FIELD_OF_VIEW_DEGREES;
+    this.targetPlayerScreenHeightPercent = options.targetPlayerScreenHeightPercent ?? 0.175;
+    this.avatarHeightMeters = options.avatarHeightMeters ?? ATLAS_AVATAR_WORLD_HEIGHT_METERS;
+    this.pitchDegrees = options.pitchDegrees ?? 31;
+    this.aimHeightMeters = this.avatarHeightMeters * AIM_HEIGHT_FRACTION;
+    const geometry = solveAtlasFollowGeometry({
+      avatarHeightMeters: this.avatarHeightMeters,
+      targetScreenHeightPercent: this.targetPlayerScreenHeightPercent,
+      fieldOfViewDegrees: this.fieldOfViewDegrees,
+      pitchDegrees: this.pitchDegrees,
+    });
+    this.followDistanceMeters = options.followDistanceMeters ?? geometry.followDistanceMeters;
+    this.cameraLiftMeters =
+      options.cameraHeightMeters === undefined ? geometry.cameraLiftMeters : options.cameraHeightMeters - this.aimHeightMeters;
+    this.cameraHeightMeters = this.aimHeightMeters + this.cameraLiftMeters;
     this.shoulderOffsetMeters = options.shoulderOffsetMeters ?? 0.52;
-    this.lookAheadMeters = options.lookAheadMeters ?? 4.1;
+    this.lookAheadMeters = options.lookAheadMeters ?? 1.5;
     this.currentFovDegrees = this.fieldOfViewDegrees;
     this.camera.fov = this.currentFovDegrees;
     this.updateBasis();
@@ -93,10 +147,14 @@ export class AtlasCameraRig {
       this.desiredPosition.y += 12;
       this.desiredTarget.copy(playerPosition);
     } else if (frame.width < frame.height) {
-      // Bring the player toward the centre of a narrow WebView, leaving the
-      // bottom third free for thumbs instead of cropping the action sideways.
+      /*
+       * Recentre the player in a narrow WebView instead of cropping the action
+       * sideways. This used to also add 0.8 m of camera lift, which changed the
+       * avatar's projected size and so fought the framing solver. Vertical
+       * placement is the look-ahead's job now, because moving the aim point
+       * shifts the avatar in frame without resizing it.
+       */
       this.desiredPosition.addScaledVector(this.right, -this.shoulderOffsetMeters);
-      this.desiredPosition.y += 0.8;
     }
     const escapedCloseWall = this.avoidCloseObstruction(playerPosition, frame.colliders ?? []);
 
@@ -112,7 +170,7 @@ export class AtlasCameraRig {
     this.currentTarget.lerp(this.desiredTarget, targetBlend);
 
     this.cameraPivot.copy(playerPosition);
-    this.cameraPivot.y += TARGET_HEIGHT_METERS;
+    this.cameraPivot.y += this.aimHeightMeters;
     this.cameraOffset.copy(this.desiredPosition).sub(this.cameraPivot);
     const cameraDistance = this.cameraOffset.length();
     const colliderDistance = nearestCameraObstructionDistance(this.cameraPivot, this.desiredPosition, frame.colliders ?? []);
@@ -142,7 +200,7 @@ export class AtlasCameraRig {
 
   private placeDesiredCamera(playerPosition: Vector3): void {
     this.desiredTarget.copy(playerPosition).addScaledVector(this.forward, this.lookAheadMeters);
-    this.desiredTarget.y += TARGET_HEIGHT_METERS;
+    this.desiredTarget.y += this.aimHeightMeters;
     this.desiredPosition.copy(playerPosition).addScaledVector(this.forward, -this.followDistanceMeters).addScaledVector(this.right, this.shoulderOffsetMeters);
     this.desiredPosition.y += this.cameraHeightMeters;
   }
@@ -150,7 +208,7 @@ export class AtlasCameraRig {
   private avoidCloseObstruction(playerPosition: Vector3, colliders: readonly AtlasCityCollider[]): boolean {
     if (colliders.length === 0) return false;
     this.cameraPivot.copy(playerPosition);
-    this.cameraPivot.y += TARGET_HEIGHT_METERS;
+    this.cameraPivot.y += this.aimHeightMeters;
     const directArmDistance = this.desiredPosition.distanceTo(this.cameraPivot);
     const directObstruction = nearestCameraObstructionDistance(this.cameraPivot, this.desiredPosition, colliders);
     const directClearance = Math.min(directArmDistance, directObstruction ?? directArmDistance);
@@ -179,6 +237,47 @@ export class AtlasCameraRig {
     this.desiredPosition.copy(this.bestEscapePosition);
     return true;
   }
+}
+
+/**
+ * Solve the follow geometry that projects an avatar at a requested fraction of
+ * viewport height.
+ *
+ * This exists because the rig previously accepted
+ * targetPlayerScreenHeightPercent, stored it, and never read it, so framing was
+ * an emergent property of three independently tuned numbers. Making the goal
+ * the input means it holds on every aspect ratio rather than only on the one
+ * device it was eyeballed on.
+ *
+ * Vertical field of view is aspect independent in three.js, so viewport width
+ * does not enter the solve.
+ */
+export function solveAtlasFollowGeometry(input: {
+  readonly avatarHeightMeters: number;
+  readonly targetScreenHeightPercent: number;
+  readonly fieldOfViewDegrees: number;
+  readonly pitchDegrees: number;
+}): AtlasFollowGeometry {
+  const halfFovRadians = (Math.max(1, Math.min(input.fieldOfViewDegrees, 170)) / 2) * (Math.PI / 180);
+  const target = Math.max(0.01, Math.min(input.targetScreenHeightPercent, 0.9));
+  const slantDistanceMeters = input.avatarHeightMeters / (2 * target * Math.tan(halfFovRadians));
+  const pitchRadians = Math.max(0, Math.min(input.pitchDegrees, 85)) * (Math.PI / 180);
+  return Object.freeze({
+    slantDistanceMeters,
+    followDistanceMeters: slantDistanceMeters * Math.cos(pitchRadians),
+    cameraLiftMeters: slantDistanceMeters * Math.sin(pitchRadians),
+  });
+}
+
+/** The fraction of viewport height an avatar occupies at a given distance. */
+export function projectedAtlasScreenHeightPercent(input: {
+  readonly avatarHeightMeters: number;
+  readonly slantDistanceMeters: number;
+  readonly fieldOfViewDegrees: number;
+}): number {
+  const halfFovRadians = (Math.max(1, Math.min(input.fieldOfViewDegrees, 170)) / 2) * (Math.PI / 180);
+  const visibleHeight = 2 * Math.max(0.0001, input.slantDistanceMeters) * Math.tan(halfFovRadians);
+  return input.avatarHeightMeters / visibleHeight;
 }
 
 export function nearestCameraObstructionDistance(

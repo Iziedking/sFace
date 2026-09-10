@@ -11,7 +11,7 @@ import type { AtlasCityPlayerState } from '../../../../shared/atlas/city/player'
 import { parseAtlasCityScene, type AtlasCitySceneV1 } from '../../../../shared/atlas/city/types';
 import type { AtlasCityInteractionPresentation, AtlasRendererOptions, AtlasRendererStats, AtlasSceneRenderer } from '../contracts';
 import { detectThreeCapability } from './capability';
-import { AtlasCameraRig } from './camera-rig';
+import { ATLAS_CAMERA_FIELD_OF_VIEW_DEGREES, AtlasCameraRig } from './camera-rig';
 import { createHarborSupplies } from './harbor-supplies';
 import { createAtlasLighting, type AtlasLighting } from './lighting';
 import { atlasHorizonColour, createAtlasSkyTexture } from './sky';
@@ -130,8 +130,8 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
     scene.add(lighting.sun);
     scene.add(lighting.rim);
 
-    const camera = new PerspectiveCamera(50, aspect(host.clientWidth, host.clientHeight), 0.1, 200);
-    const cameraRig = new AtlasCameraRig(camera);
+    const camera = new PerspectiveCamera(ATLAS_CAMERA_FIELD_OF_VIEW_DEGREES, aspect(host.clientWidth, host.clientHeight), 0.1, 200);
+    const cameraRig = new AtlasCameraRig(camera, { avatarHeightMeters: 1.76 * PLAYER_WORLD_SCALE });
     host.append(canvas);
     this.renderer = renderer;
     this.scene = scene;
