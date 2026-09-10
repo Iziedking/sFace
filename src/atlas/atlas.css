@@ -239,6 +239,7 @@ button:focus-visible, input:focus-visible, a:focus-visible, [tabindex]:focus-vis
    covers the whole screen anyway, so a hint pinned to the right edge was also
    pointing at the wrong place. */
 .atlas-camera-look-hint { position: absolute; left: 50%; bottom: 8px; translate: -50% 0; padding: 6px 12px; border-radius: var(--atlas-radius-pill); background: rgb(var(--atlas-shadow-rgb) / .55); color: var(--atlas-ink); font: 700 12px/1.25 system-ui, sans-serif; letter-spacing: .08em; pointer-events: none; }
+.atlas-camera-mode { position: absolute; right: 18px; bottom: 200px; z-index: 2; min-width: 58px; min-height: 44px; padding: 6px 12px; border: 1px solid rgb(var(--atlas-ink-rgb) / .18); border-radius: var(--atlas-radius-pill); background: var(--atlas-raised); backdrop-filter: var(--atlas-glass-blur); color: var(--atlas-ink); box-shadow: var(--atlas-glow); font: 700 13px/1.25 system-ui, sans-serif; text-transform: none; pointer-events: auto; cursor: pointer; }
 .atlas-camera-center { position: absolute; right: 18px; bottom: 148px; z-index: 2; min-width: 58px; min-height: 44px; padding: 6px 12px; border: 1px solid rgb(var(--atlas-ink-rgb) / .18); border-radius: var(--atlas-radius-pill); background: var(--atlas-raised); backdrop-filter: var(--atlas-glass-blur); color: var(--atlas-ink); box-shadow: var(--atlas-glow); font: 700 13px/1.25 system-ui, sans-serif; text-transform: none; pointer-events: auto; }
 .atlas-living-city-play-shell .atlas-toolkit { width: min(100%, 420px); margin-top: 8px; padding: 0; border: none; background: none; box-shadow: none; color: var(--atlas-ink); text-shadow: var(--atlas-scrim); }
 .atlas-living-city-play-shell .atlas-toolkit-depth { color: var(--atlas-label-dim); }
@@ -278,8 +279,24 @@ button:focus-visible, input:focus-visible, a:focus-visible, [tabindex]:focus-vis
 .atlas-joystick-label[data-pace='run'] { color: var(--atlas-pace-run); font-size: 8px; }
 .atlas-movement-accessible { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .atlas-city-controls .atlas-actions { align-self: end; }
-.atlas-city-controls .atlas-tool { min-height: 50px; background: rgb(var(--atlas-signal-rgb) / .94); }
+/*
+ * RUN and TALK sit directly over the city, so they wear the same rounded glass
+ * as every other world-facing control. They kept border-radius 0 and a 3px
+ * hard offset ink shadow from the retired poster idiom, which is why they read
+ * as a different product from the pills beside them. The accent is unchanged.
+ */
+.atlas-city-controls .atlas-tool { min-height: 50px; border-radius: var(--atlas-radius-pill); box-shadow: var(--atlas-glow); background: rgb(var(--atlas-signal-rgb) / .94); }
 .atlas-topbar { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; }
+/*
+ * Three settings toggles used to be appended straight onto this three-column
+ * grid, so they wrapped onto a second row over the city. They live behind one
+ * button now, which restores the layout the grid was written for.
+ */
+.atlas-topbar-actions { display: flex; gap: 6px; align-items: center; }
+.atlas-hud-settings { position: absolute; top: 108px; right: 18px; z-index: 3; display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid rgb(var(--atlas-ink-rgb) / .18); border-radius: var(--atlas-radius); background: var(--atlas-raised); backdrop-filter: var(--atlas-glass-blur); box-shadow: var(--atlas-glow); pointer-events: auto; }
+.atlas-hud-settings .atlas-pause { min-width: 132px; min-height: 44px; }
+/* display: flex above beats the user agent's [hidden] rule, so state it here. */
+.atlas-hud-settings[hidden] { display: none; }
 .atlas-brand, .atlas-integrity, .atlas-pause { border: 1px solid rgb(var(--atlas-ink-rgb) / .18); border-radius: var(--atlas-radius-pill); background: var(--atlas-raised); backdrop-filter: var(--atlas-glass-blur); color: var(--atlas-ink); box-shadow: var(--atlas-glow); }
 .atlas-brand { min-height: 52px; padding: 8px 16px; display: grid; align-content: center; text-align: left; cursor: pointer; }
 .atlas-brand span { font: 400 19px/1 AtlasDisplay, Georgia, serif; }

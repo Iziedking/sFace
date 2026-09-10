@@ -1,13 +1,13 @@
 {
   "asset": "atlas-walker-v1",
   "displayName": "Atlas Walker",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "status": "owner-review-replacement",
   "authorship": "Original procedural geometry authored for SFACE. No generated images, image-to-3D input, scans, stock models, or external meshes.",
   "design": {
     "role": "A practical network field guide who can grow into both Explorer and Builder mission kits.",
     "silhouette": "Adult, upright and lightly tapered; narrow orange field jacket, compact seafoam signal pack, wrist scanner, and slim work boots.",
-    "proportions": "Approximately 5.2 heads tall with a smaller head-to-body ratio, slim limbs, readable hands, and compact equipment.",
+    "proportions": "Stylised cartoon proportions at roughly 3.7 heads tall. The head is scaled up and the body shortened about the neck so the face carries readable eyes, brows and mouth at the roughly 40 pixel head size the mobile follow camera produces. The previous 5.2 heads gave a 28 pixel head, at which no facial feature survived.",
     "surfaceLanguage": "Smooth low-poly rounded anatomy, softened joint transitions, shaped clothing layers, a 23-bone body-and-face rig, a 25-sample planted walk cycle, a dedicated conversational gesture loop, restrained material response, and no decorative surface noise.",
     "faceDirection": "Soft tapered oval, shallow cheek volume, gently tapered horizontal eyes, subtle nose and mouth, straight brows, and layered side-swept black hair. East Asian-inspired original character design with no real-person likeness or caricature.",
     "frontDirection": "+Z"
@@ -34,5 +34,15 @@
     "height": 1.76,
     "shoulderWidth": 0.72,
     "bootLength": 0.32
+  },
+  "stylisedProportions": {
+    "headScale": 1.22,
+    "bodyCompress": 0.9,
+    "pivotBone": "neck",
+    "headsTallBand": [
+      3.4,
+      4.0
+    ],
+    "reason": "Screen size, not taste. The follow camera frames the avatar at 17.5 percent of viewport height, so a 1.76 m character stands about 148 px on a 844 px screen. At 5.2 heads the head was 28 px. At 3.7 heads it is about 40 px, which is the smallest size a face reads at."
   }
 }

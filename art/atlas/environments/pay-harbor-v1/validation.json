@@ -3,13 +3,13 @@
   "version": "1.0.0",
   "status": "pass",
   "metrics": {
-    "glbBytes": 230148,
-    "vertices": 6880,
-    "triangles": 9898,
+    "glbBytes": 305884,
+    "vertices": 8920,
+    "triangles": 14362,
     "materials": 7,
-    "meshParts": 250
+    "meshParts": 286
   },
-  "sha256": "aa3ece3d5faf533b039534f96745e764f16041b5bfc71b63807636ec2a82f6b2",
+  "sha256": "498df64a3fbf4802cf4c65b5358274c818d09aaa89cf08527299d4aa2c240115",
   "checks": {
     "triangleBudget": true,
     "materialBudget": true,

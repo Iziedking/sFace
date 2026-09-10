@@ -1,6 +1,6 @@
 {
   "asset": "atlas-walker-v1",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "status": "pass",
   "metrics": {
     "vertices": 2828,
@@ -9,8 +9,9 @@
     "bones": 23,
     "animations": 4,
     "textureMaps": 0,
-    "glbBytes": 201380,
+    "glbBytes": 201376,
     "drawCalls": 8,
+    "headsTall": 3.695,
     "npcLod1": {
       "vertices": 1940,
       "triangles": 3254,
@@ -18,7 +19,7 @@
       "bones": 23,
       "animations": 4,
       "textureMaps": 0,
-      "glbBytes": 149568,
+      "glbBytes": 149564,
       "drawCalls": 7
     },
     "npcLod2": {
@@ -28,23 +29,23 @@
       "bones": 23,
       "animations": 4,
       "textureMaps": 0,
-      "glbBytes": 40804,
+      "glbBytes": 40800,
       "drawCalls": 4
     }
   },
-  "sha256": "bc534336f4c57d13dc55c92e1d651ef368c89c228e0b3d17de5b1e75912802fc",
+  "sha256": "e47ca7995f9748760e9937aa9d5694f5c8749b7330d24896b374fe3c5fb8ce27",
   "boundsMeters": {
     "x": [
-      -0.37460569067093913,
-      0.38135328050676803
+      -0.38884189020122345,
+      0.3958459097647464
     ],
     "y": [
       0.0,
-      1.7600000000000002
+      1.76
     ],
     "z": [
-      -0.24199842412040712,
-      0.21248642117889407
+      -0.2511951286488996,
+      0.22056157637464358
     ]
   },
   "checks": {
@@ -61,6 +62,7 @@
     "textureFree": true,
     "animationPresent": true,
     "heightMatchesSpec": true,
+    "headsTallInBand": true,
     "silhouettePreview": true
   },
   "provenance": "Original procedural geometry authored for SFACE. No generated images, image-to-3D input, scans, stock models, or external meshes."

@@ -47,93 +47,6 @@
       "bundle": "atlas-harbor"
     },
     {
-      "id": "pay-harbor-environment",
-      "path": "/atlas/3d/v1/pay-harbor/environment.glb",
-      "sha256": "aa3ece3d5faf533b039534f96745e764f16041b5bfc71b63807636ec2a82f6b2",
-      "bytes": 230148,
-      "compressedBytes": 230148,
-      "mime": "model/gltf-binary",
-      "width": 1,
-      "height": 1,
-      "bundle": "atlas-pay-harbor",
-      "quality": [
-        "low",
-        "balanced",
-        "high"
-      ],
-      "sourceFile": "art/atlas/environments/pay-harbor-v1/build_scene.py",
-      "sourceSha256": "871abd10ada278c596330853bfd5515f578514808a32b7ca40ee66e585d28a6c",
-      "sourceStatus": "owner-approved-procedural"
-    },
-    {
-      "id": "pay-harbor-scene",
-      "path": "/atlas/3d/v1/pay-harbor/scene.json",
-      "sha256": "2e40ecdd9ae57e669f0f2b935c6edbed305d0a5ffef864007321278af43f0692",
-      "bytes": 9364,
-      "compressedBytes": 9364,
-      "mime": "application/json",
-      "width": 1,
-      "height": 1,
-      "bundle": "atlas-pay-harbor"
-    },
-    {
-      "id": "atlas-walker-player",
-      "path": "/atlas/3d/v1/characters/atlas-walker-player.glb",
-      "sha256": "bc534336f4c57d13dc55c92e1d651ef368c89c228e0b3d17de5b1e75912802fc",
-      "bytes": 201380,
-      "compressedBytes": 201380,
-      "mime": "model/gltf-binary",
-      "width": 1,
-      "height": 1,
-      "bundle": "atlas-character",
-      "quality": [
-        "low",
-        "balanced",
-        "high"
-      ],
-      "sourceFile": "art/atlas/characters/atlas-walker-v1/build_character.py",
-      "sourceSha256": "42162953f5475867f8067025ca8456caf44ca9d08864c04fc42f9e10ed84966a",
-      "sourceStatus": "owner-approved-procedural"
-    },
-    {
-      "id": "atlas-walker-npc-lod1",
-      "path": "/atlas/3d/v1/characters/atlas-walker-npc-lod1.glb",
-      "sha256": "c32060925f7e72d1e40711b543145c44ee5491e8ff18ecf40a8299c98a559378",
-      "bytes": 149568,
-      "compressedBytes": 149568,
-      "mime": "model/gltf-binary",
-      "width": 1,
-      "height": 1,
-      "bundle": "atlas-character",
-      "quality": [
-        "low",
-        "balanced",
-        "high"
-      ],
-      "sourceFile": "art/atlas/characters/atlas-walker-v1/build_character.py",
-      "sourceSha256": "42162953f5475867f8067025ca8456caf44ca9d08864c04fc42f9e10ed84966a",
-      "sourceStatus": "owner-approved-procedural"
-    },
-    {
-      "id": "atlas-walker-npc-lod2",
-      "path": "/atlas/3d/v1/characters/atlas-walker-npc-lod2.glb",
-      "sha256": "5f743cb459906ef8698989d735892fd6026bb15fbe4f2251d311e6eeaaed32ca",
-      "bytes": 40804,
-      "compressedBytes": 40804,
-      "mime": "model/gltf-binary",
-      "width": 1,
-      "height": 1,
-      "bundle": "atlas-character",
-      "quality": [
-        "low",
-        "balanced",
-        "high"
-      ],
-      "sourceFile": "art/atlas/characters/atlas-walker-v1/build_character.py",
-      "sourceSha256": "42162953f5475867f8067025ca8456caf44ca9d08864c04fc42f9e10ed84966a",
-      "sourceStatus": "owner-approved-procedural"
-    },
-    {
       "id": "beacon-commons-environment",
       "path": "/atlas/3d/v1/beacon-commons/environment.glb",
       "sha256": "dea4e25837a1534d790ca15e6b5ad4345cc904dfa258c0061290958fdc2eda0a",
@@ -162,6 +75,93 @@
       "width": 1,
       "height": 1,
       "bundle": "atlas-beacon-commons"
+    },
+    {
+      "id": "atlas-walker-player",
+      "path": "/atlas/3d/v1/characters/atlas-walker-player.glb",
+      "sha256": "e47ca7995f9748760e9937aa9d5694f5c8749b7330d24896b374fe3c5fb8ce27",
+      "bytes": 201376,
+      "compressedBytes": 201376,
+      "mime": "model/gltf-binary",
+      "width": 1,
+      "height": 1,
+      "bundle": "atlas-character",
+      "quality": [
+        "low",
+        "balanced",
+        "high"
+      ],
+      "sourceFile": "art/atlas/characters/atlas-walker-v1/build_character.py",
+      "sourceSha256": "73f735b7a2d100ced3a56d7a3735bfbaa09cdb30d5b908315004bfbccec16fa1",
+      "sourceStatus": "owner-approved-procedural"
+    },
+    {
+      "id": "atlas-walker-npc-lod1",
+      "path": "/atlas/3d/v1/characters/atlas-walker-npc-lod1.glb",
+      "sha256": "38303e0b14471a69fedfcf70a7dbb34e89a8cea1a32a84467e81399be6c23173",
+      "bytes": 149564,
+      "compressedBytes": 149564,
+      "mime": "model/gltf-binary",
+      "width": 1,
+      "height": 1,
+      "bundle": "atlas-character",
+      "quality": [
+        "low",
+        "balanced",
+        "high"
+      ],
+      "sourceFile": "art/atlas/characters/atlas-walker-v1/build_character.py",
+      "sourceSha256": "73f735b7a2d100ced3a56d7a3735bfbaa09cdb30d5b908315004bfbccec16fa1",
+      "sourceStatus": "owner-approved-procedural"
+    },
+    {
+      "id": "atlas-walker-npc-lod2",
+      "path": "/atlas/3d/v1/characters/atlas-walker-npc-lod2.glb",
+      "sha256": "e9075309e71fa619e99bd46b3edca8e18c87f89d8b34af2dcdcc69cb946c1afa",
+      "bytes": 40800,
+      "compressedBytes": 40800,
+      "mime": "model/gltf-binary",
+      "width": 1,
+      "height": 1,
+      "bundle": "atlas-character",
+      "quality": [
+        "low",
+        "balanced",
+        "high"
+      ],
+      "sourceFile": "art/atlas/characters/atlas-walker-v1/build_character.py",
+      "sourceSha256": "73f735b7a2d100ced3a56d7a3735bfbaa09cdb30d5b908315004bfbccec16fa1",
+      "sourceStatus": "owner-approved-procedural"
+    },
+    {
+      "id": "pay-harbor-environment",
+      "path": "/atlas/3d/v1/pay-harbor/environment.glb",
+      "sha256": "498df64a3fbf4802cf4c65b5358274c818d09aaa89cf08527299d4aa2c240115",
+      "bytes": 305884,
+      "compressedBytes": 305884,
+      "mime": "model/gltf-binary",
+      "width": 1,
+      "height": 1,
+      "bundle": "atlas-pay-harbor",
+      "quality": [
+        "low",
+        "balanced",
+        "high"
+      ],
+      "sourceFile": "art/atlas/environments/pay-harbor-v1/build_scene.py",
+      "sourceSha256": "871abd10ada278c596330853bfd5515f578514808a32b7ca40ee66e585d28a6c",
+      "sourceStatus": "owner-approved-procedural"
+    },
+    {
+      "id": "pay-harbor-scene",
+      "path": "/atlas/3d/v1/pay-harbor/scene.json",
+      "sha256": "2e40ecdd9ae57e669f0f2b935c6edbed305d0a5ffef864007321278af43f0692",
+      "bytes": 9364,
+      "compressedBytes": 9364,
+      "mime": "application/json",
+      "width": 1,
+      "height": 1,
+      "bundle": "atlas-pay-harbor"
     }
   ]
 }

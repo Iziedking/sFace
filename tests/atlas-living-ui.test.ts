@@ -126,6 +126,51 @@ describe('Atlas world-facing HUD elements wear the kit', () => {
     }
   });
 
+  it('styles the camera mode button at all, and like its sibling', () => {
+    /*
+     * .atlas-camera-mode had no rule in the sheet, so "Overview" rendered as a
+     * default browser button beside the glass pill "Center". That is the shape
+     * language mismatch the owner saw, and it was a missing style rather than a
+     * layout choice.
+     */
+    const block = rule('.atlas-camera-mode');
+    expect(block, 'camera mode is not rounded').toContain('var(--atlas-radius');
+    expect(block, 'camera mode is not glass').toContain('backdrop-filter');
+    expect(block, 'camera mode has a hard offset shadow').not.toMatch(/box-shadow:[^;]*\d+px \d+px 0/);
+    expect(block, 'camera mode is under the 44px tap floor').toMatch(/min-height: (4[4-9]|[5-9]\d)px/);
+  });
+
+  it('drops the hard offset poster shadow from the city action buttons', () => {
+    // RUN and TALK kept border-radius 0 and a 3px hard offset while every other
+    // world-facing control had moved to rounded glass.
+    const block = rule('.atlas-city-controls .atlas-tool');
+    expect(block, 'city action still has a hard offset shadow').not.toMatch(/box-shadow:[^;]*\d+px \d+px 0/);
+    expect(block, 'city action is not rounded').toContain('var(--atlas-radius');
+  });
+
+  it('keeps the city topbar inside the three columns it is laid out for', () => {
+    /*
+     * .atlas-topbar is grid-template-columns: 1fr auto auto, so it holds three
+     * children. Six were appended (brand, population, pause, plus three
+     * settings toggles), which wrapped the settings onto a second row over the
+     * city. Restoring three children is fixing an overflow, not moving the HUD.
+     */
+    expect(app, 'settings toggles are still appended straight onto the topbar').not.toContain('topbar.append(access, mute, motion)');
+    expect(app, 'no grouped topbar actions').toContain('atlas-topbar-actions');
+    expect(app, 'no collapsed settings cluster').toContain('atlas-hud-settings');
+  });
+
+  it('actually hides the settings cluster when it is hidden', () => {
+    /*
+     * .atlas-hud-settings sets display: flex, which has the same specificity as
+     * the user agent's [hidden] { display: none } and comes from the author
+     * sheet, so it won. The panel rendered over the city on first paint even
+     * though the element carried hidden. A capture caught it.
+     */
+    const block = rule('.atlas-hud-settings[hidden]');
+    expect(block, 'hidden settings cluster is still displayed').toContain('display: none');
+  });
+
   it('keeps the minimap circular', () => {
     expect(rule('.atlas-mini-map')).toContain('border-radius: 50%');
   });

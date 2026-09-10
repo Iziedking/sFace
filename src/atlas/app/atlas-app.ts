@@ -555,7 +555,6 @@ export class AtlasApp {
     population.setAttribute('role', 'status');
     const pause = actionButton(this.suspended ? 'Resume' : 'Pause', this.togglePause, this.suspended ? 'Resume Beacon Commons' : 'Pause Beacon Commons');
     pause.className = 'atlas-pause';
-    topbar.append(brand, population, pause);
     const access = actionButton(this.accessibleMovement ? 'Stick' : 'D-pad', () => {
       this.accessibleMovement = !this.accessibleMovement;
       shell.classList.toggle('has-accessible-movement', this.accessibleMovement);
@@ -579,7 +578,24 @@ export class AtlasApp {
     motion.className = 'atlas-pause';
     motion.setAttribute('aria-pressed', String(this.cityReducedMotion));
     shell.classList.toggle('has-reduced-motion', this.cityReducedMotion);
-    topbar.append(access, mute, motion);
+    /*
+     * These three are settings, not play controls, and .atlas-topbar is a
+     * three-column grid. Appending them to it wrapped them onto a second row
+     * over the city. They sit behind one button now.
+     */
+    const settingsPanel = element('div', 'atlas-hud-settings');
+    settingsPanel.setAttribute('aria-label', 'Accessibility and sound settings');
+    settingsPanel.hidden = true;
+    settingsPanel.append(access, mute, motion);
+    const settingsToggle = actionButton('Settings', () => {
+      settingsPanel.hidden = !settingsPanel.hidden;
+      settingsToggle.setAttribute('aria-expanded', String(!settingsPanel.hidden));
+    }, 'Show accessibility and sound settings');
+    settingsToggle.className = 'atlas-pause';
+    settingsToggle.setAttribute('aria-expanded', 'false');
+    const topbarActions = element('div', 'atlas-topbar-actions');
+    topbarActions.append(settingsToggle, pause);
+    topbar.append(brand, population, topbarActions);
     shell.classList.toggle('has-accessible-movement', this.accessibleMovement);
 
     const objective = this.routeRun
@@ -631,7 +647,7 @@ export class AtlasApp {
       this.presentRouteWorld();
     }, 'Switch between follow camera and city overview');
     cameraMode.className = 'atlas-camera-mode';
-    shell.append(topbar, this.toolkit.element, this.createBeaconMap(), this.createCityWaypoint(), this.createCameraLookZone(), cameraCenter, controls, hint);
+    shell.append(topbar, settingsPanel, this.toolkit.element, this.createBeaconMap(), this.createCityWaypoint(), this.createCameraLookZone(), cameraCenter, controls, hint);
     shell.append(cameraMode);
     if (this.routeRun) {
       this.toolkit.element.hidden = true;

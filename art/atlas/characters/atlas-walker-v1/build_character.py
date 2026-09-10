@@ -338,6 +338,87 @@ def build_parts(world: dict[str, Vec3]) -> list[Part]:
     return parts
 
 
+# Bones that ride with the head when proportions are stylised. The neck is
+# included so the head does not detach from a shortened torso.
+HEAD_GROUP_JOINTS = frozenset({"neck", "head", "eye.L", "eye.R", "eyelid.L", "eyelid.R", "mouth"})
+
+# The skull and hair only. Used to measure the heads-tall ratio, so the neck
+# and jacket collar do not inflate the head span.
+SKULL_PART_NAMES = frozenset({
+    "head", "cheek_L", "cheek_R", "chin", "hair_cap", "hair_back",
+    "side_hair_L", "side_hair_R", "fringe_left", "fringe_right",
+    "npc_lod2_head",
+})
+
+
+def measure_heads_tall(parts: list[Part]) -> float:
+    """Total height divided by skull height, the readable-face metric."""
+    skull = [point for part in parts if part.name in SKULL_PART_NAMES for point in part.positions]
+    if not skull:
+        return 0.0
+    body_low = min(point[1] for part in parts for point in part.positions)
+    body_high = max(point[1] for part in parts for point in part.positions)
+    skull_span = max(point[1] for point in skull) - min(point[1] for point in skull)
+    if skull_span <= 0:
+        return 0.0
+    return (body_high - body_low) / skull_span
+
+
+def apply_stylised_proportions(
+    parts: list[Part],
+    skeleton_nodes: list[dict],
+    world: dict[str, Vec3],
+    head_scale: float,
+    body_compress: float,
+) -> None:
+    """Enlarge the head and shorten the body about the neck, in design units.
+
+    The camera frames the avatar at a fixed fraction of screen height, so the
+    only way to make a face readable is to spend more of the silhouette on the
+    head. At the previous 5.2 heads the head was about 28 px on a 390x844
+    viewport and no eye, brow or mouth survived.
+
+    Run this before scale_to_target_height, which renormalises the result back
+    to the spec height and plants the soles on y=0.
+    """
+    pivot = world["neck"]
+    ground = min(point[1] for part in parts for point in part.positions)
+    new_pivot_y = ground + (pivot[1] - ground) * body_compress
+
+    def warp_head(point: Vec3) -> Vec3:
+        return (
+            pivot[0] + (point[0] - pivot[0]) * head_scale,
+            new_pivot_y + (point[1] - pivot[1]) * head_scale,
+            pivot[2] + (point[2] - pivot[2]) * head_scale,
+        )
+
+    def warp_body(point: Vec3) -> Vec3:
+        return (point[0], ground + (point[1] - ground) * body_compress, point[2])
+
+    for part in parts:
+        head_group = part.joint in HEAD_GROUP_JOINTS
+        part.positions = [warp_head(point) if head_group else warp_body(point) for point in part.positions]
+        if not head_group:
+            # Inverse transpose of diag(1, c, 1). A uniform head scale leaves
+            # its own normals unchanged, so only the body needs correcting.
+            part.normals = [unit((n[0], n[1] / body_compress, n[2])) for n in part.normals]
+
+    for name, point in list(world.items()):
+        world[name] = warp_head(point) if name in HEAD_GROUP_JOINTS else warp_body(point)
+
+    # Local translations are parent relative, so rebuild them from the warped
+    # world positions rather than scaling each offset in place.
+    parent_of: dict[int, int] = {}
+    for node_index, node in enumerate(skeleton_nodes):
+        for child in node.get("children", []):
+            parent_of[child] = node_index
+    for node_index, node in enumerate(skeleton_nodes):
+        point = world[node["name"]]
+        parent_index = parent_of.get(node_index)
+        origin = (0.0, 0.0, 0.0) if parent_index is None else world[skeleton_nodes[parent_index]["name"]]
+        node["translation"] = [point[0] - origin[0], point[1] - origin[1], point[2] - origin[2]]
+
+
 def scale_to_target_height(
     parts: list[Part],
     skeleton_nodes: list[dict],
@@ -806,6 +887,9 @@ def validate(spec: dict, metrics: dict, parts: list[Part]) -> dict:
         "textureFree": metrics["textureMaps"] == budget["textureMaps"],
         "animationPresent": metrics["animations"] == budget["animationClips"],
         "heightMatchesSpec": abs((bounds["y"][1] - bounds["y"][0]) - spec["scaleMeters"]["height"]) < 0.001,
+        "headsTallInBand": spec["stylisedProportions"]["headsTallBand"][0]
+        <= metrics["headsTall"]
+        <= spec["stylisedProportions"]["headsTallBand"][1],
         "silhouettePreview": SILHOUETTE_PATH.exists() and SILHOUETTE_PATH.stat().st_size > 0,
     }
     report = {
@@ -826,17 +910,23 @@ def validate(spec: dict, metrics: dict, parts: list[Part]) -> dict:
 
 def main() -> None:
     spec = json.loads(SPEC_PATH.read_text(encoding="utf-8"))
+    stylised = spec["stylisedProportions"]
     skeleton_nodes, joint_index, world = build_skeleton()
     parts = build_parts(world)
+    apply_stylised_proportions(parts, skeleton_nodes, world, stylised["headScale"], stylised["bodyCompress"])
     scale_to_target_height(parts, skeleton_nodes, world, spec["scaleMeters"]["height"])
     metrics = export_glb(spec, parts, skeleton_nodes, joint_index, world)
     lod1_metrics = export_glb(spec, select_npc_lod1_parts(parts), skeleton_nodes, joint_index, world, NPC_LOD1_PATH)
-    lod2_nodes = copy.deepcopy(skeleton_nodes)
-    lod2_world = dict(world)
+    # Build the LOD2 skeleton from design units rather than deep-copying the
+    # already-scaled one. The previous copy was scaled a second time below, so
+    # LOD2's bones did not match its mesh.
+    lod2_nodes, _, lod2_world = build_skeleton()
     lod2_parts = build_npc_lod2_parts()
+    apply_stylised_proportions(lod2_parts, lod2_nodes, lod2_world, stylised["headScale"], stylised["bodyCompress"])
     scale_to_target_height(lod2_parts, lod2_nodes, lod2_world, spec["scaleMeters"]["height"])
     lod2_metrics = export_glb(spec, lod2_parts, lod2_nodes, joint_index, lod2_world, NPC_LOD2_PATH)
     build_previews(parts, spec["palette"])
+    metrics["headsTall"] = round(measure_heads_tall(parts), 3)
     metrics["npcLod1"] = lod1_metrics
     metrics["npcLod2"] = lod2_metrics
     report = validate(spec, metrics, parts)
