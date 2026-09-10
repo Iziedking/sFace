@@ -36,7 +36,33 @@ export function parseAtlasProductionGate(env: Readonly<Record<string, string | u
   return Object.freeze({ competitive, rewards, durableRepository });
 }
 
+export interface AtlasTreasuryConfig {
+  enabled: boolean;
+  reason: 'rewards-disabled' | 'missing-treasury' | 'invalid-treasury' | null;
+  treasuryAddress: string | null;
+}
+
+/**
+ * Gate for the reward treasury.
+ *
+ * `rewards` already implies `competitive`, which already implies
+ * `durableRepository`, so an enabled treasury always has somewhere durable to
+ * keep its ledger. That chain is the point: `server/atlas/payouts.ts` refuses
+ * a duplicate payout id, and that refusal is the only thing standing between a
+ * redeploy and paying the same reward twice, but it only holds if the ledger
+ * survives the restart.
+ */
+export function parseAtlasTreasuryConfig(env: Readonly<Record<string, string | undefined>> = process.env): AtlasTreasuryConfig {
+  const gate = parseAtlasProductionGate(env);
+  const treasuryAddress = (env.ATLAS_TREASURY_ADDRESS ?? '').replace(/\s/g, '').toUpperCase();
+  if (!gate.rewards) return { enabled: false, reason: 'rewards-disabled', treasuryAddress: treasuryAddress || null };
+  if (!treasuryAddress) return { enabled: false, reason: 'missing-treasury', treasuryAddress: null };
+  if (!/^NQ\d{2}[0-9A-HJ-NP-VXY]{32}$/.test(treasuryAddress)) return { enabled: false, reason: 'invalid-treasury', treasuryAddress };
+  return { enabled: true, reason: null, treasuryAddress };
+}
+
 export const ATLAS_PRODUCTION_GATE = parseAtlasProductionGate();
+export const ATLAS_TREASURY_CONFIG = parseAtlasTreasuryConfig();
 export const ATLAS_COMPETITIVE_POLICY = parseAtlasCompetitivePolicy();
 
 import { createAtlasPaymentConfig, type AtlasPaymentNetwork } from '../../shared/atlas/payment-config';

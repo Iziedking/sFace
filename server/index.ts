@@ -94,7 +94,9 @@ import { legacyConfig } from './legacy/mode';
 import { mountLegacyArchiveRoutes } from './legacy/archive-routes';
 import { legacyMutationMiddleware } from './legacy/mode';
 import { assertSingleRelayWriter } from './relay/writer';
-import { ATLAS_COMPETITIVE_POLICY, ATLAS_PRODUCTION_GATE, parseAtlasPaymentConfig } from './atlas/config';
+import { ATLAS_COMPETITIVE_POLICY, ATLAS_PRODUCTION_GATE, ATLAS_TREASURY_CONFIG, parseAtlasPaymentConfig } from './atlas/config';
+import { createAtlasPayoutService } from './atlas/payouts';
+import { mountAtlasPayoutAdminRoutes } from './atlas/payout-admin-routes';
 import { createAtlasOrderStore } from './atlas/orders';
 import { createAtlasChainReader } from './atlas/chain';
 import { createAtlasBeaconRepository, createAtlasBeaconService } from './atlas/beacon';
@@ -169,6 +171,30 @@ const atlasChain = ATLAS_PAYMENT_CONFIG.enabled
     })
   : undefined;
 const atlasStateStore = createAtlasStateStore(createAtlasJsonRepository({ directory: join(DATA_DIR, 'atlas-state') }));
+/*
+ * The reward treasury's payout ledger.
+ *
+ * This service and its admin routes existed but were never constructed or
+ * mounted, so the whole Atlas payout path was unreachable. It is wired here
+ * behind ATLAS_TREASURY_CONFIG, which requires the rewards gate and therefore
+ * a durable repository, and it is always given `atlasStateStore`. The ledger
+ * must never be built without one: create() refuses a duplicate payout id,
+ * and that refusal is all that stops a redeploy from paying every settled
+ * reward a second time out of real funds.
+ *
+ * Release stays supervised. These are admin routes behind requireAdmin and a
+ * single-use operation nonce, so a batch is approved, submitted and reconciled
+ * by a person rather than automatically.
+ */
+const atlasPayouts = ATLAS_TREASURY_CONFIG.enabled && atlasChain
+  ? createAtlasPayoutService({
+      network: ATLAS_PAYMENT_CONFIG.network,
+      treasuryAddress: ATLAS_TREASURY_CONFIG.treasuryAddress!,
+      minConfirmations: ATLAS_PAYMENT_CONFIG.minConfirmations,
+      chain: atlasChain,
+      stateStore: atlasStateStore,
+    })
+  : undefined;
 const atlasBeacon = ATLAS_PRODUCTION_GATE.durableRepository ? createAtlasBeaconService({ repository: createAtlasBeaconRepository({ stateStore: atlasStateStore }) }) : undefined;
 const atlasEchoes = ATLAS_PRODUCTION_GATE.durableRepository ? createAtlasEchoService({ repository: createAtlasEchoRepository({ stateStore: atlasStateStore }) }) : undefined;
 const atlasIdentity = createAtlasIdentityService({ auth: playerAuth, domain: ALLOWED_ORIGINS[0] ?? 'https://www.sface.site' });
@@ -464,6 +490,7 @@ mountLegacyArchiveRoutes({ app, limit: rateLimiter.limit, requireAdmin, dataDire
 mountAdminConfigRoutes({ app, limit: rateLimiter.limit, requireAdmin, nonces: ADMIN_NONCES, inventory: configInventory, record: recordAdminLog });
 mountAdminOverviewRoutes({ app, limit: rateLimiter.limit, requireAdmin, health: currentHealth, inventory: configInventory, date: utcDate, commit: process.env.GIT_COMMIT ?? null, uptimeSeconds: () => Math.floor(process.uptime()), restartSupported: process.env.ADMIN_RESTART_ENABLED === 'true' });
 mountRelayAdminRoutes({ app, limit: rateLimiter.limit, requireAdmin, nonces: ADMIN_NONCES, payouts: relayPayouts, rewards: relayRewards });
+if (atlasPayouts) mountAtlasPayoutAdminRoutes({ app, limit: rateLimiter.limit, requireAdmin, nonces: ADMIN_NONCES, payouts: atlasPayouts });
 /**
  * The Atlas owner gates are read here rather than restated.
  *
