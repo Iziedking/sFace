@@ -25,7 +25,19 @@
   pointer-events: auto;
 }
 .atlas-city-topbar > button { min-height: 44px; min-width: 44px; padding: 6px 9px; font: 700 12px/1.2 system-ui, sans-serif; }
-.atlas-living-city-play-shell .atlas-brand { flex: 1 1 170px; min-height: 44px; }
+/*
+ * The brand used to be `flex: 1 1 170px`, so it grew to fill the bar and the
+ * action group had nowhere to sit but a second line. Measured on a real page,
+ * that made the portrait topbar 100px over two rows while landscape fitted in
+ * 50px on one, which is the band of city view the play test complained about.
+ *
+ * It no longer grows, and the location label truncates instead of forcing a
+ * wrap, so the bar is one row at every width. `min-width: 0` is required for a
+ * flex item to shrink below its content size at all.
+ */
+.atlas-living-city-play-shell .atlas-brand { flex: 0 1 auto; min-width: 0; min-height: 44px; }
+.atlas-living-city-play-shell .atlas-city-topbar { flex-wrap: nowrap; }
+.atlas-living-city-play-shell .atlas-brand > small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .atlas-city-topbar .atlas-brand small { font-size: 10px; }
 .atlas-city-topbar .atlas-city-population { display: none; }
 .atlas-living-city-play-shell .atlas-city-controls { position: absolute; inset: auto 0 0; display: flex; justify-content: space-between; align-items: end; pointer-events: none; }
@@ -33,6 +45,17 @@
 .atlas-living-city-play-shell .atlas-mobile-movement, .atlas-living-city-play-shell .atlas-joystick { width: 112px; height: 112px; }
 .atlas-living-city-play-shell .atlas-key-hint, .atlas-living-city-play-shell .atlas-camera-look-hint { display: none; }
 .atlas-living-city-play-shell .atlas-mini-map { top: 0; right: 0; width: 108px; }
+/*
+ * The circle was clipping its own label. .atlas-mini-map is a 50% radius with
+ * overflow: hidden, and the living-city shell shrinks it to 108px, or 90px at
+ * the narrow breakpoint. Seven pixels down from the top of a 90px circle the
+ * chord is only about 63px, while "CITY MAP" at 13px with .12em tracking needs
+ * roughly 85px, so it rendered as "CITY MA" on a real phone.
+ *
+ * Sitting it lower puts it on a wider chord, and the smaller size and tracking
+ * bring the word inside it.
+ */
+.atlas-living-city-play-shell .atlas-mini-map-label { inset: 14px 0 auto; font-size: 10px; letter-spacing: .06em; }
 .atlas-living-city-play-shell .atlas-city-waypoint { top: 112px; right: 0; padding: 5px 7px; min-width: 94px; }
 .atlas-city-waypoint-kicker { display: none; }
 .atlas-living-city-play-shell .atlas-camera-center { right: 0; bottom: 106px; }

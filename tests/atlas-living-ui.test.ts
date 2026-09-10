@@ -160,6 +160,36 @@ describe('Atlas world-facing HUD elements wear the kit', () => {
     expect(app, 'no collapsed settings cluster').toContain('atlas-hud-settings');
   });
 
+  it('fits the minimap label inside the circle that clips it', () => {
+    /*
+     * .atlas-mini-map is border-radius 50% with overflow: hidden, so its label
+     * is clipped by its own edge. At the living-city width of 90px the chord
+     * 7px from the top is about 63px and "CITY MAP" at 13px needed roughly
+     * 85px, so a real phone showed "CITY MA".
+     */
+    const rescue = readFileSync(new URL('../src/atlas/ui/route-rescue.css', import.meta.url), 'utf8');
+    const start = rescue.indexOf('.atlas-living-city-play-shell .atlas-mini-map-label');
+    expect(start, 'no living-city minimap label rule').toBeGreaterThan(-1);
+    const block = rescue.slice(start, rescue.indexOf('}', start));
+    expect(block, 'the label is not sized down for the small circle').toMatch(/font-size: 1[01]px/);
+    expect(block, 'the label still sits on the narrow chord at the top').toMatch(/inset: 1[0-9]px/);
+  });
+
+  it('keeps the living-city topbar on a single row', () => {
+    /*
+     * .atlas-city-topbar is a wrapping flex row declared in
+     * src/atlas/ui/route-rescue.css, not the grid in atlas.css. The brand was
+     * `flex: 1 1 170px`, so it grew to fill the bar and pushed the action group
+     * onto a second line: measured at 100px over two rows in portrait against
+     * 50px on one row in landscape.
+     */
+    const rescue = readFileSync(new URL('../src/atlas/ui/route-rescue.css', import.meta.url), 'utf8');
+    expect(rescue, 'the brand still grows to fill the bar').not.toContain('.atlas-brand { flex: 1 1 170px');
+    expect(rescue, 'the topbar can still wrap').toContain('flex-wrap: nowrap');
+    expect(rescue, 'the brand cannot shrink below its content').toContain('min-width: 0');
+    expect(rescue, 'the location label has no truncation').toContain('text-overflow: ellipsis');
+  });
+
   it('actually hides the settings cluster when it is hidden', () => {
     /*
      * .atlas-hud-settings sets display: flex, which has the same specificity as
