@@ -272,7 +272,7 @@
       "id": "npc-spawn-01",
       "kind": "arrival",
       "position": [
-        -5.2,
+        -3.95,
         0,
         0.4
       ],
@@ -282,7 +282,7 @@
       "id": "npc-spawn-02",
       "kind": "arrival",
       "position": [
-        -4.6000000000000005,
+        -3.35,
         0,
         -0.09999999999999998
       ],
@@ -292,7 +292,7 @@
       "id": "npc-spawn-03",
       "kind": "arrival",
       "position": [
-        -4,
+        -2.75,
         0,
         -0.6
       ],
@@ -302,7 +302,7 @@
       "id": "npc-spawn-04",
       "kind": "arrival",
       "position": [
-        -3.4000000000000004,
+        -2.1500000000000004,
         0,
         -1.1
       ],
@@ -354,7 +354,7 @@
       "position": [
         4.3,
         0,
-        -0.8
+        -0.05
       ],
       "radius": 0.65
     },
@@ -364,7 +364,7 @@
       "position": [
         5.55,
         0,
-        -0.8
+        -0.05
       ],
       "radius": 0.65
     },
@@ -374,7 +374,7 @@
       "position": [
         6.8,
         0,
-        -0.8
+        -0.05
       ],
       "radius": 0.65
     },
@@ -384,7 +384,7 @@
       "position": [
         8.05,
         0,
-        -0.8
+        -0.05
       ],
       "radius": 0.65
     }
@@ -551,6 +551,118 @@
         2.4,
         4.8,
         2.4
+      ]
+    },
+    {
+      "id": "obstruction-lantern-counter",
+      "shape": "box",
+      "position": [
+        -4.4,
+        0.85,
+        -0.9
+      ],
+      "size": [
+        2,
+        1.7,
+        1
+      ]
+    },
+    {
+      "id": "obstruction-keeper-marker",
+      "shape": "capsule",
+      "position": [
+        -1,
+        1.28,
+        0.5
+      ],
+      "size": [
+        0.28,
+        2.35,
+        0.28
+      ]
+    },
+    {
+      "id": "obstruction-relay-station-1",
+      "shape": "capsule",
+      "position": [
+        4.3,
+        0.95,
+        -0.8
+      ],
+      "size": [
+        0.56,
+        1.4,
+        0.56
+      ]
+    },
+    {
+      "id": "obstruction-relay-station-2",
+      "shape": "capsule",
+      "position": [
+        5.55,
+        0.95,
+        -0.8
+      ],
+      "size": [
+        0.56,
+        1.4,
+        0.56
+      ]
+    },
+    {
+      "id": "obstruction-relay-station-3",
+      "shape": "capsule",
+      "position": [
+        6.8,
+        0.95,
+        -0.8
+      ],
+      "size": [
+        0.56,
+        1.4,
+        0.56
+      ]
+    },
+    {
+      "id": "obstruction-relay-station-4",
+      "shape": "capsule",
+      "position": [
+        4.3,
+        0.95,
+        -2.95
+      ],
+      "size": [
+        0.56,
+        1.4,
+        0.56
+      ]
+    },
+    {
+      "id": "obstruction-relay-station-5",
+      "shape": "capsule",
+      "position": [
+        5.55,
+        0.95,
+        -2.95
+      ],
+      "size": [
+        0.56,
+        1.4,
+        0.56
+      ]
+    },
+    {
+      "id": "obstruction-relay-station-6",
+      "shape": "capsule",
+      "position": [
+        6.8,
+        0.95,
+        -2.95
+      ],
+      "size": [
+        0.56,
+        1.4,
+        0.56
       ]
     }
   ],

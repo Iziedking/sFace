@@ -224,6 +224,46 @@ describe('Atlas 3D asset registry', () => {
     expect([...blockedPathSegments]).toEqual([]);
   });
 
+  /*
+   * A phone play test reported walking straight through Pay Harbor. It had four
+   * colliders against Beacon Commons' thirty-one, so most of what the build
+   * script authors as solid was not solid.
+   *
+   * Both halves are asserted, because fixing one by breaking the other is the
+   * easy mistake: a collider that swallows an anchor turns a cosmetic bug into
+   * an objective the player cannot reach, and neither failure throws.
+   */
+  it('makes Pay Harbor solid without sealing any objective inside a wall', () => {
+    const scene = parseAtlasCityScene(JSON.parse(readFileSync('public/atlas/3d/v1/pay-harbor/scene.json', 'utf8')));
+    expect(scene.colliders.length).toBeGreaterThanOrEqual(12);
+
+    const PLAYER_RADIUS = 0.3;
+    const unreachable: string[] = [];
+    for (const anchor of scene.anchors) {
+      for (const collider of scene.colliders) {
+        const halfX = collider.size[0] / 2;
+        const halfZ = collider.size[2] / 2;
+        const offsetX = Math.abs(anchor.position[0] - collider.position[0]);
+        const offsetZ = Math.abs(anchor.position[2] - collider.position[2]);
+        if (offsetX >= halfX || offsetZ >= halfZ) continue;
+        // Inside a solid is fine only while the player can stand outside it and
+        // still be within the anchor's radius.
+        const clearance = Math.min(halfX - offsetX, halfZ - offsetZ);
+        if (clearance + PLAYER_RADIUS > (anchor.radius ?? 0.8)) unreachable.push(`${anchor.id} inside ${collider.id}`);
+      }
+    }
+    expect(unreachable).toEqual([]);
+  });
+
+  it('spawns no Pay Harbor citizen inside a building', () => {
+    const scene = parseAtlasCityScene(JSON.parse(readFileSync('public/atlas/3d/v1/pay-harbor/scene.json', 'utf8')));
+    const stuck = scene.anchors
+      .filter((anchor) => anchor.id.startsWith('npc-spawn-'))
+      .filter((anchor) => isAtlasCitizenPositionBlocked({ x: anchor.position[0], z: anchor.position[2] }, scene.colliders))
+      .map((anchor) => anchor.id);
+    expect(stuck).toEqual([]);
+  });
+
   it('preserves the approved portrait and generated runtime hashes', () => {
     const portrait = readFileSync('art/atlas/environments/beacon-commons-v1/review-mobile-city.png');
     const manifest = JSON.parse(readFileSync('public/atlas/manifests/assets-v2.json', 'utf8')) as { assets: Array<{ id: string; path: string; sha256: string }> };

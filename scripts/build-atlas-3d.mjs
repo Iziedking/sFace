@@ -141,7 +141,22 @@ const payHarborScene = {
     { id: 'queue-lantern-counter', kind: 'queue', position: [-4.4, 0, -0.9], radius: 1 },
     { id: 'queue-relay-stations', kind: 'queue', position: [4.3, 0, -0.8], radius: 1 },
     { id: 'celebration-harbor-tower', kind: 'install', position: [0, 0, 3.6], radius: 1.5 },
-    ...Array.from({ length: 12 }, (_, index) => ({ id: `npc-spawn-${String(index + 1).padStart(2, '0')}`, kind: 'arrival', position: [index < 4 ? -5.2 + index * 0.6 : index < 8 ? 2.1 : 4.3 + (index - 8) * 1.25, 0, index < 4 ? 0.4 - index * 0.5 : index < 8 ? -1.3 - (index - 4) * 0.65 : -0.8], radius: 0.65 })),
+    /*
+     * Two offsets here exist to keep citizens out of solids, and both are
+     * measured against CITIZEN_COLLISION_RADIUS_METERS (0.24) rather than
+     * eyeballed.
+     *
+     * The lantern queue starts at x -3.95, not -5.2. At -5.2 the first citizen
+     * spawned inside the market's collider, so it began its life stuck in a
+     * wall. That was survivable while the harbor had almost no colliders and
+     * is not now.
+     *
+     * The station workers stand at z -0.05, not -0.8. Their posts are at -0.8
+     * and are now solid, so standing on the post means standing inside it.
+     * They stand in front of it instead, which is also what a worker at a
+     * station looks like.
+     */
+    ...Array.from({ length: 12 }, (_, index) => ({ id: `npc-spawn-${String(index + 1).padStart(2, '0')}`, kind: 'arrival', position: [index < 4 ? -3.95 + index * 0.6 : index < 8 ? 2.1 : 4.3 + (index - 8) * 1.25, 0, index < 4 ? 0.4 - index * 0.5 : index < 8 ? -1.3 - (index - 4) * 0.65 : -0.05], radius: 0.65 })),
   ],
   paths: [
     { id: 'arrival-to-keeper', points: [[0, 0, 6.2], [-1, 0, 0.5]], purpose: 'walk', speed: 1.8 },
@@ -155,6 +170,32 @@ const payHarborScene = {
     { id: 'obstruction-ferry', shape: 'box', position: [0, 1.15, -8.5], size: [5.2, 1.4, 2.2] },
     { id: 'obstruction-builder-workshop', shape: 'box', position: [7, 0.75, 1.8], size: [3.2, 1.5, 1.3] },
     { id: 'obstruction-tower', shape: 'capsule', position: [0, 2.4, 3.6], size: [2.4, 4.8, 2.4] },
+    /*
+     * A play test on a phone reported walking straight through the harbor.
+     * Pay Harbor had four colliders against Beacon Commons' thirty-one, so
+     * most of what the build script authors as solid was not solid at all.
+     *
+     * These are transcribed from the same literals in
+     * art/atlas/environments/pay-harbor-v1/build_scene.py, which is where the
+     * geometry is authored. They are checked against every anchor before being
+     * added: a collider that swallows an anchor trades a cosmetic bug for an
+     * unwinnable one.
+     *
+     * The rule applied is **body height blocks, low platforms do not**. The
+     * lantern counter (1.7 m), the relay posts (1.4 m) and the keeper's marker
+     * (2.35 m) are things you walk into. The docks (0.9 m) and the ferry
+     * platform (0.7 m) are things you step onto, and `dock_right` carries the
+     * station-5 and station-6 install anchors, so making it solid would put
+     * two objectives inside a wall.
+     */
+    { id: 'obstruction-lantern-counter', shape: 'box', position: [-4.4, 0.85, -0.9], size: [2.0, 1.7, 1.0] },
+    { id: 'obstruction-keeper-marker', shape: 'capsule', position: [-1.0, 1.28, 0.5], size: [0.28, 2.35, 0.28] },
+    ...[0, 1, 2, 3, 4, 5].map((index) => ({
+      id: `obstruction-relay-station-${index + 1}`,
+      shape: 'capsule',
+      position: [4.3 + (index % 3) * 1.25, 0.95, -0.8 - Math.floor(index / 3) * 2.15],
+      size: [0.56, 1.4, 0.56],
+    })),
   ],
   emitters: [
     { id: 'harbor-ambient', kind: 'ambient', position: [0, 3, -2], intensity: 0.8 },
