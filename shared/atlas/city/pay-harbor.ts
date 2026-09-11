@@ -14,9 +14,9 @@ export const PAY_HARBOR_CITY: AtlasCitySceneV1 = {
   districtId: 'pay-harbor',
   models: [
     { id: 'pay-harbor-environment', url: '/atlas/3d/v1/pay-harbor/environment.glb', contentType: 'model/gltf-binary' },
-    { id: 'atlas-walker-player', url: '/atlas/3d/v1/characters/atlas-walker-player.glb', contentType: 'model/gltf-binary' },
-    { id: 'atlas-walker-npc-lod1', url: '/atlas/3d/v1/characters/atlas-walker-npc-lod1.glb', contentType: 'model/gltf-binary' },
-    { id: 'atlas-walker-npc-lod2', url: '/atlas/3d/v1/characters/atlas-walker-npc-lod2.glb', contentType: 'model/gltf-binary' },
+    { id: 'atlas-walker-player', url: '/atlas/3d/v2/characters/atlas-walker-v2-player.glb', contentType: 'model/gltf-binary' },
+    { id: 'atlas-walker-npc-lod1', url: '/atlas/3d/v2/characters/atlas-walker-v2-lod1.glb', contentType: 'model/gltf-binary' },
+    { id: 'atlas-walker-npc-lod2', url: '/atlas/3d/v2/characters/atlas-walker-v2-lod2.glb', contentType: 'model/gltf-binary' },
   ],
   instances: [
     { id: 'pay-harbor-environment-instance', modelId: 'pay-harbor-environment', position: point(0, 0, 0), rotation: point(0, 0, 0), scale: point(1, 1, 1) },

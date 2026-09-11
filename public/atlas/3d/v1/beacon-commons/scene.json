@@ -9,17 +9,17 @@
     },
     {
       "id": "atlas-walker-player",
-      "url": "/atlas/3d/v1/characters/atlas-walker-player.glb",
+      "url": "/atlas/3d/v2/characters/atlas-walker-v2-player.glb",
       "contentType": "model/gltf-binary"
     },
     {
       "id": "atlas-walker-npc-lod1",
-      "url": "/atlas/3d/v1/characters/atlas-walker-npc-lod1.glb",
+      "url": "/atlas/3d/v2/characters/atlas-walker-v2-lod1.glb",
       "contentType": "model/gltf-binary"
     },
     {
       "id": "atlas-walker-npc-lod2",
-      "url": "/atlas/3d/v1/characters/atlas-walker-npc-lod2.glb",
+      "url": "/atlas/3d/v2/characters/atlas-walker-v2-lod2.glb",
       "contentType": "model/gltf-binary"
     }
   ],

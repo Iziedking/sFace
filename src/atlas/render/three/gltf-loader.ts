@@ -81,6 +81,15 @@ export class AtlasGltfResourceCache {
     const bytes = await this.options.assetManager.loadBytes(url);
     const gltf = await this.parser(bytes, url);
     if (!gltf.scene) throw new Error(`GLB ${url} did not contain a scene.`);
+    /*
+     * v1 only, deliberately. This adapter rebuilds v1's sleeves and trouser
+     * legs as tapered tubes, because v1 assembled garments from separate
+     * ellipsoids that showed a cut edge whenever a shoulder rotated. v2's
+     * garments are fitted shells cut from the body surface that inherit the
+     * body's weights, so they already deform with the limb; running this over
+     * them would rebuild geometry that is not broken. Widening this pattern to
+     * /v2/ would be a regression, not a fix.
+     */
     if (/^\/atlas\/3d\/v1\/characters\/atlas-walker-(player|npc-lod1)\.glb$/.test(url)) refineAtlasCharacterSkin(gltf.scene, url.endsWith('player.glb') ? 'player' : 'npc');
     return { gltf, references: 0, disposed: false };
   }
