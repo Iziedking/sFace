@@ -1,0 +1,47 @@
+{
+  "asset": "atlas-walker-v2",
+  "version": "2.0.0",
+  "metrics": {
+    "vertices": 5892,
+    "triangles": 11520,
+    "polygons": 5943,
+    "materials": 5,
+    "uvLayers": 1,
+    "vertexGroups": 46,
+    "heightMeters": 1.76,
+    "headsTall": 5.987,
+    "animationClips": 4,
+    "lods": [
+      {
+        "name": "lod1",
+        "triangles": 3101,
+        "budget": 3300,
+        "file": "atlas-walker-v2-lod1.glb"
+      },
+      {
+        "name": "lod2",
+        "triangles": 751,
+        "budget": 800,
+        "file": "atlas-walker-v2-lod2.glb"
+      }
+    ]
+  },
+  "clips": [
+    {
+      "name": "Atlas_Idle",
+      "seconds": 4.0
+    },
+    {
+      "name": "Atlas_Walk",
+      "seconds": 1.2083
+    },
+    {
+      "name": "Atlas_Run",
+      "seconds": 0.7083
+    },
+    {
+      "name": "Atlas_Talk",
+      "seconds": 2.0
+    }
+  ]
+}

@@ -95,7 +95,20 @@ function inspectGlb(document, binary) {
 }
 
 function verifyBudget(id, metrics) {
-  const triangleLimit = id === 'atlas-walker-player' ? 5200 : id === 'atlas-walker-npc-lod1' ? 3300 : id === 'atlas-walker-npc-lod2' ? 800 : 120000;
+  // v1 still ships, so it keeps its own ceiling. v2 is a six-head figure with
+  // a continuous skinned surface rather than v1's 3.7-head assembly of
+  // ellipsoids, and it is budgeted at 12000 by
+  // art/atlas/characters/atlas-walker-v2/character-spec.json. Both are checked
+  // until the scene is repointed at v2.
+  const triangleLimits = {
+    'atlas-walker-player': 5200,
+    'atlas-walker-npc-lod1': 3300,
+    'atlas-walker-npc-lod2': 800,
+    'atlas-walker-v2-player': 12000,
+    'atlas-walker-v2-lod1': 3300,
+    'atlas-walker-v2-lod2': 800,
+  };
+  const triangleLimit = triangleLimits[id] ?? 120000;
   if (metrics.triangles > triangleLimit) throw new Error(`triangle budget exceeded: ${metrics.triangles} > ${triangleLimit}`);
   const materialLimit = id === 'pay-harbor-environment' ? 8 : id.startsWith('atlas-walker') ? 8 : 12;
   if (metrics.materials > materialLimit) throw new Error(`material budget exceeded: ${metrics.materials} > ${materialLimit}`);

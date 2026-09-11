@@ -550,13 +550,23 @@ export class AtlasApp {
     const visibleCitizens = citizens.filter((citizen) => citizen.visible).length;
     const activeCitizens = citizens.filter((citizen) => citizen.active).length;
     const shell = element('section', 'atlas-play-shell atlas-living-city-play-shell');
-    shell.setAttribute('aria-label', 'Beacon Commons living city adventure');
+    /*
+     * All seven chapters are played on one 3D scene. That is deliberate, but
+     * the topbar used to name the geometry while the mission card named the
+     * chapter, so a player in chapter 2 read "BEACON COMMONS" directly above a
+     * card headed "LIGHT FOREST". The label follows the chapter instead, and
+     * comes from the same `routeLesson` the card is built from, so the two
+     * cannot drift apart again. Outside a run there is no chapter, and the
+     * player really is in Beacon Commons.
+     */
+    const place = this.routeRun ? routeLesson(this.routeRun).name : 'Beacon Commons';
+    shell.setAttribute('aria-label', `${place} living city adventure`);
 
     const topbar = element('header', 'atlas-topbar atlas-city-topbar');
-    const brand = this.createCityBrand('BEACON COMMONS / LIVING CITY', 'Leave Beacon Commons and return to Atlas home');
+    const brand = this.createCityBrand(`${place.toUpperCase()} / LIVING CITY`, `Leave ${place} and return to Atlas home`);
     const population = element('div', 'atlas-integrity atlas-city-population', this.livingCity ? `${visibleCitizens} HERE / ${activeCitizens} ACTIVE` : 'CITY LOADING');
     population.setAttribute('role', 'status');
-    const pause = actionButton(this.suspended ? 'Resume' : 'Pause', this.togglePause, this.suspended ? 'Resume Beacon Commons' : 'Pause Beacon Commons');
+    const pause = actionButton(this.suspended ? 'Resume' : 'Pause', this.togglePause, this.suspended ? `Resume ${place}` : `Pause ${place}`);
     pause.className = 'atlas-pause';
     const access = actionButton(this.accessibleMovement ? 'Stick' : 'D-pad', () => {
       this.accessibleMovement = !this.accessibleMovement;

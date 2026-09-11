@@ -162,6 +162,63 @@
       "width": 1,
       "height": 1,
       "bundle": "atlas-pay-harbor"
+    },
+    {
+      "id": "atlas-walker-v2-player",
+      "path": "/atlas/3d/v2/characters/atlas-walker-v2-player.glb",
+      "sha256": "c127bd0f6a2a677a3e58a812f888280b0a15b6e9787432329f18bbfb514ffabd",
+      "bytes": 601108,
+      "compressedBytes": 601108,
+      "mime": "model/gltf-binary",
+      "width": 1,
+      "height": 1,
+      "bundle": "atlas-character-v2",
+      "quality": [
+        "low",
+        "balanced",
+        "high"
+      ],
+      "sourceFile": "art/atlas/characters/atlas-walker-v2/build_character.py",
+      "sourceSha256": "cac7e0a3a4bc16bfb73f69a6e3fab40632a62721cc81cc8ccb8e3e4a8c90300a",
+      "sourceStatus": "owner-approved-procedural"
+    },
+    {
+      "id": "atlas-walker-v2-lod1",
+      "path": "/atlas/3d/v2/characters/atlas-walker-v2-lod1.glb",
+      "sha256": "7f6fc00688660193125cfe2c9cbd02919ebe7130109b0cb4816c73b2ce700895",
+      "bytes": 265004,
+      "compressedBytes": 265004,
+      "mime": "model/gltf-binary",
+      "width": 1,
+      "height": 1,
+      "bundle": "atlas-character-v2",
+      "quality": [
+        "low",
+        "balanced",
+        "high"
+      ],
+      "sourceFile": "art/atlas/characters/atlas-walker-v2/build_character.py",
+      "sourceSha256": "cac7e0a3a4bc16bfb73f69a6e3fab40632a62721cc81cc8ccb8e3e4a8c90300a",
+      "sourceStatus": "owner-approved-procedural"
+    },
+    {
+      "id": "atlas-walker-v2-lod2",
+      "path": "/atlas/3d/v2/characters/atlas-walker-v2-lod2.glb",
+      "sha256": "9701602c9eadf938b71e1ad3ac8faa26c35b334db8126fa0db2ae677f2a94915",
+      "bytes": 154812,
+      "compressedBytes": 154812,
+      "mime": "model/gltf-binary",
+      "width": 1,
+      "height": 1,
+      "bundle": "atlas-character-v2",
+      "quality": [
+        "low",
+        "balanced",
+        "high"
+      ],
+      "sourceFile": "art/atlas/characters/atlas-walker-v2/build_character.py",
+      "sourceSha256": "cac7e0a3a4bc16bfb73f69a6e3fab40632a62721cc81cc8ccb8e3e4a8c90300a",
+      "sourceStatus": "owner-approved-procedural"
     }
   ]
 }

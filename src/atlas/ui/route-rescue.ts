@@ -1,5 +1,29 @@
 import { BEACON_SEALS, routeLesson, routeWorld, type RouteAction, type RouteRun } from '../../../shared/atlas/adventures/route-rescue';
 
+/*
+ * What the player is doing this chapter. Only the task is listed here: the
+ * chapter number and the place name are derived from ROUTE_LESSONS, because
+ * they were previously spelled out again in a hardcoded ladder and a second
+ * copy of a name is a second thing to forget. The living-city topbar reads the
+ * same `routeLesson`, so the card and the topbar cannot disagree about where
+ * the player is.
+ */
+const CHAPTER_TASKS: readonly string[] = [
+  'HELP THE PARCEL FIND ITS HOME',
+  'FOLLOW THE FRESH SIGNAL',
+  'CATCH THE DUPLICATE',
+  'MOVE THE RECEIPT CLOCK',
+  'BUILD CONSENSUS',
+  'PROTECT THE UNLOCK',
+  'ASSEMBLE THE SIX SEALS',
+];
+
+export function routeChapterKicker(run: RouteRun): string {
+  const task = CHAPTER_TASKS[run.chapter];
+  if (!task) return `Practice · no NIM sent · ${run.chapter + 1}/7 · ${run.role}`;
+  return `CHAPTER ${run.chapter + 1} / ${routeLesson(run).name.toUpperCase()} / ${task}`;
+}
+
 export function createRouteCard(run: RouteRun, act: (action: RouteAction) => void): HTMLElement {
   const lesson = routeLesson(run);
   const card = document.createElement('section');
@@ -10,21 +34,7 @@ export function createRouteCard(run: RouteRun, act: (action: RouteAction) => voi
   heading.textContent = run.chapter === 0 ? 'The Wrong House' : `${lesson.name} relay`;
   const provenance = document.createElement('p');
   provenance.className = 'atlas-route-provenance';
-  provenance.textContent = run.chapter === 0
-    ? 'CHAPTER 1 / GENESIS GARDEN / HELP THE PARCEL FIND ITS HOME'
-    : run.chapter === 1
-      ? 'CHAPTER 2 / LIGHT FOREST / FOLLOW THE FRESH SIGNAL'
-      : run.chapter === 2
-      ? 'CHAPTER 3 / PAY HARBOR / CATCH THE DUPLICATE'
-      : run.chapter === 3
-        ? 'CHAPTER 4 / ALBATROSS CAUSEWAY / MOVE THE RECEIPT CLOCK'
-      : run.chapter === 4
-        ? 'CHAPTER 5 / VALIDATOR PEAKS / BUILD CONSENSUS'
-      : run.chapter === 5
-        ? 'CHAPTER 6 / BUILDER CITY / PROTECT THE UNLOCK'
-      : run.chapter === 6
-        ? 'CHAPTER 7 / BEACON CORE / ASSEMBLE THE SIX SEALS'
-      : `Practice · no NIM sent · ${run.chapter + 1}/7 · ${run.role}`;
+  provenance.textContent = routeChapterKicker(run);
   const detail = document.createElement('p');
   const actions = document.createElement('div');
   actions.className = 'atlas-route-choices';

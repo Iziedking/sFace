@@ -2,13 +2,13 @@
   "asset": "atlas-walker-v2",
   "displayName": "Atlas Walker",
   "version": "2.0.0",
-  "status": "in-progress",
+  "status": "staged-verified-not-shipped",
   "authorship": "Original geometry authored for SFACE by script, using Blender's own modifiers over an authored joint graph. No generated images, image-to-3D input, scans, stock models, or external meshes. The toolchain changed from hand-rolled glTF assembly to scripted Blender; the geometry is still ours and still procedural.",
-  "toolchain": "Blender 5.2.1 LTS, driven headlessly: blender --background --python build_character.py",
+  "toolchain": "Blender 5.2.1 LTS, driven headlessly: npm run build:atlas:character:v2 (set BLENDER if it is not on PATH)",
   "design": {
     "role": "A practical network field guide who can grow into both Explorer and Builder mission kits.",
     "proportions": "Six heads tall, stylised-hero rather than chibi. v1 shipped 3.7 heads, adopted so a geometry-only face stayed readable at small size; a play test on real phones on 2026-09-10 reported the characters as 'not close to being human'. v2 carries facial detail in a texture, so the body no longer has to be stylised to compensate.",
-    "surfaceLanguage": "One continuous skinned surface grown along the joint graph by Blender's Skin modifier, then subdivided and smooth shaded. v1 assembled separate ellipsoids and cylinders, which is why limb joints showed as intersecting blobs.",
+    "surfaceLanguage": "Skinned surface grown along the joint graph by Blender's Skin modifier, then subdivided and smooth shaded. The modifier emits three interpenetrating shells rather than one continuous surface, so build_character.py orients every face outward against the joint graph; without that the left arm was inside out, which hid its sleeve and glove and would have been backface culled in three.js. v1 assembled separate ellipsoids and cylinders, which is why its limb joints showed as intersecting blobs.",
     "faceDirection": "Painted into the texture rather than modelled, because the follow camera frames the avatar at about 17.5 percent of viewport height and a 6-head figure gives roughly a 25 pixel head. Painted eyes and brows read at that size; geometry of that scale does not.",
     "frontDirection": "+Z"
   },
@@ -27,18 +27,44 @@
     "maxMaterials": 8,
     "maxBones": 24,
     "maxGlbBytes": 1048576,
-    "textureMaps": 1,
+    "textureMaps": 0,
     "animationClips": 4,
-    "budgetNote": "Raised from v1's 5200 triangles and zero texture maps. v1 sat at 4626 with only 574 of headroom, which is why joints were faceted. A single hero plus two LODs at 12000 is within reach for a mobile WebView, and the number is checked by scripts/verify-atlas-3d.mjs rather than trusted."
+    "budgetNote": "Raised from v1's 5200 triangles and zero texture maps. v1 sat at 4626 with only 574 of headroom, which is why joints were faceted. A single hero plus two LODs at 12000 is within reach for a mobile WebView, and the number is checked by scripts/verify-atlas-3d.mjs rather than trusted.",
+    "textureNote": "scripts/verify-atlas-3d.mjs rejects any GLB carrying images or textures, so the face cannot be a texture map as first planned. It is carried by silhouette and material colour instead, and the head reads at roughly 25 px anyway."
   },
   "animationClips": {
-    "note": "src/atlas/render/three/character-animation.ts throws if any of these is missing, so the names are a hard contract.",
-    "required": ["idle", "walk", "run", "talk"]
+    "note": "CLIP_NAMES in src/atlas/render/three/character-animation.ts maps the four states onto these exact GLB clip names and throws if one is missing. The state keys are not the clip names.",
+    "required": [
+      "idle",
+      "walk",
+      "run",
+      "talk"
+    ],
+    "clipNames": {
+      "idle": "Atlas_Idle",
+      "walk": "Atlas_Walk",
+      "run": "Atlas_Run",
+      "talk": "Atlas_Talk"
+    },
+    "authoring": "Every clip keys the same bone set, so none inherits the previous clip pose. The face is excluded because createFacialRig owns eye.L, eye.R, eyelid.L, eyelid.R and mouth and runs after the mixer."
   },
   "scaleMeters": {
     "height": 1.76,
     "shoulderWidth": 0.42,
     "bootLength": 0.24
   },
-  "headsTallBand": [5.7, 6.3]
+  "headsTallBand": [
+    5.7,
+    6.3
+  ],
+  "statusNote": "Built, budgeted and covered by npm run check. The districts still load v1; v2 ships once it has been seen on a real device.",
+  "lods": {
+    "lod1": {
+      "maxTriangles": 3300
+    },
+    "lod2": {
+      "maxTriangles": 800
+    },
+    "note": "Both carry the full 23-joint skeleton and all four clips, because atlasCitizenDetailLevel swaps between them mid-stride."
+  }
 }

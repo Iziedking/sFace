@@ -185,3 +185,10 @@ art/atlas/characters/atlas-walker-v1/preview-turntable.png
 # Internal agent/workspace state. Keep product source and public documentation tracked.
 .codex/
 .agents/
+
+# Renders from the v2 character build: two rest-pose previews and four contact
+# sheets per clip. They are how the character gets looked at rather than
+# trusted, but they are 8.2 MB of regenerable output and the v1 previews above
+# are ignored for the same reason. `npm run build:atlas:character:v2` writes
+# them again on demand.
+art/atlas/characters/atlas-walker-v2/*.png
