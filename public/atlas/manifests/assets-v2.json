@@ -47,36 +47,6 @@
       "bundle": "atlas-harbor"
     },
     {
-      "id": "beacon-commons-environment",
-      "path": "/atlas/3d/v1/beacon-commons/environment.glb",
-      "sha256": "dea4e25837a1534d790ca15e6b5ad4345cc904dfa258c0061290958fdc2eda0a",
-      "bytes": 261144,
-      "compressedBytes": 261144,
-      "mime": "model/gltf-binary",
-      "width": 1,
-      "height": 1,
-      "bundle": "atlas-beacon-commons",
-      "quality": [
-        "low",
-        "balanced",
-        "high"
-      ],
-      "sourceFile": "art/atlas/environments/beacon-commons-v1/build_scene.py",
-      "sourceSha256": "d8e37cb41abc8ba8e32205fd6ebfdd69dca6bcf7aa8c6d50ccf7381f4bef9c22",
-      "sourceStatus": "owner-approved-procedural"
-    },
-    {
-      "id": "beacon-commons-scene",
-      "path": "/atlas/3d/v1/beacon-commons/scene.json",
-      "sha256": "2a473ea39550645e16a661169716a835e02139abe134070bb4319701609b4e06",
-      "bytes": 16661,
-      "compressedBytes": 16661,
-      "mime": "application/json",
-      "width": 1,
-      "height": 1,
-      "bundle": "atlas-beacon-commons"
-    },
-    {
       "id": "atlas-walker-v2-player",
       "path": "/atlas/3d/v2/characters/atlas-walker-v2-player.glb",
       "sha256": "c127bd0f6a2a677a3e58a812f888280b0a15b6e9787432329f18bbfb514ffabd",
@@ -132,6 +102,36 @@
       "sourceFile": "art/atlas/characters/atlas-walker-v2/build_character.py",
       "sourceSha256": "cac7e0a3a4bc16bfb73f69a6e3fab40632a62721cc81cc8ccb8e3e4a8c90300a",
       "sourceStatus": "owner-approved-procedural"
+    },
+    {
+      "id": "pay-harbor-environment",
+      "path": "/atlas/3d/v1/pay-harbor/environment.glb",
+      "sha256": "498df64a3fbf4802cf4c65b5358274c818d09aaa89cf08527299d4aa2c240115",
+      "bytes": 305884,
+      "compressedBytes": 305884,
+      "mime": "model/gltf-binary",
+      "width": 1,
+      "height": 1,
+      "bundle": "atlas-pay-harbor",
+      "quality": [
+        "low",
+        "balanced",
+        "high"
+      ],
+      "sourceFile": "art/atlas/environments/pay-harbor-v1/build_scene.py",
+      "sourceSha256": "871abd10ada278c596330853bfd5515f578514808a32b7ca40ee66e585d28a6c",
+      "sourceStatus": "owner-approved-procedural"
+    },
+    {
+      "id": "pay-harbor-scene",
+      "path": "/atlas/3d/v1/pay-harbor/scene.json",
+      "sha256": "0888bea1a2fe14c2089a09607e1c00d680b1e15b929c6999dc45522b1a293dc0",
+      "bytes": 11072,
+      "compressedBytes": 11072,
+      "mime": "application/json",
+      "width": 1,
+      "height": 1,
+      "bundle": "atlas-pay-harbor"
     },
     {
       "id": "atlas-walker-player",
@@ -191,34 +191,34 @@
       "sourceStatus": "owner-approved-procedural"
     },
     {
-      "id": "pay-harbor-environment",
-      "path": "/atlas/3d/v1/pay-harbor/environment.glb",
-      "sha256": "498df64a3fbf4802cf4c65b5358274c818d09aaa89cf08527299d4aa2c240115",
-      "bytes": 305884,
-      "compressedBytes": 305884,
+      "id": "beacon-commons-environment",
+      "path": "/atlas/3d/v1/beacon-commons/environment.glb",
+      "sha256": "dea4e25837a1534d790ca15e6b5ad4345cc904dfa258c0061290958fdc2eda0a",
+      "bytes": 261144,
+      "compressedBytes": 261144,
       "mime": "model/gltf-binary",
       "width": 1,
       "height": 1,
-      "bundle": "atlas-pay-harbor",
+      "bundle": "atlas-beacon-commons",
       "quality": [
         "low",
         "balanced",
         "high"
       ],
-      "sourceFile": "art/atlas/environments/pay-harbor-v1/build_scene.py",
-      "sourceSha256": "871abd10ada278c596330853bfd5515f578514808a32b7ca40ee66e585d28a6c",
+      "sourceFile": "art/atlas/environments/beacon-commons-v1/build_scene.py",
+      "sourceSha256": "d8e37cb41abc8ba8e32205fd6ebfdd69dca6bcf7aa8c6d50ccf7381f4bef9c22",
       "sourceStatus": "owner-approved-procedural"
     },
     {
-      "id": "pay-harbor-scene",
-      "path": "/atlas/3d/v1/pay-harbor/scene.json",
-      "sha256": "0888bea1a2fe14c2089a09607e1c00d680b1e15b929c6999dc45522b1a293dc0",
-      "bytes": 11072,
-      "compressedBytes": 11072,
+      "id": "beacon-commons-scene",
+      "path": "/atlas/3d/v1/beacon-commons/scene.json",
+      "sha256": "95d8ad2a46a19db1b9057ddff66e2c9bb4d8fcae904a0174ae137ea1fbe72274",
+      "bytes": 16661,
+      "compressedBytes": 16661,
       "mime": "application/json",
       "width": 1,
       "height": 1,
-      "bundle": "atlas-pay-harbor"
+      "bundle": "atlas-beacon-commons"
     }
   ]
 }

@@ -54,13 +54,22 @@ const scene = {
     { id: 'return-pay-harbor', kind: 'travel', position: [0.2, 0, 3.2], radius: 1.6 },
     { id: 'mission-guide', kind: 'mission', position: [0.7, 0, 0.5], radius: 1.2 },
     { id: 'community-plaza', kind: 'conversation', position: [-2.9, 0, -4.6], radius: 1.8 },
-    { id: 'team-workshop', kind: 'work', position: [5.9, 0, -5.7], radius: 2.0 },
+    /*
+     * These two sat at [5.9, 0, -5.7], which is the exact centre of
+     * obstruction-workshop (4.8 x 4.2). The nearest edge is 2.10 m away and
+     * the anchor radius is 2, so a player standing hard against the wall was
+     * still 2.40 m from the anchor and could never reach either objective.
+     * Both now sit just off the workshop's near face, where a workbench is
+     * approached from. Nothing references these ids in code; they are scene
+     * data read generically, so moving them is safe.
+     */
+    { id: 'team-workshop', kind: 'work', position: [5.9, 0, -3.2], radius: 2.0 },
     { id: 'district-map', kind: 'travel', position: [-3.7, 0, -11.4], radius: 2.0 },
     { id: 'conversation-guide-market', kind: 'conversation', position: [0.7, 0, 0.5], radius: 1.2 },
     { id: 'conversation-community-plaza', kind: 'conversation', position: [-2.9, 0, -4.6], radius: 1.5 },
     { id: 'conversation-team-pavilion', kind: 'conversation', position: [-3.7, 0, -11.4], radius: 1.5 },
     { id: 'work-repair-core', kind: 'work', position: [3.95, 0, -1.35], radius: 1.2 },
-    { id: 'work-builder-yard', kind: 'work', position: [5.9, 0, -5.7], radius: 2.0 },
+    { id: 'work-builder-yard', kind: 'work', position: [5.9, 0, -3.2], radius: 2.0 },
     { id: 'work-community-board', kind: 'work', position: [-2.9, 0, -4.6], radius: 1.2 },
     { id: 'work-team-table', kind: 'work', position: [-3.7, 0, -11.4], radius: 1.4 },
     { id: 'queue-market-entry', kind: 'queue', position: [-3.2, 0, -0.5], radius: 1.0 },

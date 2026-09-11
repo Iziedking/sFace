@@ -233,9 +233,12 @@ describe('Atlas 3D asset registry', () => {
    * easy mistake: a collider that swallows an anchor turns a cosmetic bug into
    * an objective the player cannot reach, and neither failure throws.
    */
-  it('makes Pay Harbor solid without sealing any objective inside a wall', () => {
-    const scene = parseAtlasCityScene(JSON.parse(readFileSync('public/atlas/3d/v1/pay-harbor/scene.json', 'utf8')));
-    expect(scene.colliders.length).toBeGreaterThanOrEqual(12);
+  it.each([
+    ['pay-harbor', 12],
+    ['beacon-commons', 31],
+  ])('makes %s solid without sealing any objective inside a wall', (district, minimumColliders) => {
+    const scene = parseAtlasCityScene(JSON.parse(readFileSync(`public/atlas/3d/v1/${district}/scene.json`, 'utf8')));
+    expect(scene.colliders.length).toBeGreaterThanOrEqual(minimumColliders);
 
     const PLAYER_RADIUS = 0.3;
     const unreachable: string[] = [];
@@ -255,8 +258,8 @@ describe('Atlas 3D asset registry', () => {
     expect(unreachable).toEqual([]);
   });
 
-  it('spawns no Pay Harbor citizen inside a building', () => {
-    const scene = parseAtlasCityScene(JSON.parse(readFileSync('public/atlas/3d/v1/pay-harbor/scene.json', 'utf8')));
+  it.each(['pay-harbor', 'beacon-commons'])('spawns no %s citizen inside a building', (district) => {
+    const scene = parseAtlasCityScene(JSON.parse(readFileSync(`public/atlas/3d/v1/${district}/scene.json`, 'utf8')));
     const stuck = scene.anchors
       .filter((anchor) => anchor.id.startsWith('npc-spawn-'))
       .filter((anchor) => isAtlasCitizenPositionBlocked({ x: anchor.position[0], z: anchor.position[2] }, scene.colliders))

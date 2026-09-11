@@ -19,6 +19,39 @@ function fakeBackend() {
 const state = (phase: AtlasAudioState['phase'], evidenceSource?: AtlasAudioState['evidenceSource']): AtlasAudioState => ({ phase, evidenceSource });
 
 describe('NIM Atlas adaptive audio', () => {
+  /*
+   * A phone play test reported the city as silent apart from footsteps.
+   * Entering the city asks for the ambience loop immediately, before the
+   * player has touched anything, so the browser was still locked and the
+   * request was discarded with nothing to retry it. One-shot cues are asked
+   * for again on every step, so they worked and hid the problem for weeks.
+   */
+  it('starts a loop asked for before the unlock gesture, once the gesture arrives', () => {
+    const fake = fakeBackend();
+    const audio = createAtlasAudio(fake.backend);
+    audio.playCityAmbience();
+    expect(fake.events.filter((event) => event.type === 'play')).toEqual([]);
+    audio.unlock();
+    expect(fake.events).toContainEqual({ type: 'play', cue: 'city-ambience', bus: 'ambience', loop: true });
+  });
+
+  it('does not start a loop that was cancelled while still locked', () => {
+    const fake = fakeBackend();
+    const audio = createAtlasAudio(fake.backend);
+    audio.playCityAmbience();
+    audio.stopCityAmbience();
+    audio.unlock();
+    expect(fake.events.some((event) => event.type === 'play' && event.cue === 'city-ambience')).toBe(false);
+  });
+
+  it('still plays a loop asked for after unlock', () => {
+    const fake = fakeBackend();
+    const audio = createAtlasAudio(fake.backend);
+    audio.unlock();
+    audio.playCityAmbience();
+    expect(fake.events).toContainEqual({ type: 'play', cue: 'city-ambience', bus: 'ambience', loop: true });
+  });
+
   it('does not emit audio before a user gesture unlocks the backend', () => {
     const fake = fakeBackend();
     const audio = createAtlasAudio(fake.backend);

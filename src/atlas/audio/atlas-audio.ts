@@ -38,6 +38,19 @@ export function createAtlasAudio(backend: AtlasAudioBackend = createWebAudioBack
 export class AtlasAudio {
   private unlocked = false;
   private current: AtlasAudioState | null = null;
+  /*
+   * Looping cues asked for before the unlock gesture.
+   *
+   * A play test on a phone reported the city as silent apart from footsteps.
+   * Entering the city calls playCityAmbience() immediately, which lands before
+   * the player has touched anything, so the browser is still locked and the
+   * request was dropped on the floor. Nothing ever retried it, so the city
+   * stayed silent for the whole session while one-shot cues — requested again
+   * on every step — worked fine and hid the problem.
+   *
+   * The intent is remembered instead of discarded, and replayed on unlock.
+   */
+  private readonly pendingLoops = new Map<AtlasAudioCue, AtlasAudioBus>();
 
   constructor(private readonly backend: AtlasAudioBackend) {}
 
@@ -47,6 +60,8 @@ export class AtlasAudio {
       this.backend.unlock();
       this.unlocked = true;
       if (this.current) this.sync(null, this.current);
+      for (const [cue, bus] of this.pendingLoops) this.playCue(cue, bus, true);
+      this.pendingLoops.clear();
     } catch {
       this.unlocked = false;
     }
@@ -72,21 +87,30 @@ export class AtlasAudio {
    * require and also what keeps a 1.4 MB download off first paint.
    */
   playTheme(): void {
-    if (!this.unlocked) return;
-    this.playCue('atlas-theme', 'ambience', true);
+    this.requestLoop('atlas-theme', 'ambience');
   }
 
   stopTheme(): void {
+    this.pendingLoops.delete('atlas-theme');
     this.stopCue('atlas-theme');
   }
 
   playCityAmbience(): void {
-    if (!this.unlocked) return;
-    this.playCue('city-ambience', 'ambience', true);
+    this.requestLoop('city-ambience', 'ambience');
   }
 
   stopCityAmbience(): void {
+    this.pendingLoops.delete('city-ambience');
     this.stopCue('city-ambience');
+  }
+
+  /** Start a loop, or remember to start it the moment a gesture unlocks audio. */
+  private requestLoop(cue: AtlasAudioCue, bus: AtlasAudioBus): void {
+    if (!this.unlocked) {
+      this.pendingLoops.set(cue, bus);
+      return;
+    }
+    this.playCue(cue, bus, true);
   }
 
   playWorldCue(cue: 'city-footstep' | 'city-interaction' | 'route-refused' | 'route-evidence' | 'route-repaired' | 'route-complete'): void {
