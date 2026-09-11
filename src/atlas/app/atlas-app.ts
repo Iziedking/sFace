@@ -2,6 +2,7 @@ import { createNimiqMark } from '../ui/nimiq-mark';
 import { createAtlasState } from '../../../shared/atlas/state';
 import { BEACON_SEALS, createRouteRun, recoverRouteRun, routeLesson, routeProgress, routeRestoration, routeTarget, routeWorld, stepRouteRun, type RouteAction, type RouteRun } from '../../../shared/atlas/adventures/route-rescue';
 import { createEvidenceChoices, createRouteCard } from '../ui/route-rescue';
+import { createAtlasUsageReporter } from '../usage';
 import { AtlasRuntimeStats } from '../city/runtime-stats';
 import { projectLivingWorld } from '../../../shared/atlas/living-world';
 import { AtlasCameraLookController, AtlasInputController, installAtlasKeyboard, shouldHandleDirectionalClick, type AtlasDirection } from '../input';
@@ -87,6 +88,9 @@ export class AtlasApp {
   private readonly walletBinding = createAtlasWalletBindingFlow({ api: this.api, wallet: this.wallet });
   private readonly coreRun = createAtlasCoreRunController({ api: this.api });
   private readonly sessionActorId = getAtlasSessionActorId(safeStorage());
+  /* Anonymous participation counting. Reuses the session actor id above rather
+   * than minting a second identifier; the server hashes it before storing. */
+  private readonly usage = createAtlasUsageReporter({ session: this.sessionActorId });
   private selectedRole: AtlasRole = this.progress.load().activeRole;
   private screen: 'welcome' | 'how-to-play' | 'lantern' | 'trial' | 'book' | 'daily' | 'evergreen' | 'core-run' | 'beacon-commons' | 'pay-harbor' = 'welcome';
   private lanternState: LastLanternState = createLastLanternState('explorer', 'practice');
@@ -177,6 +181,7 @@ export class AtlasApp {
   }
 
   boot(): void {
+    this.usage.record('session-start');
     if ('serviceWorker' in navigator) void navigator.serviceWorker.register('/service-worker.js', { scope: '/' }).catch(() => undefined);
     /*
      * Browsers refuse to start audio before a gesture, so the theme waits for
@@ -699,6 +704,10 @@ export class AtlasApp {
     const next = stepRouteRun(run, action);
     if (next === run) return;
     this.routeRun = next;
+    /* Counted here because this is the only place a run advances, so the funnel
+     * cannot drift from the game. The reporter drops repeats itself. */
+    this.usage.record('chapter-start', next.chapter);
+    if (next.stage === 'complete' && run.stage !== 'complete') this.usage.record('chapter-complete', next.chapter);
     this.cityQuestStep = next.stage === 'arrive' ? 'meet-guide' : 'guide-met';
     try { localStorage.setItem(`atlas-route-practice-v1-${next.role}`, JSON.stringify({ version: 1, role: next.role, actions: next.actions })); }
     catch { this.routeFeed.push('Local saving unavailable. Keep this tab open to continue.'); }
@@ -1955,11 +1964,15 @@ export class AtlasApp {
         return;
       }
       if (result.status !== 'verified' || !result.evidence || !this.liveLookup) {
+        /* A refusal is the product working, so it is counted rather than
+         * treated as an error we would rather not see in the numbers. */
+        this.usage.record('payment-refused');
         this.paymentNotice = 'The server returned fulfillment without usable evidence. The harbor remains locked.';
         this.renderCurrentLanternSurface();
         return;
       }
       this.paymentController.fulfill();
+      this.usage.record('payment-verified');
       this.paymentNotice = 'Confirmed by canonical chain evidence. The harbor can unlock.';
       this.advanceCurrentLantern({ type: 'receive-evidence', source: 'server-verified', evidence: { txHash: this.liveLookup, network: result.evidence.network, recipient: result.evidence.recipient, valueLuna: result.evidence.valueLuna, canonical: result.evidence.canonical, success: result.evidence.success, confirmations: result.evidence.confirmations } });
     } catch (error) {

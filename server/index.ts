@@ -97,6 +97,8 @@ import { assertSingleRelayWriter } from './relay/writer';
 import { ATLAS_COMPETITIVE_POLICY, ATLAS_PRODUCTION_GATE, ATLAS_TREASURY_CONFIG, parseAtlasPaymentConfig } from './atlas/config';
 import { createAtlasPayoutService } from './atlas/payouts';
 import { mountAtlasPayoutAdminRoutes } from './atlas/payout-admin-routes';
+import { createAtlasUsageService } from './atlas/usage';
+import { mountAtlasUsageRoutes } from './atlas/usage-routes';
 import { createAtlasOrderStore } from './atlas/orders';
 import { createAtlasChainReader } from './atlas/chain';
 import { createAtlasBeaconRepository, createAtlasBeaconService } from './atlas/beacon';
@@ -195,6 +197,20 @@ const atlasPayouts = ATLAS_TREASURY_CONFIG.enabled && atlasChain
       stateStore: atlasStateStore,
     })
   : undefined;
+/*
+ * Usage counting is always constructed, unlike the services above.
+ *
+ * Without a durable repository it still counts, in memory, and simply forgets
+ * on restart. That is the right trade for a number that informs us rather than
+ * moving money: a deployment with no disk should still be able to say how many
+ * people played today, and the alternative — the service silently not existing
+ * in production — is the exact shape of the treasury bug this codebase already
+ * paid for once.
+ */
+const atlasUsage = createAtlasUsageService({
+  stateStore: ATLAS_PRODUCTION_GATE.durableRepository ? atlasStateStore : undefined,
+  salt: process.env.ATLAS_USAGE_SALT,
+});
 const atlasBeacon = ATLAS_PRODUCTION_GATE.durableRepository ? createAtlasBeaconService({ repository: createAtlasBeaconRepository({ stateStore: atlasStateStore }) }) : undefined;
 const atlasEchoes = ATLAS_PRODUCTION_GATE.durableRepository ? createAtlasEchoService({ repository: createAtlasEchoRepository({ stateStore: atlasStateStore }) }) : undefined;
 const atlasIdentity = createAtlasIdentityService({ auth: playerAuth, domain: ALLOWED_ORIGINS[0] ?? 'https://www.sface.site' });
@@ -207,6 +223,7 @@ const atlasCompetitive = ATLAS_PRODUCTION_GATE.competitive && atlasBeacon && atl
 const provesActor = createActorVerifier(playerAuth);
 installRequestLogging(app, { record: recordAdminLog });
 mountRelayRoutes({ app, limit: rateLimiter.limit, api: createRelayApi({ config: RELAY_CONFIG, tickets: relayTickets, walletBindings: relayWalletBindings, daily: relayDaily, repository: relayRepository, actorExists: (actorId) => playerAuth.hasCredential(actorId), world: relayWorld, leaderboard: relayLeaderboard, rewards: relayRewards }) });
+mountAtlasUsageRoutes({ app, limit: rateLimiter.limit, usage: atlasUsage });
 mountAtlasRoutes({ app, limit: rateLimiter.limit, api: createAtlasApi({
   curriculum: ATLAS_CURRICULUM,
   competitiveExpeditions: ATLAS_PRODUCTION_GATE.competitive,
