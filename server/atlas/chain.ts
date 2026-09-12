@@ -59,8 +59,19 @@ export function createAtlasChainReader(options: {
    * be precisely the unverified assertion this check exists to catch.
    */
   expectedGenesisHash?: string;
+  /**
+   * Height of the genesis macro block. Defaults per network; override only to
+   * pin a chain whose migration height differs from the shipped default.
+   */
+  genesisBlockNumber?: number;
 }): AtlasChainReader {
   const fetchImpl = options.fetchImpl ?? fetch;
+  /*
+   * Height of the genesis macro block, by network. Mainnet's comes from
+   * nimiq/core-rs-albatross genesis/src/genesis/main-albatross.toml; testnet
+   * keeps the historical default until its own value is confirmed the same way.
+   */
+  const genesisBlockNumber = options.genesisBlockNumber ?? (options.network === 'mainalbatross' ? 3_456_000 : 0);
   const timeoutMs = options.timeoutMs ?? 5_000;
   const expectedGenesisHash = options.expectedGenesisHash?.trim().toLowerCase() || undefined;
   let verification: AtlasChainNetworkVerification = expectedGenesisHash ? 'unchecked' : 'unconfigured';
@@ -112,7 +123,21 @@ export function createAtlasChainReader(options: {
     if (verification === 'rejected') return false;
     for (const rpcUrl of options.rpcUrls) {
       try {
-        const genesis = record(await rpc(fetchImpl, rpcUrl, 'getBlockByNumber', [0, false], timeoutMs));
+        /*
+         * The genesis block is not block 0 on Albatross.
+         *
+         * Albatross began at the Proof-of-Stake migration rather than from an
+         * empty chain, so its genesis is the macro block at that height: 3456000
+         * on mainnet, per `network = "MainAlbatross"` and `block_number` in
+         * nimiq/core-rs-albatross genesis/src/genesis/main-albatross.toml.
+         * Asking for block 0 gets "Block not found: 0" from every node, so this
+         * check could never have succeeded on mainnet and the network would have
+         * stayed `unchecked` forever, withholding every observation.
+         *
+         * Configurable because each network has its own height, and a node that
+         * has pruned that far back cannot answer at all.
+         */
+        const genesis = record(await rpc(fetchImpl, rpcUrl, 'getBlockByNumber', [genesisBlockNumber, false], timeoutMs));
         const hash = stringValue(genesis?.hash)?.toLowerCase();
         if (!hash) continue;
         if (hash !== expectedGenesisHash) {

@@ -74,6 +74,56 @@ describe('NIM Atlas chain reader network verification', () => {
     return { reader, calls, fetchImpl };
   }
 
+  /*
+   * This is the case the harness above could not see. It answered
+   * getBlockByNumber for any height, so nothing noticed that the reader asked
+   * for block 0 — and Albatross has no block 0. It began at the
+   * Proof-of-Stake migration, so mainnet's genesis is the macro block at
+   * 3456000 (nimiq/core-rs-albatross, genesis/src/genesis/main-albatross.toml).
+   * Every real node answers "Block not found: 0", so verification stayed
+   * `unchecked` forever and every observation was withheld. Mainnet payouts
+   * could never have worked.
+   */
+  it('asks for the height mainnet genesis actually lives at', async () => {
+    const requested: unknown[] = [];
+    const fetchImpl = vi.fn(async (_input: string | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { method: string; params: unknown[] };
+      if (body.method === 'getBlockByNumber') {
+        requested.push(body.params[0]);
+        return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { number: body.params[0], hash: 'main-genesis' } }));
+      }
+      if (body.method === 'getTransactionByHash') return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: transaction }));
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { number: 3_456_060 } }));
+    });
+    const reader = createAtlasChainReader({
+      network: 'mainalbatross', rpcUrls: ['https://rpc.test'], minConfirmations: 3, fetchImpl,
+      expectedGenesisHash: 'main-genesis',
+    });
+    await reader.observe('lookup-height');
+    expect(requested).toContain(3_456_000);
+    expect(requested, 'asked for block 0, which Albatross does not have').not.toContain(0);
+    expect(reader.networkVerification()).toBe('verified');
+  });
+
+  it('lets a caller pin a different genesis height', async () => {
+    const requested: unknown[] = [];
+    const fetchImpl = vi.fn(async (_input: string | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { method: string; params: unknown[] };
+      if (body.method === 'getBlockByNumber') {
+        requested.push(body.params[0]);
+        return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { number: body.params[0], hash: 'pinned' } }));
+      }
+      if (body.method === 'getTransactionByHash') return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: transaction }));
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { number: 99 } }));
+    });
+    const reader = createAtlasChainReader({
+      network: 'mainalbatross', rpcUrls: ['https://rpc.test'], minConfirmations: 3, fetchImpl,
+      expectedGenesisHash: 'pinned', genesisBlockNumber: 42,
+    });
+    await reader.observe('lookup-pinned');
+    expect(requested).toContain(42);
+  });
+
   it('yields no evidence when the RPC is on a different chain than configured', async () => {
     const { reader, calls } = readerWith('aaaa-main-genesis', 'bbbb-test-genesis');
     await expect(reader.observe('lookup-1')).resolves.toBeNull();

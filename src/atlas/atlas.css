@@ -325,6 +325,9 @@ button:focus-visible, input:focus-visible, a:focus-visible, [tabindex]:focus-vis
  * relationship has to read as "built on", not "made by".
  */
 .atlas-crest { display: block; width: auto; height: 34px; flex: none; }
+.atlas-faucet-section { border: 1px solid var(--atlas-mission-line); border-radius: 14px; padding: 14px; }
+.atlas-faucet-steps { margin: 10px 0 12px; padding-left: 20px; display: grid; gap: 6px; font: 500 13px/1.4 ui-sans-serif, system-ui, sans-serif; color: var(--atlas-label); }
+.atlas-faucet-section .atlas-guide-link { display: inline-block; min-height: 44px; line-height: 44px; padding: 0 16px; border-radius: var(--atlas-radius-pill); background: var(--atlas-signal); color: var(--atlas-on-accent); font-weight: 800; text-decoration: none; }
 .atlas-brand > .atlas-crest { grid-column: 1; grid-row: 1 / span 2; align-self: center; height: 26px; }
 .atlas-powered-by { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 10px 0 0; color: var(--atlas-label-dim); font: 700 10px/1 ui-sans-serif, system-ui, sans-serif; letter-spacing: .16em; text-transform: uppercase; }
 .atlas-powered-by .atlas-nimiq-mark { height: 14px; }

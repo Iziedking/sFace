@@ -94,11 +94,13 @@ import { legacyConfig } from './legacy/mode';
 import { mountLegacyArchiveRoutes } from './legacy/archive-routes';
 import { legacyMutationMiddleware } from './legacy/mode';
 import { assertSingleRelayWriter } from './relay/writer';
-import { ATLAS_COMPETITIVE_POLICY, ATLAS_PRODUCTION_GATE, ATLAS_TREASURY_CONFIG, parseAtlasPaymentConfig } from './atlas/config';
+import { ATLAS_COMPETITIVE_POLICY, ATLAS_DAILY_POOL_LUNA, ATLAS_DAILY_REWARD_CONFIG, ATLAS_PRODUCTION_GATE, ATLAS_REWARD_MIN_CONFIRMATIONS, ATLAS_TREASURY_CONFIG, parseAtlasPaymentConfig, parseAtlasRewardRpcUrls } from './atlas/config';
 import { createAtlasPayoutService } from './atlas/payouts';
 import { mountAtlasPayoutAdminRoutes } from './atlas/payout-admin-routes';
 import { createAtlasUsageService } from './atlas/usage';
 import { mountAtlasUsageRoutes } from './atlas/usage-routes';
+import { createAtlasDailyService } from './atlas/daily';
+import { mountAtlasDailyRoutes } from './atlas/daily-routes';
 import { createAtlasOrderStore } from './atlas/orders';
 import { createAtlasChainReader } from './atlas/chain';
 import { createAtlasBeaconRepository, createAtlasBeaconService } from './atlas/beacon';
@@ -188,12 +190,43 @@ const atlasStateStore = createAtlasStateStore(createAtlasJsonRepository({ direct
  * single-use operation nonce, so a batch is approved, submitted and reconciled
  * by a person rather than automatically.
  */
-const atlasPayouts = ATLAS_TREASURY_CONFIG.enabled && atlasChain
+/*
+ * The reward side reads its own chain.
+ *
+ * Purchases settle on testnet while daily rewards are paid in real mainnet
+ * NIM, so the payout path can no longer borrow `atlasChain`, which is built
+ * for the purchase network. Borrowing it would verify a mainnet payout against
+ * a practice chain and call it settled.
+ *
+ * Mainnet is refused without its genesis hash, and the reader latches to
+ * `rejected` if the RPC answers with a different one, so a node pointed at the
+ * wrong chain stops producing evidence permanently rather than intermittently.
+ */
+const atlasRewardChain = ATLAS_DAILY_REWARD_CONFIG.enabled && ATLAS_DAILY_REWARD_CONFIG.network
+  ? createAtlasChainReader({
+      network: ATLAS_DAILY_REWARD_CONFIG.network,
+      rpcUrls: parseAtlasRewardRpcUrls(),
+      minConfirmations: ATLAS_REWARD_MIN_CONFIRMATIONS,
+      expectedGenesisHash: ATLAS_DAILY_REWARD_CONFIG.network === 'mainalbatross' ? process.env.ATLAS_MAINNET_GENESIS_HASH : undefined,
+    })
+  : undefined;
+
+/*
+ * Payouts follow the reward chain, not the purchase chain.
+ *
+ * `ATLAS_TREASURY_CONFIG` still gates the competitive reward ledger, which is
+ * a separate product on its own schedule. The daily pot has its own config and
+ * its own chain, and either may be enabled without the other.
+ */
+const atlasPayoutChain = atlasRewardChain ?? atlasChain;
+const atlasPayoutNetwork = ATLAS_DAILY_REWARD_CONFIG.network ?? ATLAS_PAYMENT_CONFIG.network;
+const atlasPayoutTreasury = ATLAS_DAILY_REWARD_CONFIG.treasuryAddress ?? ATLAS_TREASURY_CONFIG.treasuryAddress;
+const atlasPayouts = (ATLAS_DAILY_REWARD_CONFIG.enabled || ATLAS_TREASURY_CONFIG.enabled) && atlasPayoutChain && atlasPayoutTreasury
   ? createAtlasPayoutService({
-      network: ATLAS_PAYMENT_CONFIG.network,
-      treasuryAddress: ATLAS_TREASURY_CONFIG.treasuryAddress!,
-      minConfirmations: ATLAS_PAYMENT_CONFIG.minConfirmations,
-      chain: atlasChain,
+      network: atlasPayoutNetwork,
+      treasuryAddress: atlasPayoutTreasury,
+      minConfirmations: atlasRewardChain ? ATLAS_REWARD_MIN_CONFIRMATIONS : ATLAS_PAYMENT_CONFIG.minConfirmations,
+      chain: atlasPayoutChain,
       stateStore: atlasStateStore,
     })
   : undefined;
@@ -207,6 +240,30 @@ const atlasPayouts = ATLAS_TREASURY_CONFIG.enabled && atlasChain
  * in production — is the exact shape of the treasury bug this codebase already
  * paid for once.
  */
+/*
+ * The daily run, and what it owes.
+ *
+ * Constructed only when payments are configured, because the day's payment
+ * challenge has to be checked against the *real* recipient and amount. The
+ * engine previously compared against the fixture address NQATLASLANTERNSHOP
+ * and a 100,000 Luna price while production runs a real recipient at 10,000,
+ * so it would have rejected every genuine payment and accepted only a fixture
+ * production cannot produce.
+ */
+const atlasDaily = ATLAS_PAYMENT_CONFIG.enabled
+  ? createAtlasDailyService({
+      date: () => utcDate(),
+      expectation: {
+        network: ATLAS_PAYMENT_CONFIG.network,
+        recipient: ATLAS_PAYMENT_CONFIG.recipient!,
+        valueLuna: ATLAS_PAYMENT_CONFIG.valueLuna,
+        minimumConfirmations: ATLAS_PAYMENT_CONFIG.minConfirmations,
+      },
+      dailyPoolLuna: ATLAS_DAILY_POOL_LUNA,
+      stateStore: ATLAS_PRODUCTION_GATE.durableRepository ? atlasStateStore : undefined,
+    })
+  : undefined;
+
 const atlasUsage = createAtlasUsageService({
   stateStore: ATLAS_PRODUCTION_GATE.durableRepository ? atlasStateStore : undefined,
   salt: process.env.ATLAS_USAGE_SALT,
@@ -224,6 +281,7 @@ const provesActor = createActorVerifier(playerAuth);
 installRequestLogging(app, { record: recordAdminLog });
 mountRelayRoutes({ app, limit: rateLimiter.limit, api: createRelayApi({ config: RELAY_CONFIG, tickets: relayTickets, walletBindings: relayWalletBindings, daily: relayDaily, repository: relayRepository, actorExists: (actorId) => playerAuth.hasCredential(actorId), world: relayWorld, leaderboard: relayLeaderboard, rewards: relayRewards }) });
 mountAtlasUsageRoutes({ app, limit: rateLimiter.limit, usage: atlasUsage });
+mountAtlasDailyRoutes({ app, limit: rateLimiter.limit, daily: atlasDaily });
 mountAtlasRoutes({ app, limit: rateLimiter.limit, api: createAtlasApi({
   curriculum: ATLAS_CURRICULUM,
   competitiveExpeditions: ATLAS_PRODUCTION_GATE.competitive,

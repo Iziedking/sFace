@@ -304,7 +304,29 @@ export class AtlasApp {
     const bridgeList = element('dl', 'atlas-nimiq-bridge');
     for (const row of ATLAS_NIMIQ_BRIDGE) bridgeList.append(element('dt', '', row.label), element('dd', '', row.meaning));
     bridge.append(bridgeList, element('p', 'atlas-verb-line', ATLAS_PAYMENT_VERBS.join('  /  ')));
-    panel.append(bridge);
+
+    /*
+     * How to get something to pay with.
+     *
+     * In-app purchases settle on the Nimiq test network, so a new player needs
+     * test NIM before the lantern is reachable at all. Without this the live
+     * payment path is a wall: the wallet opens, there is nothing to spend, and
+     * nothing on screen says where to get it.
+     */
+    const faucet = element('section', 'atlas-guide-section atlas-faucet-section');
+    faucet.append(
+      element('p', 'atlas-eyebrow', 'BEFORE YOU BUY ANYTHING'),
+      element('p', 'atlas-guide-note', 'Purchases in Atlas settle on the Nimiq test network, so they cost test NIM rather than real funds. Claim some first, then the harbor lantern is yours to buy for 0.1 NIM.'),
+    );
+    const faucetSteps = element('ol', 'atlas-faucet-steps');
+    for (const step of [
+      'Open Nimiq Pay and switch it to the test network.',
+      'Copy your test address.',
+      'Claim free test NIM from the faucet below.',
+      'Come back to Pay Harbor and buy the lantern.',
+    ]) faucetSteps.append(element('li', '', step));
+    faucet.append(faucetSteps, externalLink('Claim test NIM from the Nimiq faucet', 'https://faucet.pos.nimiq-testnet.com/'));
+    panel.append(bridge, faucet);
 
     const snapshots = element('section', 'atlas-guide-section');
     snapshots.append(element('p', 'atlas-eyebrow', 'SEE THE LOOP'), element('div', 'atlas-snapshot-grid'));

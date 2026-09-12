@@ -33,7 +33,7 @@ describe('NIM Atlas performance and duplicate-request boundaries', () => {
     expect(new Set(acceptedRuns.map((item) => item.runId))).toEqual(new Set([run.runId]));
     expect(await leaderboard.list(run.seasonId, run.role)).toHaveLength(1);
 
-    const daily = createAtlasDailyService({ date: () => '2026-08-25' });
+    const daily = createAtlasDailyService({ date: () => '2026-08-25', expectation: { network: 'testalbatross', recipient: 'NQ07ABCDEFGHJKLMNPQRSTUVXY0123456789', valueLuna: 10_000, minimumConfirmations: 3 } });
     const dailyInput = { actorId: run.actorId, walletAddress: run.walletAddress, challengeId: 'daily-01', answer: '1200000', replayComplete: true, assistance: 'none' as const };
     const dailyResults = await Promise.all(Array.from({ length: 100 }, () => daily.submit(dailyInput)));
     expect(dailyResults.filter((item) => item.accepted && !item.duplicate)).toHaveLength(1);

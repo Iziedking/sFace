@@ -61,9 +61,96 @@ export function parseAtlasTreasuryConfig(env: Readonly<Record<string, string | u
   return { enabled: true, reason: null, treasuryAddress };
 }
 
+export interface AtlasDailyRewardConfig {
+  enabled: boolean;
+  reason: 'disabled' | 'no-durable-store' | 'missing-treasury' | 'invalid-treasury' | 'missing-pool' | 'invalid-pool' | 'unknown-reward-network' | 'missing-reward-network' | 'missing-mainnet-genesis' | null;
+  /** The chain the pot is funded on. Never inherited from the purchase side. */
+  network: 'testalbatross' | 'mainalbatross' | null;
+  treasuryAddress: string | null;
+  poolLuna: number | null;
+}
+
+/*
+ * The daily run's pot, gated on its own terms.
+ *
+ * Deliberately NOT behind `parseAtlasProductionGate().rewards`, which requires
+ * the whole competitive block: ATLAS_COMPETITIVE_ENABLED plus five hashes
+ * pinning a campaign, a curriculum and a ruleset. Those exist to make a
+ * competitive season reproducible. A daily reward is a different product and
+ * should not be unlockable only by declaring a season that is not running.
+ *
+ * It does require a durable store, and that one is not negotiable: eligibility
+ * has to survive a restart or a wallet that already qualified today can
+ * qualify again, and the day's close pays it twice out of real funds.
+ */
+export function parseAtlasDailyRewardConfig(env: Readonly<Record<string, string | undefined>> = process.env): AtlasDailyRewardConfig {
+  /*
+   * A reward treasury must name the network it is funded on.
+   *
+   * Daily rewards are paid in real mainnet NIM while purchases settle on
+   * testnet, so the two halves run on different chains and the payout side can
+   * no longer inherit the purchase network. A mainnet treasury sitting in a
+   * testnet payout path is how real funds get settled against a practice
+   * chain; this refuses rather than letting a gate elsewhere be the only thing
+   * standing in the way.
+   *
+   * Mainnet additionally requires its genesis hash, which is what proves the
+   * configured RPC is on the chain it claims. Without it, mainnet is refused.
+   */
+  const requestedNetwork = (env.ATLAS_REWARD_NETWORK ?? '').trim().toLowerCase();
+  if (requestedNetwork && requestedNetwork !== 'testalbatross' && requestedNetwork !== 'mainalbatross') {
+    return { enabled: false, reason: 'unknown-reward-network', treasuryAddress: null, poolLuna: null, network: null };
+  }
+  const treasuryAddress = (env.ATLAS_TREASURY_ADDRESS ?? '').replace(/\s/g, '').toUpperCase() || null;
+  const empty = { treasuryAddress, poolLuna: null, network: null };
+  if (env.ATLAS_DAILY_REWARDS_ENABLED !== 'true') return { enabled: false, reason: 'disabled', ...empty };
+  if (env.ATLAS_DURABLE_REPOSITORY_ENABLED !== 'true') return { enabled: false, reason: 'no-durable-store', ...empty };
+  if (!treasuryAddress) return { enabled: false, reason: 'missing-treasury', ...empty };
+  if (!/^NQ\d{2}[0-9A-HJ-NP-VXY]{32}$/.test(treasuryAddress)) return { enabled: false, reason: 'invalid-treasury', ...empty };
+  const raw = (env.ATLAS_DAILY_POOL_LUNA ?? '').trim();
+  if (!/^\d+$/.test(raw)) return { enabled: false, reason: 'missing-pool', ...empty };
+  const poolLuna = Number(raw);
+  if (!Number.isSafeInteger(poolLuna) || poolLuna <= 0) return { enabled: false, reason: 'invalid-pool', ...empty };
+  // Stated explicitly, never defaulted: a pot that does not say which chain it
+  // is funded on is the ambiguity this whole function exists to remove.
+  const rewardNetwork: 'testalbatross' | 'mainalbatross' | null =
+    requestedNetwork === 'mainalbatross' ? 'mainalbatross' : requestedNetwork === 'testalbatross' ? 'testalbatross' : null;
+  if (!rewardNetwork) return { enabled: false, reason: 'missing-reward-network', ...empty };
+  if (rewardNetwork === 'mainalbatross' && !(env.ATLAS_MAINNET_GENESIS_HASH ?? '').trim()) {
+    return { enabled: false, reason: 'missing-mainnet-genesis', ...empty };
+  }
+  return { enabled: true, reason: null, treasuryAddress, poolLuna, network: rewardNetwork };
+}
+
+/*
+ * RPC endpoints for the reward chain, read from that network's own prefix.
+ *
+ * Never merged with the purchase network's list: an endpoint borrowed from
+ * ATLAS_TESTNET_RPC_URLS would settle a real payout against a practice chain,
+ * which is the failure the prefixes exist to prevent.
+ */
+export function parseAtlasRewardRpcUrls(env: Readonly<Record<string, string | undefined>> = process.env): readonly string[] {
+  const network = parseAtlasDailyRewardConfig(env).network;
+  if (!network) return [];
+  const raw = env[network === 'mainalbatross' ? 'ATLAS_MAINNET_RPC_URLS' : 'ATLAS_TESTNET_RPC_URLS'] ?? '';
+  return raw.split(',').map((url) => url.trim()).filter((url) => url.startsWith('https://'));
+}
+
+/** Confirmations a payout must reach on the reward chain before it counts. */
+export function parseAtlasRewardMinConfirmations(env: Readonly<Record<string, string | undefined>> = process.env): number {
+  const network = parseAtlasDailyRewardConfig(env).network;
+  const raw = (env[network === 'mainalbatross' ? 'ATLAS_MAINNET_MIN_CONFIRMATIONS' : 'ATLAS_TESTNET_MIN_CONFIRMATIONS'] ?? '').trim();
+  const value = Number(raw);
+  // Mainnet defaults higher than testnet: a reorg there costs real money.
+  return /^\d+$/.test(raw) && Number.isSafeInteger(value) && value > 0 ? value : network === 'mainalbatross' ? 10 : 3;
+}
+
 export const ATLAS_PRODUCTION_GATE = parseAtlasProductionGate();
 export const ATLAS_TREASURY_CONFIG = parseAtlasTreasuryConfig();
 export const ATLAS_COMPETITIVE_POLICY = parseAtlasCompetitivePolicy();
+export const ATLAS_DAILY_REWARD_CONFIG = parseAtlasDailyRewardConfig();
+export const ATLAS_DAILY_POOL_LUNA = ATLAS_DAILY_REWARD_CONFIG.poolLuna;
+export const ATLAS_REWARD_MIN_CONFIRMATIONS = parseAtlasRewardMinConfirmations();
 
 import { createAtlasPaymentConfig, type AtlasPaymentNetwork } from '../../shared/atlas/payment-config';
 import { ATLAS_LANTERN_PRICE_LUNA } from '../../shared/atlas/economy';
