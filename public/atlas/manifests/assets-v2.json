@@ -5,12 +5,12 @@
     {
       "id": "atlas-shell-mark",
       "path": "/icon.svg",
-      "sha256": "3F48BEAD15FE087938B07F97FFD98BA844D1CDFDCB1E0C7BD1B1C7711B2DBE4D",
-      "bytes": 978,
-      "compressedBytes": 978,
+      "sha256": "A6653BE89B982887AED31BD67AB186E32CC9E008080E273D2C384EED68660429",
+      "bytes": 3003,
+      "compressedBytes": 3003,
       "mime": "image/svg+xml",
-      "width": 512,
-      "height": 512,
+      "width": 160,
+      "height": 160,
       "bundle": "atlas-shell"
     },
     {

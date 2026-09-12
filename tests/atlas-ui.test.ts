@@ -43,8 +43,20 @@ describe('NIM Atlas public first district UI', () => {
     const app = readFileSync(new URL('../src/atlas/app/atlas-app.ts', import.meta.url), 'utf8');
     const manifest = readFileSync(new URL('../public/manifest.webmanifest', import.meta.url), 'utf8');
     expect(app).toContain('Sface is a Nimiq Pay Mini App game. NIM Atlas is the network you repair by playing.');
-    expect(manifest).toContain('Sface is a Nimiq Pay Mini App game.');
-    expect(manifest).toContain('Explore NIM Atlas');
+    /*
+     * Asserted as a relationship, not as one sentence.
+     *
+     * The product was renamed from "Sface: NIM Atlas" to "NIM Atlas" on
+     * 2026-09-12, with Sface credited as the maker in the description, so that
+     * the name matches the crest. Pinning the old wording made a deliberate
+     * rename look like a regression. What has to stay true is that the
+     * manifest names the game, names its maker, and says it is a Nimiq Pay
+     * Mini App.
+     */
+    const parsed = JSON.parse(manifest) as { name: string; description: string };
+    expect(parsed.name).toBe('NIM Atlas');
+    expect(parsed.description, 'the maker is not credited').toContain('Sface');
+    expect(parsed.description, 'Nimiq Pay is not named').toContain('Nimiq Pay');
     expect(app).toContain('PRACTICE MODE / PLAYABLE WITHOUT A WALLET');
     expect(app).toContain('NIMIQ PAY IS THE LIVE PAYMENT GATE');
   });
@@ -202,7 +214,7 @@ describe('NIM Atlas public first district UI', () => {
     const llms = readFileSync(new URL('../public/llms.txt', import.meta.url), 'utf8');
     expect(robots).toContain('User-agent: *');
     expect(robots).toContain('Allow: /');
-    expect(llms).toContain('# Sface: NIM Atlas');
+    expect(llms).toContain('# NIM Atlas');
     expect(llms).toContain('Nimiq Pay Mini App game');
   });
 });

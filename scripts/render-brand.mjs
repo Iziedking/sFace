@@ -24,6 +24,16 @@ const require = createRequire(join(root, 'package.json'));
 const WebSocket = require('ws');
 
 const crest = readFileSync(join(root, 'brand', 'beacon-crest.svg'), 'utf8');
+
+/*
+ * public/icon.svg is the crest itself, copied rather than rendered.
+ *
+ * index.html lists it before the PNG favicon and browsers prefer the vector,
+ * so it is the icon most people actually see. Regenerating every raster and
+ * leaving it behind shipped the previous mark in the one place that showed
+ * most often.
+ */
+writeFileSync(join(root, 'public', 'icon.svg'), crest);
 const PORT = 9337;
 
 /* target, width, height, and how the crest is placed on it. */

@@ -26,7 +26,7 @@ describe('NIM Atlas mobile and offline boundary', () => {
   });
 
   it('keeps the public app installable and accessible at portrait sizes', () => {
-    expect(JSON.parse(manifest)).toMatchObject({ name: 'Sface: NIM Atlas', display: 'standalone' });
+    expect(JSON.parse(manifest)).toMatchObject({ name: 'NIM Atlas', display: 'standalone' });
     expect(css).toContain('env(safe-area-inset-top)');
     expect(css).toContain('min-height: 44px');
     expect(css).toContain(':focus-visible');

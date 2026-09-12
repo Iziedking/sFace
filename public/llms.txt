@@ -1,4 +1,4 @@
-# Sface: NIM Atlas
+# NIM Atlas
 
 > Sface is a Nimiq Pay Mini App game that teaches Nimiq payment and network concepts through a playable adventure. NIM Atlas is the world explored by the player.
 
