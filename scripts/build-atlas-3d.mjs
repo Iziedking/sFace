@@ -99,7 +99,23 @@ const scene = {
     { id: 'obstruction-team-pavilion-post-4', shape: 'capsule', position: [-1.3, 1.8, -9.7], size: [0.2, 3.6, 0.2] },
     { id: 'obstruction-transit', shape: 'box', position: [5.7, 1.9, -12.6], size: [6.2, 3.8, 4] },
     { id: 'obstruction-signal-tower', shape: 'capsule', position: [0, 3.2, -16.2], size: [4.8, 7.4, 4.8] },
-    { id: 'obstruction-north-quarter', shape: 'box', position: [0, 1.3, -19.8], size: [4.8, 2.6, 2.4] },
+    /*
+     * Removed, deliberately. This was a 4.8 x 2.4 m solid block at ground
+     * level standing in the middle of `north_cross_street`, which
+     * art/atlas/environments/beacon-commons-v1/build_scene.py authors as
+     * walkable ground from x -15.5 to 15.5.
+     *
+     * The only geometry there is `far_commons_sign`: 4.8 m wide, **0.18 m
+     * thick**, hanging at y 2.15. A gantry sign over a street was being
+     * collided with as a building thirteen times its depth.
+     *
+     * Measured consequence: at z -19 the three gaps across the whole street
+     * were 0.5 m, 0.6 m and 0.6 m wide, so the player hit a wall about 18 m
+     * from spawn and turned back. Beyond it the city opens to 19 m wide and
+     * runs to z -70, with a south street, a far cross street and a horizon
+     * street already built and dressed. A play test reported the city as "too
+     * small and concised"; roughly fifty metres of it were behind this.
+     */
     { id: 'obstruction-south-west', shape: 'box', position: [-8.8, 1.4, -27], size: [4.4, 2.8, 3.8] },
     { id: 'obstruction-south-east', shape: 'box', position: [8.4, 1.4, -27.2], size: [4.8, 2.8, 4.0] },
     { id: 'obstruction-tea-house', shape: 'box', position: [-7.8, 1.5, 3.9], size: [3.62, 3.4, 3.18] },

@@ -233,9 +233,14 @@ describe('Atlas 3D asset registry', () => {
    * easy mistake: a collider that swallows an anchor turns a cosmetic bug into
    * an objective the player cannot reach, and neither failure throws.
    */
+  /*
+   * The counts are a floor against silently losing collision, not a target.
+   * beacon-commons went 31 -> 30 on purpose: obstruction-north-quarter was a
+   * hanging sign modelled as a building and it sealed the street.
+   */
   it.each([
     ['pay-harbor', 12],
-    ['beacon-commons', 31],
+    ['beacon-commons', 30],
   ])('makes %s solid without sealing any objective inside a wall', (district, minimumColliders) => {
     const scene = parseAtlasCityScene(JSON.parse(readFileSync(`public/atlas/3d/v1/${district}/scene.json`, 'utf8')));
     expect(scene.colliders.length).toBeGreaterThanOrEqual(minimumColliders);

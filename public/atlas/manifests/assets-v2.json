@@ -212,9 +212,9 @@
     {
       "id": "beacon-commons-scene",
       "path": "/atlas/3d/v1/beacon-commons/scene.json",
-      "sha256": "95d8ad2a46a19db1b9057ddff66e2c9bb4d8fcae904a0174ae137ea1fbe72274",
-      "bytes": 16661,
-      "compressedBytes": 16661,
+      "sha256": "f06e149751723762214557a9a0f978f327af52213800e3bc7392a80948af3434",
+      "bytes": 16456,
+      "compressedBytes": 16456,
       "mime": "application/json",
       "width": 1,
       "height": 1,

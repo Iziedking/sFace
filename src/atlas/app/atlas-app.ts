@@ -3,6 +3,7 @@ import { createAtlasState } from '../../../shared/atlas/state';
 import { BEACON_SEALS, createRouteRun, recoverRouteRun, routeLesson, routeProgress, routeRestoration, routeTarget, routeWorld, stepRouteRun, type RouteAction, type RouteRun } from '../../../shared/atlas/adventures/route-rescue';
 import { createEvidenceChoices, createRouteCard } from '../ui/route-rescue';
 import { createAtlasUsageReporter } from '../usage';
+import { atlasFreePlayComplete } from '../../../shared/atlas/city/onboarding';
 import { AtlasRuntimeStats } from '../city/runtime-stats';
 import { projectLivingWorld } from '../../../shared/atlas/living-world';
 import { AtlasCameraLookController, AtlasInputController, installAtlasKeyboard, shouldHandleDirectionalClick, type AtlasDirection } from '../input';
@@ -91,6 +92,22 @@ export class AtlasApp {
   /* Anonymous participation counting. Reuses the session actor id above rather
    * than minting a second identifier; the server hashes it before storing. */
   private readonly usage = createAtlasUsageReporter({ session: this.sessionActorId });
+  /*
+   * Free play before the game asks anything of you.
+   *
+   * The mission card used to be on screen before the player had taken a step,
+   * and the first thing it pointed at was 3.8 m away, so a play test reported
+   * the city as small and the person you talk to as already in front of you.
+   * The card now waits until the player has walked a little or a short while
+   * has passed, whichever comes first, so the first thing anyone does in Atlas
+   * is move around a city that is not yet asking for anything.
+   *
+   * The time fallback matters: a player who stands still is not stuck, and a
+   * gate with no timeout would read as a broken build.
+   */
+  private freePlayDone = false;
+  private freePlayOrigin: { x: number; z: number } | null = null;
+  private freePlayStartedAt = 0;
   private selectedRole: AtlasRole = this.progress.load().activeRole;
   private screen: 'welcome' | 'how-to-play' | 'lantern' | 'trial' | 'book' | 'daily' | 'evergreen' | 'core-run' | 'beacon-commons' | 'pay-harbor' = 'welcome';
   private lanternState: LastLanternState = createLastLanternState('explorer', 'practice');
@@ -667,7 +684,7 @@ export class AtlasApp {
     cameraMode.className = 'atlas-camera-mode';
     shell.append(topbar, settingsPanel, this.toolkit.element, this.createBeaconMap(), this.createCityWaypoint(), this.createCameraLookZone(), cameraCenter, controls, hint);
     shell.append(cameraMode);
-    if (this.routeRun) {
+    if (this.routeRun && this.freePlayDone) {
       this.toolkit.element.hidden = true;
       this.routeCard = createRouteCard(this.routeRun, this.actRoute);
       shell.append(this.routeCard);
@@ -1250,6 +1267,7 @@ export class AtlasApp {
       onFrame: ({ player }) => {
         this.runtimeStats?.sample(performance.now(), controller.stats(), controller.qualityTier());
         this.updateBeaconMap(player);
+        this.observeFreePlay(player);
         this.observeTutorial(player);
       },
       /*
@@ -2325,6 +2343,25 @@ export class AtlasApp {
    * per frame, so nudging the stick back and forth cannot satisfy the step that
    * exists to prove the player found the joystick.
    */
+  private observeFreePlay(player: AtlasCityPlayerState | undefined): void {
+    if (this.freePlayDone || !player || this.screen !== 'beacon-commons') return;
+    if (!this.freePlayOrigin) {
+      this.freePlayOrigin = { x: player.x, z: player.z };
+      this.freePlayStartedAt = performance.now();
+    }
+    const run = this.routeRun;
+    const complete = atlasFreePlayComplete({
+      metresExplored: Math.hypot(player.x - this.freePlayOrigin.x, player.z - this.freePlayOrigin.z),
+      secondsElapsed: (performance.now() - this.freePlayStartedAt) / 1_000,
+      chapter: run?.chapter ?? null,
+      stage: run?.stage ?? null,
+      actionsTaken: run?.actions.length ?? 0,
+    });
+    if (!complete) return;
+    this.freePlayDone = true;
+    this.renderBeaconCommons();
+  }
+
   private observeTutorial(player: AtlasCityPlayerState | undefined): void {
     if (this.routeRun && this.screen === 'beacon-commons') return;
     if (!player || this.tutorial.isComplete()) return;
