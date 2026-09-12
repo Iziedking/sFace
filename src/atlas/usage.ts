@@ -32,6 +32,8 @@ export function atlasUsageDevice(): AtlasUsageDevice {
 
 export function createAtlasUsageReporter(options: {
   session: string;
+  /** Origin of the Atlas service. Empty when it shares the client's origin. */
+  apiBase?: string;
   device?: AtlasUsageDevice;
   endpoint?: string;
   fetcher?: typeof fetch;
@@ -40,7 +42,20 @@ export function createAtlasUsageReporter(options: {
   if (options.enabled === false) return NOOP;
   const fetcher = options.fetcher ?? (typeof fetch === 'function' ? fetch : undefined);
   if (!fetcher || !options.session) return NOOP;
-  const endpoint = options.endpoint ?? '/atlas/api/usage';
+  /*
+   * The API is a different origin from the client.
+   *
+   * The client is static on sface.site and the service is on api.sface.site,
+   * so a relative '/atlas/api/usage' resolves against the static host and every
+   * event 405s. Verified on a real phone: every usage POST from every player
+   * was failing and the funnel would have read zero forever, which is the exact
+   * silent failure this module exists to prevent.
+   *
+   * An empty base is still correct for local development, where the client and
+   * the service share an origin.
+   */
+  const base = (options.apiBase ?? '').replace(/\/$/, '');
+  const endpoint = options.endpoint ?? `${base}/atlas/api/usage`;
   const device = options.device ?? atlasUsageDevice();
   // Chapter events repeat as a player moves around; sending every repetition
   // would be noise the server only has to throw away again.

@@ -91,7 +91,7 @@ export class AtlasApp {
   private readonly sessionActorId = getAtlasSessionActorId(safeStorage());
   /* Anonymous participation counting. Reuses the session actor id above rather
    * than minting a second identifier; the server hashes it before storing. */
-  private readonly usage = createAtlasUsageReporter({ session: this.sessionActorId });
+  private readonly usage = createAtlasUsageReporter({ session: this.sessionActorId, apiBase: import.meta.env.VITE_API_BASE ?? '' });
   /*
    * Free play before the game asks anything of you.
    *

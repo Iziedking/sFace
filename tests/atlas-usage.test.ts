@@ -8,6 +8,7 @@ import {
   type AtlasUsageState,
 } from '../shared/atlas/usage';
 import { createAtlasUsageService } from '../server/atlas/usage';
+import { createAtlasUsageReporter } from '../src/atlas/usage';
 
 const DAY = 86_400_000;
 const MONDAY = Date.parse('2026-09-14T09:00:00.000Z');
@@ -15,6 +16,47 @@ const MONDAY = Date.parse('2026-09-14T09:00:00.000Z');
 function fold(state: AtlasUsageState, events: Array<Record<string, unknown>>): AtlasUsageState {
   return events.reduce((current, event) => foldAtlasUsage(current, event), state);
 }
+
+describe('atlas usage reporting', () => {
+  /*
+   * The client is static on sface.site and the service is on api.sface.site.
+   * A relative '/atlas/api/usage' therefore resolves against the static host,
+   * which answered 405 to every event. Caught on a real phone, not in any
+   * test: the funnel would have read zero forever while people played.
+   */
+  it('sends events to the service origin, not the page origin', async () => {
+    const calls: string[] = [];
+    const reporter = createAtlasUsageReporter({
+      session: 'atlas-session-abcdefgh',
+      apiBase: 'https://api.sface.site',
+      fetcher: (async (url: string) => { calls.push(String(url)); return { ok: true } as Response; }) as unknown as typeof fetch,
+    });
+    reporter.record('session-start');
+    await Promise.resolve();
+    expect(calls).toEqual(['https://api.sface.site/atlas/api/usage']);
+  });
+
+  it('stays relative when the service shares the origin, as it does locally', async () => {
+    const calls: string[] = [];
+    const reporter = createAtlasUsageReporter({
+      session: 'atlas-session-abcdefgh',
+      apiBase: '',
+      fetcher: (async (url: string) => { calls.push(String(url)); return { ok: true } as Response; }) as unknown as typeof fetch,
+    });
+    reporter.record('session-start');
+    await Promise.resolve();
+    expect(calls).toEqual(['/atlas/api/usage']);
+  });
+
+  it('never lets a failing endpoint throw into the game loop', () => {
+    const reporter = createAtlasUsageReporter({
+      session: 'atlas-session-abcdefgh',
+      apiBase: 'https://api.sface.site',
+      fetcher: (() => { throw new Error('offline'); }) as unknown as typeof fetch,
+    });
+    expect(() => reporter.record('session-start')).not.toThrow();
+  });
+});
 
 describe('atlas usage counting', () => {
   it('reports a funnel where each stage is a subset of the one above it', () => {
