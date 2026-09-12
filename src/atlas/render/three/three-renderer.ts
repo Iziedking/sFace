@@ -6,7 +6,7 @@ import { ATLAS_CITIZEN_WARDROBE, ATLAS_WORLD_PALETTE, worldColourCss } from '../
 import type { AtlasCitizenPresentation } from '../../../../shared/atlas/city/crowd';
 import { BEACON_COMMONS_CROWD } from '../../../../shared/atlas/city/crowd';
 import { atlasCitizenAppearance, type AtlasCitizenAppearanceProfile } from '../../../../shared/atlas/city/character-appearance';
-import { projectAtlasCitizenMotion, resolveAtlasCitizenSpacing, routeAtlasCitizenPath, type AtlasCitizenMotionProjection } from '../../../../shared/atlas/city/citizen-motion';
+import { ATLAS_PLAYER_PERSONAL_SPACE_METERS, projectAtlasCitizenMotion, resolveAtlasCitizenSpacing, routeAtlasCitizenPath, type AtlasCitizenMotionProjection } from '../../../../shared/atlas/city/citizen-motion';
 import type { AtlasCityPlayerState } from '../../../../shared/atlas/city/player';
 import { parseAtlasCityScene, type AtlasCitySceneV1 } from '../../../../shared/atlas/city/types';
 import type { AtlasCityInteractionPresentation, AtlasRendererOptions, AtlasRendererStats, AtlasSceneRenderer } from '../contracts';
@@ -161,6 +161,20 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
         const npcLod1Model = modelUrls.get('atlas-walker-npc-lod1');
         const npcLod2Model = modelUrls.get('atlas-walker-npc-lod2');
         if (!environmentModel || !playerModel || !npcLod1Model || !npcLod2Model) throw new Error(`Atlas district ${districtId} is missing a required model.`);
+        /*
+         * The crowd's second body.
+         *
+         * Optional on purpose: a district whose scene predates the variant
+         * still loads, it just draws one body for everyone. Making it required
+         * would turn an art addition into a district that refuses to open.
+         */
+        const npcBodies = [
+          { lod1: npcLod1Model, lod2: npcLod2Model },
+          {
+            lod1: modelUrls.get('atlas-walker-npc-female-lod1') ?? npcLod1Model,
+            lod2: modelUrls.get('atlas-walker-npc-female-lod2') ?? npcLod2Model,
+          },
+        ];
         const environment = await this.gltfCache.acquire(environmentModel);
         acquired.push(environment);
         this.prepareRuntimeMaterials(environment.root);
@@ -182,7 +196,14 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
         const npcHandles = await Promise.all(districtCrowd.map(async (citizen) => {
           const anchor = npcAnchors.get(citizen.spawnAnchorId);
           if (!anchor) throw new Error(`Atlas district ${districtId} is missing NPC spawn anchor ${citizen.spawnAnchorId}.`);
-          const [lod1, lod2] = await Promise.all([this.gltfCache!.acquire(npcLod1Model), this.gltfCache!.acquire(npcLod2Model)]);
+          /*
+           * Which body this citizen has, chosen from its id so it is stable
+           * across reloads and across the LOD swap. A citizen that changed
+           * body when it crossed the detail threshold would read as two
+           * different people.
+           */
+          const body = npcBodies[stableHash(`${citizen.id}:body`) % npcBodies.length]!;
+          const [lod1, lod2] = await Promise.all([this.gltfCache!.acquire(body.lod1), this.gltfCache!.acquire(body.lod2)]);
           return { citizen, anchor, lod1, lod2 };
         }));
         acquired.push(...npcHandles.flatMap(({ lod1, lod2 }) => [lod1, lod2]));
@@ -518,6 +539,7 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
       const stepScale = Math.min(1, maximumStep / Math.max(0.00001, Math.hypot(dx, dz)));
       slot.displayPosition.x += dx * stepScale;
       slot.displayPosition.z += dz * stepScale;
+      this.keepCitizenOffPlayer(slot.displayPosition, citizen.id);
       const distanceFromPlayer = this.playerRoot ? Math.hypot(position[0] - this.playerRoot.position.x, position[2] - this.playerRoot.position.z) : Number.POSITIVE_INFINITY;
       const detailLevel = atlasCitizenDetailLevel(this.qualityTier, citizen.active, distanceFromPlayer, slot.detailLevel);
       if (detailLevel !== slot.detailLevel) {
@@ -550,6 +572,38 @@ export class ThreeAtlasRenderer implements AtlasSceneRenderer {
         animator.update(animationState, deltaSeconds, speedScale, atlasCitizenFacialCue(citizen.activity), { speedUnitsPerSecond: Math.min(3, renderedSpeed), worldScale: NPC_WORLD_SCALE });
       }
     }
+  }
+
+  /*
+   * Hold the drawn citizen out of the player, after smoothing.
+   *
+   * `resolveAtlasCitizenSpacing` already separates the simulation positions,
+   * but `displayPosition` lags them and is clamped to about walking pace, so a
+   * running player passes visibly through a body that has not caught up yet.
+   * A play test reported it as players passing through each other.
+   *
+   * Applied last, in display space, so smoothing cannot reintroduce the
+   * overlap it causes. The push is along the existing offset, which keeps the
+   * citizen where it already was rather than teleporting it around the player.
+   */
+  private keepCitizenOffPlayer(position: { x: number; z: number }, citizenId: string): void {
+    if (!this.playerRoot) return;
+    const playerX = this.playerRoot.position.x;
+    const playerZ = this.playerRoot.position.z;
+    let offsetX = position.x - playerX;
+    let offsetZ = position.z - playerZ;
+    let distance = Math.hypot(offsetX, offsetZ);
+    if (distance >= ATLAS_PLAYER_PERSONAL_SPACE_METERS) return;
+    if (distance < 0.0001) {
+      // Exactly coincident: pick a stable direction from the citizen's id so
+      // the same pair never jitters between frames.
+      const angle = (stableHash(citizenId) % 360) * (Math.PI / 180);
+      offsetX = Math.sin(angle);
+      offsetZ = Math.cos(angle);
+      distance = 1;
+    }
+    position.x = playerX + (offsetX / distance) * ATLAS_PLAYER_PERSONAL_SPACE_METERS;
+    position.z = playerZ + (offsetZ / distance) * ATLAS_PLAYER_PERSONAL_SPACE_METERS;
   }
 
   private presentRestorationLights(restoration: AtlasLivingWorldSnapshot['restoration'], tick: number): void {

@@ -107,6 +107,8 @@ function verifyBudget(id, metrics) {
     'atlas-walker-v2-player': 12000,
     'atlas-walker-v2-lod1': 3300,
     'atlas-walker-v2-lod2': 800,
+    'atlas-walker-v2-female-lod1': 3300,
+    'atlas-walker-v2-female-lod2': 800,
   };
   const triangleLimit = triangleLimits[id] ?? 120000;
   if (metrics.triangles > triangleLimit) throw new Error(`triangle budget exceeded: ${metrics.triangles} > ${triangleLimit}`);

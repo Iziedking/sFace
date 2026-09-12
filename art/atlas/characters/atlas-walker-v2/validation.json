@@ -1,28 +1,29 @@
 {
   "asset": "atlas-walker-v2",
+  "variant": "female",
   "version": "2.0.0",
   "metrics": {
-    "vertices": 5892,
+    "vertices": 5985,
     "triangles": 11520,
-    "polygons": 5943,
+    "polygons": 5992,
     "materials": 5,
     "uvLayers": 1,
     "vertexGroups": 46,
     "heightMeters": 1.76,
-    "headsTall": 5.987,
+    "headsTall": 5.986,
     "animationClips": 4,
     "lods": [
       {
         "name": "lod1",
         "triangles": 3101,
         "budget": 3300,
-        "file": "atlas-walker-v2-lod1.glb"
+        "file": "atlas-walker-v2-female-lod1.glb"
       },
       {
         "name": "lod2",
-        "triangles": 751,
+        "triangles": 752,
         "budget": 800,
-        "file": "atlas-walker-v2-lod2.glb"
+        "file": "atlas-walker-v2-female-lod2.glb"
       }
     ]
   },

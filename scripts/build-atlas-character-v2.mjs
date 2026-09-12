@@ -33,6 +33,10 @@ const ASSETS = [
   ['atlas-walker-v2.glb', 'atlas-walker-v2-player.glb', 'atlas-walker-v2-player', 12000],
   ['atlas-walker-v2-lod1.glb', 'atlas-walker-v2-lod1.glb', 'atlas-walker-v2-lod1', 3300],
   ['atlas-walker-v2-lod2.glb', 'atlas-walker-v2-lod2.glb', 'atlas-walker-v2-lod2', 800],
+  // The second body. Only the crowd LODs: the player is a single known figure,
+  // so a variant there would change who the player is rather than add variety.
+  ['atlas-walker-v2-female-lod1.glb', 'atlas-walker-v2-female-lod1.glb', 'atlas-walker-v2-female-lod1', 3300],
+  ['atlas-walker-v2-female-lod2.glb', 'atlas-walker-v2-female-lod2.glb', 'atlas-walker-v2-female-lod2', 800],
 ];
 
 async function sha256(path) {
@@ -57,12 +61,12 @@ async function resolveBlender() {
   throw new Error('Blender is required to build the v2 character. Set BLENDER to its executable, or pass --skip-blender to stage the GLBs already in the art directory.');
 }
 
-async function runBlender() {
+async function runBlender(extraArgs = []) {
   const blender = await resolveBlender();
   await new Promise((resolve, reject) => {
     execFile(
       blender,
-      ['--background', '--python', buildScript, '--', '--out', characterSource],
+      ['--background', '--python', buildScript, '--', '--out', characterSource, ...extraArgs],
       { maxBuffer: 64 * 1024 * 1024 },
       (error, stdout, stderr) => {
         if (error) return reject(new Error(`Blender failed: ${stderr || error.message}`));
@@ -139,5 +143,8 @@ async function updateManifest(staged) {
   console.log(`manifest updated: ${entries.length} v2 entries, ${manifest.assets.length} assets total`);
 }
 
-if (!skipBlender) await runBlender();
+if (!skipBlender) {
+  await runBlender();
+  await runBlender(['--variant', 'female']);
+}
 await updateManifest(await stage());

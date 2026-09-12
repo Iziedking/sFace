@@ -38,6 +38,8 @@ const scene = {
     { id: 'atlas-walker-player', url: '/atlas/3d/v2/characters/atlas-walker-v2-player.glb', contentType: 'model/gltf-binary' },
     { id: 'atlas-walker-npc-lod1', url: '/atlas/3d/v2/characters/atlas-walker-v2-lod1.glb', contentType: 'model/gltf-binary' },
     { id: 'atlas-walker-npc-lod2', url: '/atlas/3d/v2/characters/atlas-walker-v2-lod2.glb', contentType: 'model/gltf-binary' },
+    { id: 'atlas-walker-npc-female-lod1', url: '/atlas/3d/v2/characters/atlas-walker-v2-female-lod1.glb', contentType: 'model/gltf-binary' },
+    { id: 'atlas-walker-npc-female-lod2', url: '/atlas/3d/v2/characters/atlas-walker-v2-female-lod2.glb', contentType: 'model/gltf-binary' },
   ],
   instances: [
     { id: 'beacon-commons-environment-instance', modelId: 'beacon-commons-environment', position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
@@ -141,6 +143,8 @@ const payHarborScene = {
     { id: 'atlas-walker-player', url: '/atlas/3d/v2/characters/atlas-walker-v2-player.glb', contentType: 'model/gltf-binary' },
     { id: 'atlas-walker-npc-lod1', url: '/atlas/3d/v2/characters/atlas-walker-v2-lod1.glb', contentType: 'model/gltf-binary' },
     { id: 'atlas-walker-npc-lod2', url: '/atlas/3d/v2/characters/atlas-walker-v2-lod2.glb', contentType: 'model/gltf-binary' },
+    { id: 'atlas-walker-npc-female-lod1', url: '/atlas/3d/v2/characters/atlas-walker-v2-female-lod1.glb', contentType: 'model/gltf-binary' },
+    { id: 'atlas-walker-npc-female-lod2', url: '/atlas/3d/v2/characters/atlas-walker-v2-female-lod2.glb', contentType: 'model/gltf-binary' },
   ],
   instances: [
     { id: 'pay-harbor-environment-instance', modelId: 'pay-harbor-environment', position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },

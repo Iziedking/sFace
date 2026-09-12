@@ -28,8 +28,8 @@ describe('Atlas 3D asset registry', () => {
   it('parses the checked-in v2 manifest', () => {
     const manifest = parseAtlasAssetManifest(JSON.parse(readFileSync('public/atlas/manifests/assets-v2.json', 'utf8')));
     expect(manifest.version).toBe(2);
-    expect(manifest.assets.length).toBe(14);
-    expect(manifest.assets.filter((asset) => asset.mime === 'model/gltf-binary')).toHaveLength(8);
+    expect(manifest.assets.length).toBe(16);
+    expect(manifest.assets.filter((asset) => asset.mime === 'model/gltf-binary')).toHaveLength(10);
   });
 
   it('keeps procedural approval separate from rejected references', () => {
@@ -105,6 +105,16 @@ describe('Atlas 3D asset registry', () => {
     const player = readGlbJson('public/atlas/3d/v2/characters/atlas-walker-v2-player.glb');
     const lod1 = readGlbJson('public/atlas/3d/v2/characters/atlas-walker-v2-lod1.glb');
     const lod2 = readGlbJson('public/atlas/3d/v2/characters/atlas-walker-v2-lod2.glb');
+    // The second crowd body shares the rig, so it must share the contract too.
+    const femaleLod1 = readGlbJson('public/atlas/3d/v2/characters/atlas-walker-v2-female-lod1.glb');
+    const femaleLod2 = readGlbJson('public/atlas/3d/v2/characters/atlas-walker-v2-female-lod2.glb');
+    expect(triangleCount(femaleLod1)).toBeLessThanOrEqual(3300);
+    expect(triangleCount(femaleLod2)).toBeLessThanOrEqual(800);
+    for (const level of [femaleLod1, femaleLod2]) {
+      expect(level.skins[0].joints).toHaveLength(23);
+      expect(level.animations).toHaveLength(4);
+      expect(level.animations.map((clip: { name: string }) => clip.name).sort()).toEqual(['Atlas_Idle', 'Atlas_Run', 'Atlas_Talk', 'Atlas_Walk']);
+    }
     expect(triangleCount(player)).toBeLessThanOrEqual(12000);
     expect(triangleCount(player)).toBeGreaterThan(8000);
     expect(triangleCount(lod1)).toBeLessThanOrEqual(3300);
@@ -160,7 +170,8 @@ describe('Atlas 3D asset registry', () => {
   it('keeps Beacon Commons as a real scene contract with readable anchors', () => {
     const scene = parseAtlasCityScene(JSON.parse(readFileSync('public/atlas/3d/v1/beacon-commons/scene.json', 'utf8')));
     const kinds = new Set(scene.anchors.map((anchor) => anchor.kind));
-    expect(scene.models).toHaveLength(4);
+    // environment, player, and two LODs for each of the two crowd bodies.
+    expect(scene.models).toHaveLength(6);
     expect(scene.anchors.filter((anchor) => anchor.id.startsWith('npc-spawn-'))).toHaveLength(17);
     expect(scene.paths.filter((path) => path.purpose === 'queue')).toHaveLength(2);
     expect(scene.navigation).toMatchObject({

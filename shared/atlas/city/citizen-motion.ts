@@ -37,7 +37,18 @@ const MAXIMUM_WALK_SPEED = 0.9;
 const MINIMUM_RUN_SPEED = 1.45;
 const MAXIMUM_RUN_SPEED = 2.05;
 const CITIZEN_PERSONAL_SPACE_METERS = 0.52;
-const PLAYER_PERSONAL_SPACE_METERS = 0.485;
+/*
+ * How close a citizen is willing to stand to the player.
+ *
+ * Exported because the renderer has to enforce it a second time. The spacing
+ * solver moves a citizen's *simulation* position out of the way immediately,
+ * but the rendered body is smoothed toward it and clamped to roughly walking
+ * pace, so a running player outruns the citizen's ability to step aside and
+ * passes straight through the drawn figure. The solved positions never
+ * overlap; only the drawn ones do.
+ */
+export const ATLAS_PLAYER_PERSONAL_SPACE_METERS = 0.485;
+const PLAYER_PERSONAL_SPACE_METERS = ATLAS_PLAYER_PERSONAL_SPACE_METERS;
 const SPACING_ITERATIONS = 5;
 const CITIZEN_COLLISION_RADIUS_METERS = 0.24;
 const COLLISION_SUBSTEP_METERS = 0.1;
