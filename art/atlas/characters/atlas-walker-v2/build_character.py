@@ -48,8 +48,53 @@ OUT = Path(argv[argv.index('--out') + 1]) if '--out' in argv else ROOT
 OUT.mkdir(parents=True, exist_ok=True)
 
 BONES = {entry['name']: entry for entry in RIG['bones']}
-RADII = RIG['skinRadii']
 PALETTE = SPEC['palette']
+
+"""Body variants.
+
+A crowd of one body reads as a prototype, so the walker ships in more than one
+build. What a variant may change is deliberately narrow: **the 23 bone
+positions in rig.json are a hard contract** and none of these touch them. The
+renderer looks bones up by name through `findAtlasBone`, `character-gait-rig`
+derives leg lengths from the loaded model, and the four clips are authored
+against that skeleton, so every variant shares one rig, one gait and one clip
+set. Only the surface grown around it differs.
+
+`radii` scales the entries in rig.json's skinRadii. `shoulderSpan` moves the
+deltoid helper, which is shape-only and has no bone behind it. `hairNape`
+carries the hair shell down the back of the neck instead of stopping at the
+skull.
+"""
+VARIANTS = {
+    'default': {'radii': {}, 'shoulderSpan': 1.0, 'hairNape': False},
+    # Narrower shoulders and waist, wider hips, slightly finer limbs, and hair
+    # that reaches the nape. At the tuned camera a head is about 25 px, so the
+    # silhouette is the only thing that can carry this: shoulder-to-hip ratio
+    # and hair outline read at that size, facial detail does not.
+    'female': {
+        'radii': {
+            'hips': 1.10, 'spine': 0.93, 'chest': 0.96, 'neck': 0.94,
+            'upper_arm': 0.92, 'lower_arm': 0.94, 'hand': 0.96,
+            'upper_leg': 0.98, 'lower_leg': 0.96,
+        },
+        'shoulderSpan': 0.88,
+        'hairNape': True,
+    },
+}
+
+VARIANT_NAME = argv[argv.index('--variant') + 1] if '--variant' in argv else 'default'
+if VARIANT_NAME not in VARIANTS:
+    raise SystemExit(f'Unknown variant {VARIANT_NAME}. Known: {", ".join(sorted(VARIANTS))}')
+VARIANT = VARIANTS[VARIANT_NAME]
+# 'default' keeps its historic filenames so its committed hashes do not churn.
+ASSET_STEM = 'atlas-walker-v2' if VARIANT_NAME == 'default' else f'atlas-walker-v2-{VARIANT_NAME}'
+
+# Scaling the table once here means every downstream use of RADII is scaled,
+# rather than each call site having to remember.
+RADII = {
+    name: (value * VARIANT['radii'].get(name, 1.0)) if isinstance(value, (int, float)) else value
+    for name, value in RIG['skinRadii'].items()
+}
 
 
 def gltf_to_blender(point):
@@ -180,12 +225,28 @@ def body_graph():
         ('crown', [0.0, crown - 0.028, -0.012], 0.078, 'hairline'),
     ]
 
+    if VARIANT['hairNape']:
+        """Grow hair as real volume rather than claiming body surface.
+
+        The hair shell is cut from the body, so between the jaw and the
+        shoulders it can only follow the neck, which is 5 cm across and reads
+        as a collar rather than hair. These nodes give the Skin modifier
+        something to grow, and `region_of` then claims them. They carry no
+        bone, like every other shape-only helper, and automatic weights bind
+        them to the head so the hair moves with it.
+        """
+        graph += [
+            ('hair.mass', offset('head', dy=0.030, dz=-0.086), 0.112, 'skull'),
+            ('hair.fall.L', [0.070, chin + 0.020, -0.070], 0.058, 'hair.mass'),
+            ('hair.fall.R', [-0.070, chin + 0.020, -0.070], 0.058, 'hair.mass'),
+        ]
+
     for side, sign in (('L', 1.0), ('R', -1.0)):
         graph += [
             # A deltoid mass between the chest and the arm. Without it the
             # shoulders slope straight into the neck and the figure reads as a
             # mannequin.
-            (f'shoulder.{side}', [sign * 0.152, landmarks['shoulder'] + 0.012, 0.0], 0.084, 'chest'),
+            (f'shoulder.{side}', [sign * 0.152 * VARIANT['shoulderSpan'], landmarks['shoulder'] + 0.012, 0.0], 0.084 * VARIANT['shoulderSpan'], 'chest'),
             (f'upper_arm.{side}', bone(f'upper_arm.{side}'), RADII['upper_arm'] * 1.12, f'shoulder.{side}'),
             (f'cuff.{side}', [sign * 0.229, 1.19, 0.0], RADII['lower_arm'] * 1.16, f'upper_arm.{side}'),
             (f'lower_arm.{side}', bone(f'lower_arm.{side}'), RADII['lower_arm'] * 1.04, f'cuff.{side}'),
@@ -408,6 +469,11 @@ def region_of(point):
         brow = chin + (crown - chin) * 0.62
         hairline = brow + (gz - 0.02) * 0.55
         return 'hair' if gy >= hairline else None
+    if VARIANT['hairNape'] and gz < -0.012 and gy >= chin - 0.10 and side < 0.145:
+        # Behind the jaw, above the collar, and no wider than the hair volume
+        # authored in body_graph. Wider than this starts claiming shoulder and
+        # reads as a cape.
+        return 'hair'
     if gy < 0.26:
         return 'boots'
     if gy < hip * 1.07:
@@ -842,7 +908,7 @@ def export_lods(body, rig_object):
         lod.select_set(True)
         rig_object.select_set(True)
         bpy.context.view_layer.objects.active = rig_object
-        path = OUT / f'atlas-walker-v2-{name}.glb'
+        path = OUT / f'{ASSET_STEM}-{name}.glb'
         export_selected(path)
         exported.append({
             'name': name,
@@ -879,7 +945,7 @@ def render_previews(body):
     }.items():
         camera.location = (x, y, 0.95)
         camera.rotation_euler = (math.radians(88), 0, rotation_z)
-        scene.render.filepath = str(OUT / name)
+        scene.render.filepath = str(OUT / (name if VARIANT_NAME == 'default' else f'{name}-{VARIANT_NAME}'))
         bpy.ops.render.render(write_still=True)
     return camera
 
@@ -902,7 +968,7 @@ def render_clip_contact_sheets(rig_object, camera):
         rig_object.animation_data.action = bpy.data.actions[name]
         for index in range(4):
             scene.frame_set(round(frames * index / 4))
-            scene.render.filepath = str(OUT / f'clip-{name.replace("Atlas_", "").lower()}-{index}')
+            scene.render.filepath = str(OUT / f'clip-{name.replace("Atlas_", "").lower()}-{index}{"" if VARIANT_NAME == "default" else "-" + VARIANT_NAME}')
             bpy.ops.render.render(write_still=True)
     rig_object.animation_data.action = None
     clear_pose(rig_object)
@@ -943,7 +1009,7 @@ def main():
 
     metrics = measure(body)
     metrics['animationClips'] = len(clips)
-    export_glb(OUT / 'atlas-walker-v2.glb')
+    export_glb(OUT / f'{ASSET_STEM}.glb')
     lods = export_lods(body, rig_object)
     metrics['lods'] = lods
     silence_animation(rig_object)
@@ -952,6 +1018,7 @@ def main():
 
     report = {
         'asset': SPEC['asset'],
+        'variant': VARIANT_NAME,
         'version': SPEC['version'],
         'metrics': metrics,
         'clips': [{'name': name, 'seconds': round(seconds, 4)} for name, seconds in clips],
