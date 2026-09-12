@@ -34,6 +34,18 @@ export interface AtlasCitizenPresentation {
   readonly updateIntervalTicks: 1 | 6 | 30;
 }
 
+/*
+ * How long a citizen stays on one activity, in simulation ticks.
+ *
+ * `living-city-controller.ts` advances the city clock at `deltaSeconds * 30`,
+ * so 240 ticks is eight seconds. The jitter is what stops the whole crowd
+ * changing what it is doing on the same frame, which reads as a cutscene
+ * rather than a city; each citizen's offset comes from its own stable hash, so
+ * the effect is deterministic and still testable.
+ */
+export const ACTIVITY_DWELL_TICKS = 240;
+export const ACTIVITY_DWELL_JITTER_TICKS = 36;
+
 export const CROWD_UPDATE_INTERVALS = {
   near: 1,
   medium: 6,
@@ -76,7 +88,7 @@ export function scheduleCrowd(input: AtlasCrowdScheduleInput, roster: readonly A
     const visible = citizen.missionCritical || index < profile.visibleNpcs;
     const active = visible && (citizen.missionCritical || index < profile.activeNpcs);
     const pathId = citizen.missionCritical ? citizen.pathIds[0] : citizen.pathIds[hash % citizen.pathIds.length];
-    const activity = activityFor(citizen.role, hash, input.restorationState);
+    const activity = activityFor(citizen.role, hash, input.restorationState, input.tick);
     return {
       id: citizen.id,
       role: citizen.role,
@@ -94,11 +106,30 @@ export function scheduleCrowd(input: AtlasCrowdScheduleInput, roster: readonly A
   });
 }
 
-function activityFor(role: AtlasCitizenRole, hash: number, restorationState: AtlasCrowdScheduleInput['restorationState']): AtlasCitizenActivity {
+/*
+ * What a citizen is doing right now.
+ *
+ * This used to depend only on the citizen's stable hash, so every citizen was
+ * assigned one activity at boot and did it for the rest of the day. The roster
+ * had nine activities and the city still looked frozen, which a play test
+ * reported as "it doesn't look interactive" and "people should be doing
+ * activities". They were; each of them was doing exactly one, forever.
+ *
+ * Activities now rotate on each citizen's own cadence. The queueing and
+ * trading branches stay pinned to restoration state, because those are not
+ * idle behaviour: they are what the market is doing about the mission.
+ */
+function activityFor(
+  role: AtlasCitizenRole,
+  hash: number,
+  restorationState: AtlasCrowdScheduleInput['restorationState'],
+  tick: number,
+): AtlasCitizenActivity {
+  const step = activityStep(hash, tick);
   if (restorationState !== 'restored' && role === 'community-merchant') return 'queueing';
   if (restorationState !== 'restored' && role === 'community-traveller' && hash % 2 === 0) return 'queueing';
   if (restorationState === 'restored' && role === 'community-merchant') return 'trading';
-  if (restorationState === 'restored' && (role === 'community-repairer' || role === 'nimiq-team-builder')) return hash % 2 === 0 ? 'celebrating' : 'repairing';
+  if (restorationState === 'restored' && (role === 'community-repairer' || role === 'nimiq-team-builder')) return (hash + step) % 2 === 0 ? 'celebrating' : 'repairing';
   const activities: Record<AtlasCitizenRole, readonly AtlasCitizenActivity[]> = {
     'nimiq-team-guide': ['talking', 'planning'],
     'nimiq-team-builder': ['planning', 'repairing'],
@@ -108,7 +139,22 @@ function activityFor(role: AtlasCitizenRole, hash: number, restorationState: Atl
     'community-traveller': ['walking', 'carrying', 'walking', 'jogging'],
   };
   const options = activities[role];
-  return options[hash % options.length];
+  return options[(hash + step) % options.length]!;
+}
+
+/*
+ * Which slot of a citizen's routine the clock is in, on its own cadence.
+ *
+ * Both the period and the phase come from the hash. Varying only the period
+ * was measurably not enough: with five buckets, citizens sharing a bucket
+ * still changed on the same frame, and fourteen citizens produced only four
+ * distinct change times, so the crowd turned over in visible waves. Offsetting
+ * the start as well gives each citizen its own moment.
+ */
+function activityStep(hash: number, tick: number): number {
+  const period = ACTIVITY_DWELL_TICKS + (hash % 5) * ACTIVITY_DWELL_JITTER_TICKS;
+  const offset = hash % period;
+  return Math.floor((Math.max(0, tick) + offset) / period);
 }
 
 function reactionFor(state: AtlasCrowdScheduleInput['restorationState'], role: AtlasCitizenRole): AtlasRestorationReaction {
