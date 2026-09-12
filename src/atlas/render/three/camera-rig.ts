@@ -51,6 +51,30 @@ const DEFAULT_HEADING_RADIANS = Math.PI;
  */
 export const ATLAS_AVATAR_WORLD_HEIGHT_METERS = 1.76 * 0.72;
 
+/*
+ * How much of the viewport's height the avatar should fill.
+ *
+ * 0.175 was tuned in portrait and is correct there. Held constant it is wrong
+ * in landscape, because the solve targets a *fraction* of viewport height and
+ * landscape has far less of it: measured on a Pixel 7 Pro, the avatar is 162
+ * px tall in portrait (923 px viewport) and 70 px in landscape (401 px), so it
+ * renders at 43 percent of the size while the camera sits at the same 6.27 m.
+ * Proportionally identical, and much too small to read in the hand.
+ *
+ * So the fraction grows as the viewport gets shorter, bounded at both ends:
+ * portrait is left exactly as tuned, and the ceiling stops a very short
+ * viewport from pushing the camera into the avatar's back.
+ */
+export const ATLAS_FRAMING_REFERENCE_HEIGHT_PX = 900;
+export const ATLAS_FRAMING_MIN_PERCENT = 0.175;
+export const ATLAS_FRAMING_MAX_PERCENT = 0.3;
+
+export function atlasFramingTargetPercent(viewportHeightPx: number): number {
+  if (!Number.isFinite(viewportHeightPx) || viewportHeightPx <= 0) return ATLAS_FRAMING_MIN_PERCENT;
+  const scaled = ATLAS_FRAMING_MIN_PERCENT * (ATLAS_FRAMING_REFERENCE_HEIGHT_PX / viewportHeightPx);
+  return Math.max(ATLAS_FRAMING_MIN_PERCENT, Math.min(ATLAS_FRAMING_MAX_PERCENT, scaled));
+}
+
 /**
  * The single owner of the camera's field of view.
  *
@@ -82,9 +106,11 @@ export class AtlasCameraRig {
   readonly avatarHeightMeters: number;
   readonly pitchDegrees: number;
   readonly aimHeightMeters: number;
-  readonly followDistanceMeters: number;
-  readonly cameraLiftMeters: number;
-  readonly cameraHeightMeters: number;
+  /* Re-solved by `resize` when the viewport height changes, so these three are
+     no longer fixed for the life of the rig. See frameForViewport. */
+  followDistanceMeters: number;
+  cameraLiftMeters: number;
+  cameraHeightMeters: number;
   readonly shoulderOffsetMeters: number;
   readonly lookAheadMeters: number;
   private readonly currentTarget = new Vector3();
@@ -101,6 +127,8 @@ export class AtlasCameraRig {
   private readonly bestEscapePosition = new Vector3();
   private currentHeadingRadians = DEFAULT_HEADING_RADIANS;
   private currentFovDegrees: number;
+  private readonly framingIsAutomatic: boolean;
+  private framedForHeightPx = 0;
 
   constructor(private readonly camera: PerspectiveCamera, options: AtlasCameraRigOptions = {}) {
     this.fieldOfViewDegrees = options.fieldOfViewDegrees ?? ATLAS_CAMERA_FIELD_OF_VIEW_DEGREES;
@@ -114,6 +142,7 @@ export class AtlasCameraRig {
       fieldOfViewDegrees: this.fieldOfViewDegrees,
       pitchDegrees: this.pitchDegrees,
     });
+    this.framingIsAutomatic = options.followDistanceMeters === undefined && options.cameraHeightMeters === undefined;
     this.followDistanceMeters = options.followDistanceMeters ?? geometry.followDistanceMeters;
     this.cameraLiftMeters =
       options.cameraHeightMeters === undefined ? geometry.cameraLiftMeters : options.cameraHeightMeters - this.aimHeightMeters;
@@ -191,6 +220,31 @@ export class AtlasCameraRig {
   resize(width: number, height: number): void {
     this.camera.aspect = Math.max(1, width) / Math.max(1, height);
     this.camera.updateProjectionMatrix();
+    this.frameForViewport(height);
+  }
+
+  /*
+   * Re-solve the follow distance for this viewport.
+   *
+   * The geometry used to be solved once in the constructor and never revisited,
+   * so rotating the phone changed the aspect and nothing else. A rig given an
+   * explicit distance or height is left alone: that is a caller pinning the
+   * shot, and resizing is not a reason to overrule it.
+   */
+  private frameForViewport(height: number): void {
+    if (!this.framingIsAutomatic) return;
+    const safeHeight = Math.max(1, height);
+    if (Math.abs(safeHeight - this.framedForHeightPx) < 1) return;
+    this.framedForHeightPx = safeHeight;
+    const geometry = solveAtlasFollowGeometry({
+      avatarHeightMeters: this.avatarHeightMeters,
+      targetScreenHeightPercent: atlasFramingTargetPercent(safeHeight),
+      fieldOfViewDegrees: this.fieldOfViewDegrees,
+      pitchDegrees: this.pitchDegrees,
+    });
+    this.followDistanceMeters = geometry.followDistanceMeters;
+    this.cameraLiftMeters = geometry.cameraLiftMeters;
+    this.cameraHeightMeters = this.aimHeightMeters + this.cameraLiftMeters;
   }
 
   private updateBasis(): void {

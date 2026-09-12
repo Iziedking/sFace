@@ -6,6 +6,9 @@ import {
   nearestCameraObstructionDistance,
   projectedAtlasScreenHeightPercent,
   solveAtlasFollowGeometry,
+  atlasFramingTargetPercent,
+  ATLAS_FRAMING_MIN_PERCENT,
+  ATLAS_FRAMING_MAX_PERCENT,
 } from '../src/atlas/render/three/camera-rig';
 
 describe('Atlas mobile camera rig', () => {
@@ -248,5 +251,45 @@ describe('Atlas camera framing solver', () => {
     });
     expect(projected).toBeGreaterThanOrEqual(0.16);
     expect(projected).toBeLessThanOrEqual(0.19);
+  });
+});
+
+describe('landscape framing', () => {
+  /*
+   * Measured on a Pixel 7 Pro: the avatar was 162 px tall in portrait (923 px
+   * viewport) and 70 px in landscape (401 px), because the solve targets a
+   * fraction of viewport height and the camera sat at the same 6.27 m in both.
+   * Proportionally identical, 43 percent of the size, and too small to read.
+   */
+  it('leaves portrait exactly as it was tuned', () => {
+    expect(atlasFramingTargetPercent(923)).toBeCloseTo(ATLAS_FRAMING_MIN_PERCENT, 5);
+    expect(atlasFramingTargetPercent(2000)).toBeCloseTo(ATLAS_FRAMING_MIN_PERCENT, 5);
+  });
+
+  it('gives a short landscape viewport a larger share of its height', () => {
+    expect(atlasFramingTargetPercent(401)).toBeGreaterThan(atlasFramingTargetPercent(923));
+    // 30 percent of 401 px is 120 px, against 70 px before.
+    expect(atlasFramingTargetPercent(401) * 401).toBeGreaterThan(110);
+  });
+
+  it('never pushes the camera further than the ceiling allows', () => {
+    for (const height of [1, 50, 200, 401]) {
+      expect(atlasFramingTargetPercent(height)).toBeLessThanOrEqual(ATLAS_FRAMING_MAX_PERCENT);
+    }
+  });
+
+  it('falls back to the tuned value on nonsense input', () => {
+    for (const height of [0, -10, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(atlasFramingTargetPercent(height)).toBe(ATLAS_FRAMING_MIN_PERCENT);
+    }
+  });
+
+  it('never shrinks the avatar as the viewport grows', () => {
+    let previous = Number.POSITIVE_INFINITY;
+    for (const height of [300, 401, 500, 700, 900, 1200]) {
+      const target = atlasFramingTargetPercent(height);
+      expect(target).toBeLessThanOrEqual(previous);
+      previous = target;
+    }
   });
 });
