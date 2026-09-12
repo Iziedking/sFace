@@ -319,6 +319,15 @@ button:focus-visible, input:focus-visible, a:focus-visible, [tabindex]:focus-vis
  * src/atlas/ui/nimiq-mark.ts.
  */
 .atlas-nimiq-mark { display: block; width: auto; height: 20px; flex: none; }
+/*
+ * The product's own crest leads; Nimiq is credited beneath it. Sizing the
+ * attribution deliberately smaller than the crest is the point: the
+ * relationship has to read as "built on", not "made by".
+ */
+.atlas-crest { display: block; width: auto; height: 34px; flex: none; }
+.atlas-brand > .atlas-crest { grid-column: 1; grid-row: 1 / span 2; align-self: center; height: 26px; }
+.atlas-powered-by { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 10px 0 0; color: var(--atlas-label-dim); font: 700 10px/1 ui-sans-serif, system-ui, sans-serif; letter-spacing: .16em; text-transform: uppercase; }
+.atlas-powered-by .atlas-nimiq-mark { height: 14px; }
 .atlas-nimiq-mark[data-variant="lockup"] { height: 28px; margin: 0 0 14px; }
 
 .atlas-brand { min-height: 52px; padding: 8px 14px; display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 9px; align-content: center; text-align: left; cursor: pointer; }

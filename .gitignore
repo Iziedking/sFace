@@ -196,3 +196,6 @@ art/atlas/characters/atlas-walker-v2/*.png
 # Working design document for the game's storyline. A scratchpad we edit
 # together, not a shipped spec; it becomes real as scene data and code.
 STORY-SCRIPT.md
+
+# Throwaway Chrome profile from scripts/render-brand.mjs.
+.brand-render-profile/

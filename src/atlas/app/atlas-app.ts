@@ -1,4 +1,5 @@
 import { createNimiqMark } from '../ui/nimiq-mark';
+import { createAtlasCrest, createNimiqPoweredBy } from '../ui/atlas-mark';
 import { createAtlasState } from '../../../shared/atlas/state';
 import { BEACON_SEALS, createRouteRun, recoverRouteRun, routeLesson, routeProgress, routeRestoration, routeTarget, routeWorld, stepRouteRun, type RouteAction, type RouteRun } from '../../../shared/atlas/adventures/route-rescue';
 import { createEvidenceChoices, createRouteCard } from '../ui/route-rescue';
@@ -341,7 +342,7 @@ export class AtlasApp {
       this.ui.append(panel);
       return;
     }
-    panel.append(createNimiqMark('lockup'));
+    panel.append(createAtlasCrest(), createNimiqPoweredBy());
     const eyebrow = element('p', 'atlas-eyebrow', 'NIM ATLAS / BEACON COMMONS');
     const heading = element('h1', '', 'Explore Nimiq. Build what survives.');
     const tagline = element('p', 'atlas-tagline', 'Learn how Nimiq works by walking through a living city, meeting its people, and making the right move.');
@@ -434,7 +435,7 @@ export class AtlasApp {
   private renderLandingSplash(): HTMLElement {
     const splash = element('div', 'atlas-landing-splash');
     const state = this.cityLoadState === 'unavailable';
-    splash.append(createNimiqMark('lockup'));
+    splash.append(createAtlasCrest(), createNimiqPoweredBy());
     splash.append(
       element('p', 'atlas-eyebrow', 'SFACE / NIM ATLAS'),
       element('h1', '', state ? 'Reconnect the city.' : 'Entering Beacon Commons.'),
@@ -983,11 +984,12 @@ export class AtlasApp {
     brand.setAttribute('aria-label', ariaLabel);
     brand.addEventListener('click', this.returnHome);
     /*
-     * The persistent Nimiq mark. Decorative, because the button already
-     * carries an aria-label and a second "Nimiq" would be announced on every
-     * screen the HUD appears on.
+     * Our own crest, decorative because the button already carries an
+     * aria-label. This used to be the Nimiq signet, which read as though NIM
+     * Atlas were an official Nimiq product. It is a game that teaches Nimiq,
+     * so the crest leads and Nimiq is credited by name in `createNimiqPoweredBy`.
      */
-    brand.append(createNimiqMark('signet', { decorative: true }), element('span', '', 'NIM ATLAS'), element('small', '', locationLabel));
+    brand.append(createAtlasCrest({ decorative: true }), element('span', '', 'NIM ATLAS'), element('small', '', locationLabel));
     return brand;
   }
 
@@ -1883,7 +1885,8 @@ export class AtlasApp {
       this.screenNav('Pay Harbor'),
       // This is the screen a player approves a transfer on, so it carries the
       // full lockup rather than the signet alone.
-      createNimiqMark('lockup'),
+      createAtlasCrest(),
+      createNimiqPoweredBy(),
       element('p', 'atlas-eyebrow', 'PAY HARBOR / THE LAST LANTERN'),
       element('h1', '', 'Keep the harbor open'),
       element('p', 'atlas-trial-copy', this.selectedRole === 'builder' ? 'Repair Mara\'s payment route: provider request, exact Lunas, then authoritative confirmation.' : 'Walk through Mara\'s shop, review a NIM payment, and carry the lantern to the harbor tower.'),

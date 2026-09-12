@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="160" height="160" role="img" aria-label="NIM Atlas beacon crest">
+  <title>NIM Atlas</title>
+  <!--
+    The Beacon Crest.
+
+    A sealed emblem: the lantern above, the city below, light falling across
+    it. The isometric blocks use three faces each (lit top, front, shadow
+    side) so the mark has real depth rather than reading as flat clip art,
+    which is what the game itself looks like.
+
+    Deliberately no hexagon and no Nimiq yellow-orange as the lead colour, so
+    this can sit beside a "Powered by Nimiq" lockup without competing with it
+    or implying endorsement. NIM Atlas teaches Nimiq; it is not Nimiq.
+
+    Colours are the app's own tokens from src/atlas/atlas.css:
+      navy #0b0e22 / #10142c, signal #ff477e, deep #d81e5b,
+      cyan #4cc9f0, gold #ffd166, ink #f7f9ff.
+  -->
+  <defs>
+    <radialGradient id="crestGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffd166" stop-opacity=".95"/>
+      <stop offset="55%" stop-color="#ff9f1c" stop-opacity=".35"/>
+      <stop offset="100%" stop-color="#ff9f1c" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="crestPink" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ff6b96"/><stop offset="100%" stop-color="#d81e5b"/>
+    </linearGradient>
+    <linearGradient id="crestCyan" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#7ddcf7"/><stop offset="100%" stop-color="#2aa7cc"/>
+    </linearGradient>
+    <linearGradient id="crestGold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffe09a"/><stop offset="100%" stop-color="#e0a52e"/>
+    </linearGradient>
+  </defs>
+
+  <circle cx="80" cy="80" r="74" fill="#0b0e22" stroke="#f7f9ff" stroke-width="6"/>
+  <circle cx="80" cy="80" r="62" fill="none" stroke="#ff477e" stroke-width="3" stroke-opacity=".55"/>
+  <circle cx="80" cy="64" r="44" fill="url(#crestGlow)"/>
+
+  <!-- the street the city stands on -->
+  <path d="M80 116 L134 88 L134 96 L80 124 L26 96 L26 88 Z" fill="#2b3160"/>
+
+  <!-- left block -->
+  <path d="M44 86 L62 76 L62 98 L44 108 Z" fill="url(#crestCyan)"/>
+  <path d="M62 76 L80 86 L80 108 L62 98 Z" fill="#1d7fa0"/>
+  <path d="M44 86 L62 76 L80 86 L62 96 Z" fill="#9ae8ff"/>
+
+  <!-- centre tower -->
+  <path d="M68 66 L80 59 L80 96 L68 103 Z" fill="url(#crestPink)"/>
+  <path d="M80 59 L92 66 L92 103 L80 96 Z" fill="#a3154a"/>
+  <path d="M68 66 L80 59 L92 66 L80 73 Z" fill="#ff9bb8"/>
+
+  <!-- right block -->
+  <path d="M98 82 L112 74 L112 98 L98 106 Z" fill="url(#crestGold)"/>
+  <path d="M112 74 L126 82 L126 106 L112 98 Z" fill="#b07c18"/>
+  <path d="M98 82 L112 74 L126 82 L112 90 Z" fill="#ffeec2"/>
+
+  <!-- the lantern -->
+  <path d="M80 22 L80 32" stroke="#f7f9ff" stroke-width="4" stroke-linecap="round"/>
+  <path d="M70 34 L90 34 L95 52 L65 52 Z" fill="#ff477e" stroke="#0b0e22" stroke-width="3" stroke-linejoin="round"/>
+  <rect x="75" y="40" width="10" height="9" rx="2" fill="#ffd166"/>
+</svg>

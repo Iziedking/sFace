@@ -61,25 +61,53 @@ describe('Nimiq brand presence', () => {
     expect(mark).toContain('Nimiq');
   });
 
-  it('places the mark on the four surfaces the design requires', () => {
-    // Persistent HUD mark, on both play screens through the shared brand
-    // button; the loading splash; the title screen; and the payment review.
-    expect(app, 'no mark in the HUD brand').toMatch(/private createCityBrand[\s\S]{0,900}?createNimiqMark/);
-    expect(app, 'no mark on the loading splash').toMatch(/private renderLandingSplash[\s\S]{0,1200}?createNimiqMark/);
-    expect(app, 'no mark on the title screen').toMatch(/private renderWelcome[\s\S]{0,2000}?createNimiqMark/);
-    expect(app, 'no mark on the payment review').toMatch(/private createCityPaymentReview[\s\S]{0,2000}?createNimiqMark/);
+  /*
+   * The arrangement changed on 2026-09-12, deliberately.
+   *
+   * The Nimiq signet used to lead the HUD and the title screen, which read as
+   * though NIM Atlas were an official Nimiq product. It is a game that teaches
+   * Nimiq. So the product's own crest leads and Nimiq is credited by name.
+   *
+   * That is an attribution claim, so it is tested from both sides: Nimiq must
+   * still be present and named, and it must never again be the lead mark.
+   */
+  it("leads every surface with the product's own crest, not Nimiq's", () => {
+    expect(app, 'the HUD brand does not lead with the crest').toMatch(/private createCityBrand[\s\S]{0,900}?createAtlasCrest/);
+    expect(app, 'the loading splash does not lead with the crest').toMatch(/private renderLandingSplash[\s\S]{0,1200}?createAtlasCrest/);
+    expect(app, 'the title screen does not lead with the crest').toMatch(/private renderWelcome[\s\S]{0,2000}?createAtlasCrest/);
   });
 
-  it('marks the standalone lantern payment screen too', () => {
+  it('never puts the Nimiq mark back in front of the crest', () => {
+    // The HUD brand button is the one that appears on every play screen. A
+    // signet there is what created the impression in the first place.
+    const brand = app.slice(app.indexOf('private createCityBrand'));
+    const body = brand.slice(0, brand.indexOf('  private ', 40));
+    expect(body, 'the HUD brand leads with Nimiq again').not.toContain('createNimiqMark');
+  });
+
+  it('still credits Nimiq by name where the crest leads', () => {
+    expect(app, 'the loading splash drops the Nimiq credit').toMatch(/private renderLandingSplash[\s\S]{0,1400}?createNimiqPoweredBy/);
+    expect(app, 'the title screen drops the Nimiq credit').toMatch(/private renderWelcome[\s\S]{0,2200}?createNimiqPoweredBy/);
+    const helper = readFileSync(new URL('../src/atlas/ui/atlas-mark.ts', import.meta.url), 'utf8');
+    expect(helper, 'the credit does not use the official mark').toContain("createNimiqMark('lockup'");
+    expect(helper, 'the credit is not labelled').toContain('Powered by');
+  });
+
+  it('keeps Nimiq on both payment surfaces, where it matters most', () => {
     /*
-     * There are two payment surfaces, not one. createCityPaymentReview is the
-     * panel over the 3D city; renderLantern is the full screen the shipped
-     * screenshots actually show. Both list NETWORK, RECIPIENT and AMOUNT, and
-     * wiring only the first left the captured payment screen unbranded.
+     * There are two payment surfaces. createCityPaymentReview is the panel
+     * over the 3D city; renderLantern is the full screen. Both list NETWORK
+     * through networkValueCell, which carries the signet, because a player
+     * approving a real transfer should see whose network it is.
      */
-    const lantern = app.slice(app.indexOf('private renderLantern'));
-    const body = lantern.slice(0, lantern.indexOf('private renderCurrentLanternSurface'));
-    expect(body, 'the lantern screen has no Nimiq lockup').toContain("createNimiqMark('lockup')");
-    expect(body, 'the lantern network row has no mark').toContain('networkValueCell');
+    // Sliced to the next method rather than a fixed character count: these
+    // bodies are thousands of characters and a window that happened to fit
+    // once would fail the next time either grew.
+    for (const surface of ['private createCityPaymentReview', 'private renderLantern']) {
+      const from = app.indexOf(surface);
+      const body = app.slice(from, app.indexOf('  private ', from + 40));
+      expect(body, `${surface} lost the network row`).toContain('networkValueCell');
+    }
+    expect(app, 'the network row lost the signet').toMatch(/private networkValueCell[\s\S]{0,400}?createNimiqMark\('signet'/);
   });
 });
